@@ -45,21 +45,11 @@
 #include "isp_stats.h"
 #include "isp_mipi_luma.h"
 #include "procfs.h"
+#include "isp_external.h"
 #include "version.h"
 
 #define DRIVER_NAME "rkisp"
 #define ISP_VDEV_NAME DRIVER_NAME  "_ispdev"
-#define SP_VDEV_NAME DRIVER_NAME   "_selfpath"
-#define MP_VDEV_NAME DRIVER_NAME   "_mainpath"
-#define DMA_VDEV_NAME DRIVER_NAME  "_dmapath"
-#define RAW_VDEV_NAME DRIVER_NAME  "_rawpath"
-#define DMATX0_VDEV_NAME DRIVER_NAME "_rawwr0"
-#define DMATX1_VDEV_NAME DRIVER_NAME "_rawwr1"
-#define DMATX2_VDEV_NAME DRIVER_NAME "_rawwr2"
-#define DMATX3_VDEV_NAME DRIVER_NAME "_rawwr3"
-#define DMARX0_VDEV_NAME DRIVER_NAME "_rawrd0_m"
-#define DMARX1_VDEV_NAME DRIVER_NAME "_rawrd1_l"
-#define DMARX2_VDEV_NAME DRIVER_NAME "_rawrd2_s"
 
 #define GRP_ID_SENSOR			BIT(0)
 #define GRP_ID_MIPIPHY			BIT(1)
@@ -70,8 +60,8 @@
 #define GRP_ID_ISP_BRIDGE		BIT(6)
 #define GRP_ID_CSI			BIT(7)
 
-#define RKISP_MAX_SENSOR		2
-#define RKISP_MAX_PIPELINE		4
+#define RKISP_MAX_SENSOR		4
+#define RKISP_MAX_PIPELINE		8
 
 #define RKISP_MEDIA_BUS_FMT_MASK	0xF000
 #define RKISP_MEDIA_BUS_FMT_BAYER	0x3000
@@ -85,11 +75,13 @@ enum rkisp_isp_state {
 	ISP_FRAME_MP = BIT(3),
 	ISP_FRAME_SP = BIT(4),
 	ISP_FRAME_MPFBC = BIT(5),
+	ISP_FRAME_BP = BIT(6),
 
 	ISP_STOP = BIT(8),
 	ISP_START = BIT(9),
 	ISP_ERROR = BIT(10),
 	ISP_MIPI_ERROR = BIT(11),
+	ISP_CIF_RESET = BIT(12),
 };
 
 enum rkisp_isp_inp {
@@ -110,6 +102,25 @@ enum rkisp_rdbk_filt {
 	RDBK_F_RD1,
 	RDBK_F_RD2,
 	RDBK_F_MAX
+};
+
+/* unite mode for isp to process high resolution
+ * ISP_UNITE_TWO: image splits left and right to two isp hardware
+ * ISP_UNITE_ONE: image splits left and right to single isp hardware
+ */
+enum {
+	ISP_UNITE_NONE = 0,
+	ISP_UNITE_TWO = 1,
+	ISP_UNITE_ONE = 2,
+};
+
+/* left and right index
+ * ISP_UNITE_LEFT: left of image to isp process
+ * ISP_UNITE_RIGHT: right of image to isp process
+ */
+enum {
+	ISP_UNITE_LEFT = 0,
+	ISP_UNITE_RIGHT = 1,
 };
 
 /*
@@ -158,6 +169,7 @@ struct rkisp_sensor_info {
 struct rkisp_hdr {
 	u8 op_mode;
 	u8 esp_mode;
+	u8 compr_bit;
 	u8 index[HDR_DMA_MAX];
 	atomic_t refcnt;
 	struct v4l2_subdev *sensor;
@@ -190,7 +202,6 @@ struct rkisp_device {
 	struct v4l2_ctrl_handler ctrl_handler;
 	struct media_device media_dev;
 	struct v4l2_async_notifier notifier;
-	struct v4l2_subdev *subdevs[RKISP_SD_MAX];
 	struct rkisp_sensor_info *active_sensor;
 	struct rkisp_sensor_info sensors[RKISP_MAX_SENSOR];
 	int num_sensors;
@@ -202,7 +213,7 @@ struct rkisp_device {
 	struct rkisp_csi_device csi_dev;
 	struct rkisp_bridge_device br_dev;
 	struct rkisp_luma_vdev luma_vdev;
-	struct proc_dir_entry *procfs;
+	struct rkisp_procfs procfs;
 	struct rkisp_pipeline pipe;
 	enum rkisp_isp_ver isp_ver;
 	struct rkisp_emd_data emd_data_fifo[RKISP_EMDDATA_FIFO_MAX];
@@ -219,9 +230,19 @@ struct rkisp_device {
 	struct mutex apilock; /* mutex to serialize the calls of stream */
 	struct mutex iqlock; /* mutex to serialize the calls of iq */
 	wait_queue_head_t sync_onoff;
+
 	dma_addr_t resmem_addr;
 	phys_addr_t resmem_pa;
 	size_t resmem_size;
+	struct rkisp_thunderboot_resmem_head tb_head;
+	bool is_thunderboot;
+	/* first frame for rtt */
+	bool is_rtt_first;
+	/* suspend/resume with rtt */
+	bool is_rtt_suspend;
+	struct rkisp_tb_stream_info tb_stream_info;
+	unsigned int tb_addr_idx;
+
 	int dev_id;
 	unsigned int skip_frame;
 	unsigned int irq_ends;
@@ -229,8 +250,10 @@ struct rkisp_device {
 	bool send_fbcgain;
 	struct rkisp_ispp_buf *cur_fbcgain;
 	struct rkisp_buffer *cur_spbuf;
-	bool is_thunderboot;
 
+	struct completion pm_cmpl;
+
+	struct work_struct rdbk_work;
 	struct kfifo rdbk_kfifo;
 	spinlock_t rdbk_lock;
 	int rdbk_cnt;
@@ -238,6 +261,61 @@ struct rkisp_device {
 	int rdbk_cnt_x2;
 	int rdbk_cnt_x3;
 	u32 rd_mode;
-	u8 filt_state[RDBK_F_MAX];
+	int sw_rd_cnt;
+
+	struct rkisp_rx_buf_pool pv_pool[RKISP_RX_BUF_POOL_MAX];
+
+	struct mutex buf_lock;
+	spinlock_t cmsk_lock;
+	struct rkisp_cmsk_cfg cmsk_cfg;
+	bool is_cmsk_upd;
+	bool is_hw_link;
+	bool is_bigmode;
+	bool is_rdbk_auto;
+	bool is_pre_on;
+	bool is_first_double;
+	bool is_probe_end;
+	bool is_frame_double;
+	bool is_suspend;
+	bool suspend_sync;
+	bool is_suspend_one_frame;
+
+	struct rkisp_vicap_input vicap_in;
+
+	u8 multi_mode;
+	u8 multi_index;
+	u8 rawaf_irq_cnt;
+	u8 unite_index;
 };
+
+static inline void
+rkisp_unite_write(struct rkisp_device *dev, u32 reg, u32 val, bool is_direct)
+{
+	rkisp_write(dev, reg, val, is_direct);
+	if (dev->hw_dev->unite)
+		rkisp_next_write(dev, reg, val, is_direct);
+}
+
+static inline void
+rkisp_unite_set_bits(struct rkisp_device *dev, u32 reg, u32 mask,
+		     u32 val, bool is_direct)
+{
+	rkisp_set_bits(dev, reg, mask, val, is_direct);
+	if (dev->hw_dev->unite)
+		rkisp_next_set_bits(dev, reg, mask, val, is_direct);
+}
+
+static inline void
+rkisp_unite_clear_bits(struct rkisp_device *dev, u32 reg, u32 mask,
+		       bool is_direct)
+{
+	rkisp_clear_bits(dev, reg, mask, is_direct);
+	if (dev->hw_dev->unite)
+		rkisp_next_clear_bits(dev, reg, mask, is_direct);
+}
+
+static inline bool rkisp_link_sensor(u32 isp_inp)
+{
+	return isp_inp & (INP_CSI | INP_DVP | INP_LVDS);
+}
 #endif

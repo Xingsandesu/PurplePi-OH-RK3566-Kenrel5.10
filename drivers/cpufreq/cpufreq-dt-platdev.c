@@ -1,10 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2016 Linaro.
  * Viresh Kumar <viresh.kumar@linaro.org>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/err.h>
@@ -40,7 +37,6 @@ static const struct of_device_id whitelist[] __initconst = {
 	{ .compatible = "fsl,imx27", },
 	{ .compatible = "fsl,imx51", },
 	{ .compatible = "fsl,imx53", },
-	{ .compatible = "fsl,imx7d", },
 
 	{ .compatible = "marvell,berlin", },
 	{ .compatible = "marvell,pxa250", },
@@ -57,7 +53,9 @@ static const struct of_device_id whitelist[] __initconst = {
 	{ .compatible = "renesas,r7s72100", },
 	{ .compatible = "renesas,r8a73a4", },
 	{ .compatible = "renesas,r8a7740", },
+	{ .compatible = "renesas,r8a7742", },
 	{ .compatible = "renesas,r8a7743", },
+	{ .compatible = "renesas,r8a7744", },
 	{ .compatible = "renesas,r8a7745", },
 	{ .compatible = "renesas,r8a7778", },
 	{ .compatible = "renesas,r8a7779", },
@@ -74,7 +72,6 @@ static const struct of_device_id whitelist[] __initconst = {
 	{ .compatible = "st-ericsson,u9540", },
 
 	{ .compatible = "ti,omap2", },
-	{ .compatible = "ti,omap3", },
 	{ .compatible = "ti,omap4", },
 	{ .compatible = "ti,omap5", },
 
@@ -89,8 +86,19 @@ static const struct of_device_id whitelist[] __initconst = {
  * platforms using "operating-points-v2" property.
  */
 static const struct of_device_id blacklist[] __initconst = {
+	{ .compatible = "allwinner,sun50i-h6", },
+
+	{ .compatible = "arm,vexpress", },
+
 	{ .compatible = "calxeda,highbank", },
 	{ .compatible = "calxeda,ecx-2000", },
+
+	{ .compatible = "fsl,imx7ulp", },
+	{ .compatible = "fsl,imx7d", },
+	{ .compatible = "fsl,imx8mq", },
+	{ .compatible = "fsl,imx8mm", },
+	{ .compatible = "fsl,imx8mn", },
+	{ .compatible = "fsl,imx8mp", },
 
 	{ .compatible = "marvell,armadaxp", },
 
@@ -101,11 +109,20 @@ static const struct of_device_id blacklist[] __initconst = {
 	{ .compatible = "mediatek,mt817x", },
 	{ .compatible = "mediatek,mt8173", },
 	{ .compatible = "mediatek,mt8176", },
+	{ .compatible = "mediatek,mt8183", },
 
+	{ .compatible = "nvidia,tegra20", },
+	{ .compatible = "nvidia,tegra30", },
 	{ .compatible = "nvidia,tegra124", },
+	{ .compatible = "nvidia,tegra210", },
+	{ .compatible = "nvidia,tegra234", },
 
 	{ .compatible = "qcom,apq8096", },
 	{ .compatible = "qcom,msm8996", },
+	{ .compatible = "qcom,qcs404", },
+	{ .compatible = "qcom,sc7180", },
+	{ .compatible = "qcom,sdm845", },
+	{ .compatible = "qcom,sm8150", },
 
 	{ .compatible = "rockchip,px30", },
 	{ .compatible = "rockchip,rk2928", },
@@ -119,25 +136,39 @@ static const struct of_device_id blacklist[] __initconst = {
 	{ .compatible = "rockchip,rk3229", },
 	{ .compatible = "rockchip,rk3288", },
 	{ .compatible = "rockchip,rk3288w", },
+	{ .compatible = "rockchip,rk3308", },
 	{ .compatible = "rockchip,rk3326", },
 	{ .compatible = "rockchip,rk3328", },
 	{ .compatible = "rockchip,rk3366", },
 	{ .compatible = "rockchip,rk3368", },
 	{ .compatible = "rockchip,rk3399", },
 	{ .compatible = "rockchip,rk3399pro", },
+	{ .compatible = "rockchip,rk3528", },
+	{ .compatible = "rockchip,rk3562", },
 	{ .compatible = "rockchip,rk3566", },
+	{ .compatible = "rockchip,rk3567", },
 	{ .compatible = "rockchip,rk3568", },
+	{ .compatible = "rockchip,rk3588", },
+	{ .compatible = "rockchip,rv1103", },
+	{ .compatible = "rockchip,rv1106", },
 	{ .compatible = "rockchip,rv1109", },
 	{ .compatible = "rockchip,rv1126", },
 
 	{ .compatible = "st,stih407", },
 	{ .compatible = "st,stih410", },
+	{ .compatible = "st,stih418", },
 
 	{ .compatible = "sigma,tango4", },
 
 	{ .compatible = "ti,am33xx", },
 	{ .compatible = "ti,am43", },
 	{ .compatible = "ti,dra7", },
+	{ .compatible = "ti,omap3", },
+
+	{ .compatible = "qcom,ipq8064", },
+	{ .compatible = "qcom,apq8064", },
+	{ .compatible = "qcom,msm8974", },
+	{ .compatible = "qcom,msm8960", },
 
 	{ }
 };
@@ -181,4 +212,4 @@ create_pdev:
 			       -1, data,
 			       sizeof(struct cpufreq_dt_platform_data)));
 }
-device_initcall(cpufreq_dt_platdev_init);
+core_initcall(cpufreq_dt_platdev_init);

@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Rockchip CIF Driver
+ * Techpoint Dev Driver
  *
- * Copyright (C) 2021 Rockchip Electronics Co., Ltd.
+ * Copyright (C) 2023 Rockchip Electronics Co., Ltd.
  */
 
 #ifndef _TECHPOINT_DEV_H

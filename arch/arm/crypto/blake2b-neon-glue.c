@@ -21,7 +21,7 @@ asmlinkage void blake2b_compress_neon(struct blake2b_state *state,
 static void blake2b_compress_arch(struct blake2b_state *state,
 				  const u8 *block, size_t nblocks, u32 inc)
 {
-	if (!may_use_simd()) {
+	if (!crypto_simd_usable()) {
 		blake2b_compress_generic(state, block, nblocks, inc);
 		return;
 	}

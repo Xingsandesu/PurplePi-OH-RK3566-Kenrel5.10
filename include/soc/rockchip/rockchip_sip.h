@@ -1,15 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016, Fuzhou Rockchip Electronics Co., Ltd
  * Author: Lin Huang <hl@rock-chips.com>
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
  */
 #ifndef __SOC_ROCKCHIP_SIP_H
 #define __SOC_ROCKCHIP_SIP_H
@@ -28,7 +20,9 @@
 #define ROCKCHIP_SIP_CONFIG_DRAM_SET_MSCH_RL	0x0a
 #define ROCKCHIP_SIP_CONFIG_DRAM_DEBUG		0x0b
 #define ROCKCHIP_SIP_CONFIG_MCU_START		0x0c
+#define ROCKCHIP_SIP_CONFIG_DRAM_ECC		0x0d
 #define ROCKCHIP_SIP_CONFIG_DRAM_GET_FREQ_INFO	0x0e
 #define ROCKCHIP_SIP_CONFIG_DRAM_ADDRMAP_GET	0x10
+#define ROCKCHIP_SIP_CONFIG_DRAM_GET_STALL_TIME	0x11
 
 #endif

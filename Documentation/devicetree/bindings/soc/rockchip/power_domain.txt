@@ -9,13 +9,16 @@ Required properties for power domain controller:
 	"rockchip,rv1126-power-controller" - for RV1126 SoCs
 	"rockchip,rk1808-power-controller" - for RK1808 SoCs
 	"rockchip,rk3036-power-controller" - for RK3036 SoCs.
+	"rockchip,rk3066-power-controller" - for RK3066 SoCs.
 	"rockchip,rk3128-power-controller" - for RK3128 SoCs.
+	"rockchip,rk3188-power-controller" - for RK3188 SoCs.
 	"rockchip,rk3228-power-controller" - for RK3228 SoCs.
 	"rockchip,rk3288-power-controller" - for RK3288 SoCs.
 	"rockchip,rk3328-power-controller" - for RK3328 SoCs.
 	"rockchip,rk3366-power-controller" - for RK3366 SoCs.
 	"rockchip,rk3368-power-controller" - for RK3368 SoCs.
 	"rockchip,rk3399-power-controller" - for RK3399 SoCs.
+	"rockchip,rk3562-power-controller" - for RK3562 SoCs.
 	"rockchip,rk3568-power-controller" - for RK3568 SoCs.
 - #power-domain-cells: Number of cells in a power-domain specifier.
 	Should be 1 for multiple PM domains.
@@ -28,13 +31,16 @@ Required properties for power domain sub nodes:
 	"include/dt-bindings/power/rv1126-power.h" - for RV1126 type power domain.
 	"include/dt-bindings/power/rk1808-power.h" - for RK1808 type power domain.
 	"include/dt-bindings/power/rk3036-power.h" - for RK3036 type power domain.
+	"include/dt-bindings/power/rk3066-power.h" - for RK3066 type power domain.
 	"include/dt-bindings/power/rk3128-power.h" - for RK3128 type power domain.
+	"include/dt-bindings/power/rk3188-power.h" - for RK3188 type power domain.
 	"include/dt-bindings/power/rk3228-power.h" - for RK3228 type power domain.
 	"include/dt-bindings/power/rk3288-power.h" - for RK3288 type power domain.
 	"include/dt-bindings/power/rk3328-power.h" - for RK3328 type power domain.
 	"include/dt-bindings/power/rk3366-power.h" - for RK3366 type power domain.
 	"include/dt-bindings/power/rk3368-power.h" - for RK3368 type power domain.
 	"include/dt-bindings/power/rk3399-power.h" - for RK3399 type power domain.
+	"include/dt-bindings/power/rk3562-power.h" - for RK3562 type power domain.
 	"include/dt-bindings/power/rk3568-power.h" - for RK3568 type power domain.
 - clocks (optional): phandles to clocks which need to be enabled while power domain
 	switches state.
@@ -46,6 +52,14 @@ Qos Example:
 	qos_gpu: qos_gpu@ffaf0000 {
 		compatible ="syscon";
 		reg = <0x0 0xffaf0000 0x0 0x20>;
+		priority-init = <0x202>;
+	};
+
+Shaping Example:
+	shaping_gpu: shaping@fee30088 {
+		compatible = "syscon";
+		reg = <0x0 0xfee30088 0x0 0x4>;
+		shaping-init = <0xff>;
 	};
 
 Example:
@@ -60,6 +74,7 @@ Example:
 			reg = <RK3288_PD_GPU>;
 			clocks = <&cru ACLK_GPU>;
 			pm_qos = <&qos_gpu>;
+			pm_shaping = <&shaping_gpu>;
 		};
 	};
 
@@ -118,6 +133,7 @@ The index should use macros in:
 	"include/dt-bindings/power/rk3366-power.h" - for rk3366 type power domain.
 	"include/dt-bindings/power/rk3368-power.h" - for rk3368 type power domain.
 	"include/dt-bindings/power/rk3399-power.h" - for rk3399 type power domain.
+	"include/dt-bindings/power/rk3562-power.h" - for rk3562 type power domain.
 	"include/dt-bindings/power/rk3568-power.h" - for rk3568 type power domain.
 
 Example of the node using power domain:

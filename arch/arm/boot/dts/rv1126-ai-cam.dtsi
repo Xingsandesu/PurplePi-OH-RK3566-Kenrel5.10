@@ -149,7 +149,8 @@
 	non-removable;
 	mmc-hs200-1_8v;
 	rockchip,default-sample-phase = <90>;
-	supports-emmc;
+	no-sdio;
+	no-sd;
 	/delete-property/ pinctrl-names;
 	/delete-property/ pinctrl-0;
 	status = "okay";
@@ -267,10 +268,10 @@
 	pmuio0-supply = <&vcc_3v3>;
 	pmuio1-supply = <&vcc_3v3>;
 	vccio2-supply = <&vcc_3v3>;
-	vccio3-supply = <&vcc_3v3>;
+	vccio3-supply = <&vcc_1v8>;
 	vccio4-supply = <&vcc_1v8>;
 	vccio5-supply = <&vcc_3v3>;
-	vccio6-supply = <&vcc_3v3>;
+	vccio6-supply = <&vcc_1v8>;
 	vccio7-supply = <&vcc_1v8>;
 };
 

@@ -2,7 +2,7 @@
 /*
  * techpoint v4l2 driver
  *
- * Copyright (C) 2022 Rockchip Electronics Co., Ltd.
+ * Copyright (C) 2023 Rockchip Electronics Co., Ltd.
  *
  */
 
@@ -217,8 +217,6 @@ static int __techpoint_power_on(struct techpoint *techpoint)
 {
 	int ret;
 	struct device *dev = &techpoint->client->dev;
-
-	dev_dbg(dev, "%s\n", __func__);
 
 	if (!IS_ERR_OR_NULL(techpoint->pins_default)) {
 		ret = pinctrl_select_state(techpoint->pinctrl,
@@ -471,9 +469,6 @@ static int techpoint_enum_frame_sizes(struct v4l2_subdev *sd,
 				      struct v4l2_subdev_frame_size_enum *fse)
 {
 	struct techpoint *techpoint = to_techpoint(sd);
-	struct i2c_client *client = techpoint->client;
-
-	dev_dbg(&client->dev, "%s:\n", __func__);
 
 	if (fse->index >= techpoint->video_modes_num)
 		return -EINVAL;
@@ -502,6 +497,7 @@ static int techpoint_g_frame_interval(struct v4l2_subdev *sd,
 }
 
 static int techpoint_g_mbus_config(struct v4l2_subdev *sd,
+				   unsigned int pad_id,
 				   struct v4l2_mbus_config *cfg)
 {
 	struct techpoint *techpoint = to_techpoint(sd);
@@ -512,7 +508,7 @@ static int techpoint_g_mbus_config(struct v4l2_subdev *sd,
 			     V4L2_MBUS_PCLK_SAMPLE_RISING |
 			     V4L2_MBUS_PCLK_SAMPLE_FALLING;
 	} else if (techpoint->input_type == TECHPOINT_MIPI) {
-		cfg->type = V4L2_MBUS_CSI2;
+		cfg->type = V4L2_MBUS_CSI2_DPHY;
 		if (techpoint->data_lanes == 4) {
 			cfg->flags = V4L2_MBUS_CSI2_4_LANE | V4L2_MBUS_CSI2_CHANNELS;
 		} else if (techpoint->data_lanes == 2) {
@@ -827,7 +823,6 @@ static const struct v4l2_subdev_internal_ops techpoint_internal_ops = {
 
 static const struct v4l2_subdev_video_ops techpoint_video_ops = {
 	.s_stream = techpoint_stream,
-	.g_mbus_config = techpoint_g_mbus_config,
 	.g_frame_interval = techpoint_g_frame_interval,
 	.querystd = techpoint_querystd,
 };
@@ -837,6 +832,7 @@ static const struct v4l2_subdev_pad_ops techpoint_subdev_pad_ops = {
 	.enum_frame_size = techpoint_enum_frame_sizes,
 	.get_fmt = techpoint_get_fmt,
 	.set_fmt = techpoint_set_fmt,
+	.get_mbus_config = techpoint_g_mbus_config,
 };
 
 static const struct v4l2_subdev_core_ops techpoint_core_ops = {
@@ -864,6 +860,7 @@ static const struct of_device_id techpoint_of_match[] = {
 	{ .compatible = "techpoint,tp2815" },
 	{ .compatible = "techpoint,tp9930" },
 	{ .compatible = "techpoint,tp9950" },
+	{ .compatible = "techpoint,tp9951" },
 	{ },
 };
 
@@ -1210,7 +1207,9 @@ static int techpoint_audio_dt_parse(struct techpoint *techpoint)
 			struct device_node *np;
 			int i, count;
 
-			count = of_count_phandle_with_args(node, "techpoint,audio-in-cascade-slaves", NULL);
+			count = of_count_phandle_with_args(node,
+							   "techpoint,audio-in-cascade-slaves",
+							   NULL);
 			if (count < 0 || count > MAX_SLAVES)
 				return -EINVAL;
 
@@ -1299,7 +1298,6 @@ static int techpoint_audio_probe(struct techpoint *techpoint)
 	}
 
 	if (techpoint->chip_id == CHIP_TP9930) {
-
 		techpoint_write_reg(techpoint->client, 0x40, 0x00);
 		for (i = 0; i < 0xff; i++)
 			techpoint_write_reg(techpoint->client, i, 0xbb);
@@ -1516,4 +1514,4 @@ module_exit(sensor_mod_exit);
 
 MODULE_AUTHOR("Vicent Chi <vicent.chi@rock-chips.com>");
 MODULE_DESCRIPTION("Techpoint decoder driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

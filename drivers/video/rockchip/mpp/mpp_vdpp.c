@@ -27,6 +27,8 @@
 #define VDPP_DRIVER_NAME		"mpp_vdpp"
 
 #define	VDPP_SESSION_MAX_BUFFERS	15
+#define VDPP_REG_WORK_MODE			0x0008
+#define VDPP_REG_VDPP_MODE			BIT(1)
 
 #define to_vdpp_info(info)	\
 		container_of(info, struct vdpp_hw_info, hw)
@@ -307,6 +309,7 @@ static int vdpp_run(struct mpp_dev *mpp,
 	struct vdpp_dev *vdpp = to_vdpp_dev(mpp);
 	struct vdpp_task *task = to_vdpp_task(mpp_task);
 	struct vdpp_hw_info *hw_info = vdpp->hw_info;
+	u32 timing_en = mpp->srv->timing_en;
 
 	mpp_debug_enter();
 
@@ -332,11 +335,18 @@ static int vdpp_run(struct mpp_dev *mpp,
 		}
 	}
 
+	/* flush tlb before starting hardware */
+	mpp_iommu_flush_tlb(mpp->iommu_info);
+
 	/* init current task */
 	mpp->cur_task = mpp_task;
+
+	mpp_task_run_begin(mpp_task, timing_en, MPP_WORK_TIMEOUT_DELAY);
 	/* Flush the register before the start the device */
 	wmb();
 	mpp_write(mpp, hw_info->start_base, task->reg[reg_en]);
+
+	mpp_task_run_end(mpp_task, timing_en);
 
 	mpp_debug_leave();
 
@@ -546,12 +556,18 @@ static int vdpp_irq(struct mpp_dev *mpp)
 {
 	struct vdpp_dev *vdpp = to_vdpp_dev(mpp);
 	struct vdpp_hw_info *hw_info = vdpp->hw_info;
+	u32 work_mode = mpp_read(mpp, VDPP_REG_WORK_MODE);
 
+	if (!(work_mode & VDPP_REG_VDPP_MODE))
+		return IRQ_NONE;
 	mpp->irq_status = mpp_read(mpp, hw_info->int_sta_base);
 	if (!(mpp->irq_status & hw_info->int_mask))
 		return IRQ_NONE;
 	mpp_write(mpp, hw_info->int_en_base, 0);
 	mpp_write(mpp, hw_info->int_clr_base, mpp->irq_status);
+
+	/* ensure hardware is being off status */
+	mpp_write(mpp, hw_info->start_base, 0);
 
 	return IRQ_WAKE_THREAD;
 }
@@ -590,7 +606,7 @@ static int _vdpp_reset(struct mpp_dev *mpp, struct vdpp_dev *vdpp)
 		mpp_debug(DEBUG_RESET, "reset in\n");
 
 		/* Don't skip this or iommu won't work after reset */
-		rockchip_pmu_idle_request(mpp->dev, true);
+		mpp_pmu_idle_request(mpp, true);
 		mpp_safe_reset(vdpp->rst_a);
 		mpp_safe_reset(vdpp->rst_h);
 		mpp_safe_reset(vdpp->rst_s);
@@ -598,7 +614,7 @@ static int _vdpp_reset(struct mpp_dev *mpp, struct vdpp_dev *vdpp)
 		mpp_safe_unreset(vdpp->rst_a);
 		mpp_safe_unreset(vdpp->rst_h);
 		mpp_safe_unreset(vdpp->rst_s);
-		rockchip_pmu_idle_request(mpp->dev, false);
+		mpp_pmu_idle_request(mpp, false);
 
 		mpp_debug(DEBUG_RESET, "reset out\n");
 	}
@@ -617,14 +633,17 @@ static int vdpp_reset(struct mpp_dev *mpp)
 	mpp_write(mpp, hw_info->cfg_base, hw_info->bit_rst_en);
 	ret = readl_relaxed_poll_timeout(mpp->reg_base + hw_info->rst_sta_base,
 					 rst_status,
-					 !(rst_status & hw_info->bit_rst_done),
-					 0, 2);
+					 rst_status & hw_info->bit_rst_done,
+					 0, 5);
 	if (ret) {
 		mpp_err("soft reset timeout, use cru reset\n");
 		return _vdpp_reset(mpp, vdpp);
 	}
 
 	mpp_write(mpp, hw_info->rst_sta_base, 0);
+
+	/* ensure hardware is being off status */
+	mpp_write(mpp, hw_info->start_base, 0);
 
 	return 0;
 }
@@ -684,6 +703,7 @@ static int vdpp_probe(struct platform_device *pdev)
 		match = of_match_node(mpp_vdpp_dt_match, pdev->dev.of_node);
 		if (match)
 			mpp->var = (struct mpp_dev_var *)match->data;
+		mpp->core_id = -1;
 	}
 
 	ret = mpp_dev_probe(mpp, pdev);
@@ -710,6 +730,7 @@ static int vdpp_probe(struct platform_device *pdev)
 		dev_err(dev, "register interrupter runtime failed\n");
 		return -EINVAL;
 	}
+
 	mpp->session_max_buffers = VDPP_SESSION_MAX_BUFFERS;
 	vdpp->hw_info = to_vdpp_info(mpp->var->hw_info);
 	vdpp_procfs_init(mpp);

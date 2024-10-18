@@ -8,8 +8,6 @@
  * V0.0X01.0X02 fix mclk issue when probe multiple camera.
  * V0.0X01.0X03 add otp function.
  * V0.0X01.0X04 add enum_frame_interval function.
- * V0.0X01.0X05 add quick stream on/off
- * V0.0X01.0X06 add function g_mmbus_config
  */
 
 #include <linux/clk.h>
@@ -39,9 +37,9 @@
 #include <linux/rk-camera-module.h>
 
 /* verify default register values */
-//#define CHECK_REG_VALUE
+#define CHECK_REG_VALUE
 
-#define DRIVER_VERSION			KERNEL_VERSION(0, 0x01, 0x06)
+#define DRIVER_VERSION			KERNEL_VERSION(0, 0x01, 0x04)
 
 #ifndef V4L2_CID_DIGITAL_GAIN
 #define V4L2_CID_DIGITAL_GAIN		V4L2_CID_GAIN
@@ -543,7 +541,6 @@ static const struct regval ov5670_global_regs[] = {
 	{0x5045, 0x05}, //[2] enable MWB manual bias
 	{0x5048, 0x10}, //MWB manual bias be the same with 0x4003 BLC target.
 	//{0x0100, 0x01},
-
 	{REG_NULL, 0x00},
 };
 
@@ -932,14 +929,14 @@ static void ov5670_get_otp(struct ov5670_otp_info *otp,
 			if (ov5670_module_info[i].id == otp->module_id)
 				break;
 		}
-		strlcpy(inf->fac.module, ov5670_module_info[i].name,
+		strscpy(inf->fac.module, ov5670_module_info[i].name,
 			sizeof(inf->fac.module));
 
 		for (i = 0; i < ARRAY_SIZE(ov5670_lens_info) - 1; i++) {
 			if (ov5670_lens_info[i].id == otp->lens_id)
 				break;
 		}
-		strlcpy(inf->fac.lens, ov5670_lens_info[i].name,
+		strscpy(inf->fac.lens, ov5670_lens_info[i].name,
 			sizeof(inf->fac.lens));
 	}
 
@@ -978,11 +975,12 @@ static void ov5670_get_module_inf(struct ov5670 *ov5670,
 				  struct rkmodule_inf *inf)
 {
 	struct ov5670_otp_info *otp = ov5670->otp;
+
 	memset(inf, 0, sizeof(*inf));
-	strlcpy(inf->base.sensor, OV5670_NAME, sizeof(inf->base.sensor));
-	strlcpy(inf->base.module, ov5670->module_name,
+	strscpy(inf->base.sensor, OV5670_NAME, sizeof(inf->base.sensor));
+	strscpy(inf->base.module, ov5670->module_name,
 		sizeof(inf->base.module));
-	strlcpy(inf->base.lens, ov5670->len_name, sizeof(inf->base.lens));
+	strscpy(inf->base.lens, ov5670->len_name, sizeof(inf->base.lens));
 	if (otp)
 		ov5670_get_otp(otp, inf);
 }
@@ -999,7 +997,6 @@ static long ov5670_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 {
 	struct ov5670 *ov5670 = to_ov5670(sd);
 	long ret = 0;
-	u32 stream = 0;
 
 	switch (cmd) {
 	case RKMODULE_GET_MODULE_INFO:
@@ -1007,17 +1004,6 @@ static long ov5670_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 		break;
 	case RKMODULE_AWB_CFG:
 		ov5670_set_awb_cfg(ov5670, (struct rkmodule_awb_cfg *)arg);
-		break;
-	case RKMODULE_SET_QUICK_STREAM:
-
-		stream = *((u32 *)arg);
-
-		if (stream)
-			ret = ov5670_write_reg(ov5670->client, OV5670_REG_CTRL_MODE,
-				OV5670_REG_VALUE_08BIT, OV5670_MODE_STREAMING);
-		else
-			ret = ov5670_write_reg(ov5670->client, OV5670_REG_CTRL_MODE,
-				OV5670_REG_VALUE_08BIT, OV5670_MODE_SW_STANDBY);
 		break;
 	default:
 		ret = -ENOIOCTLCMD;
@@ -1035,7 +1021,6 @@ static long ov5670_compat_ioctl32(struct v4l2_subdev *sd,
 	struct rkmodule_inf *inf;
 	struct rkmodule_awb_cfg *awb_cfg;
 	long ret;
-	u32 stream = 0;
 
 	switch (cmd) {
 	case RKMODULE_GET_MODULE_INFO:
@@ -1046,8 +1031,10 @@ static long ov5670_compat_ioctl32(struct v4l2_subdev *sd,
 		}
 
 		ret = ov5670_ioctl(sd, cmd, inf);
-		if (!ret)
-			ret = copy_to_user(up, inf, sizeof(*inf));
+		if (!ret) {
+			if (copy_to_user(up, inf, sizeof(*inf)))
+				return -EFAULT;
+		}
 		kfree(inf);
 		break;
 	case RKMODULE_AWB_CFG:
@@ -1057,15 +1044,11 @@ static long ov5670_compat_ioctl32(struct v4l2_subdev *sd,
 			return ret;
 		}
 
-		ret = copy_from_user(awb_cfg, up, sizeof(*awb_cfg));
-		if (!ret)
-			ret = ov5670_ioctl(sd, cmd, awb_cfg);
+		if (copy_from_user(awb_cfg, up, sizeof(*awb_cfg)))
+			return -EFAULT;
+
+		ret = ov5670_ioctl(sd, cmd, awb_cfg);
 		kfree(awb_cfg);
-		break;
-	case RKMODULE_SET_QUICK_STREAM:
-		ret = copy_from_user(&stream, up, sizeof(u32));
-		if (!ret)
-			ret = ov5670_ioctl(sd, cmd, &stream);
 		break;
 	default:
 		ret = -ENOIOCTLCMD;
@@ -1075,6 +1058,7 @@ static long ov5670_compat_ioctl32(struct v4l2_subdev *sd,
 	return ret;
 }
 #endif
+
 /*--------------------------------------------------------------------------*/
 static int ov5670_apply_otp(struct ov5670 *ov5670)
 {
@@ -1195,8 +1179,8 @@ static int ov5670_s_stream(struct v4l2_subdev *sd, int on)
 	int ret = 0;
 
 	dev_info(&client->dev, "%s: on: %d, %dx%d@%d\n", __func__, on,
-				ov5670->cur_mode->width,
-				ov5670->cur_mode->height,
+		ov5670->cur_mode->width,
+		ov5670->cur_mode->height,
 		DIV_ROUND_CLOSEST(ov5670->cur_mode->max_fps.denominator,
 		ov5670->cur_mode->max_fps.numerator));
 
@@ -1414,9 +1398,7 @@ static int ov5670_enum_frame_interval(struct v4l2_subdev *sd,
 	if (fie->index >= ov5670->cfg_num)
 		return -EINVAL;
 
-	if (fie->code != MEDIA_BUS_FMT_SBGGR10_1X10)
-		return -EINVAL;
-
+	fie->code = MEDIA_BUS_FMT_SBGGR10_1X10;
 	fie->width = supported_modes[fie->index].width;
 	fie->height = supported_modes[fie->index].height;
 	fie->interval = supported_modes[fie->index].max_fps;
@@ -1424,14 +1406,14 @@ static int ov5670_enum_frame_interval(struct v4l2_subdev *sd,
 }
 
 static int ov5670_g_mbus_config(struct v4l2_subdev *sd,
+				unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
-	u32 val = 0;
+	u32 val = 1 << (OV5670_LANES - 1) |
+		V4L2_MBUS_CSI2_CHANNEL_0 |
+		V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
 
-	val = 1 << (OV5670_LANES - 1) |
-	      V4L2_MBUS_CSI2_CHANNEL_0 |
-	      V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
-	config->type = V4L2_MBUS_CSI2;
+	config->type = V4L2_MBUS_CSI2_DPHY;
 	config->flags = val;
 
 	return 0;
@@ -1459,7 +1441,6 @@ static const struct v4l2_subdev_core_ops ov5670_core_ops = {
 static const struct v4l2_subdev_video_ops ov5670_video_ops = {
 	.s_stream = ov5670_s_stream,
 	.g_frame_interval = ov5670_g_frame_interval,
-	.g_mbus_config = ov5670_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops ov5670_pad_ops = {
@@ -1468,6 +1449,7 @@ static const struct v4l2_subdev_pad_ops ov5670_pad_ops = {
 	.enum_frame_interval = ov5670_enum_frame_interval,
 	.get_fmt = ov5670_get_fmt,
 	.set_fmt = ov5670_set_fmt,
+	.get_mbus_config = ov5670_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops ov5670_subdev_ops = {
@@ -1496,7 +1478,7 @@ static int ov5670_set_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	}
 
-	if (!pm_runtime_get_if_in_use(&client->dev))
+	if (pm_runtime_get(&client->dev) <= 0)
 		return 0;
 
 	switch (ctrl->id) {
@@ -1505,11 +1487,11 @@ static int ov5670_set_ctrl(struct v4l2_ctrl *ctrl)
 		/*group 0*/
 		ret = ov5670_write_reg(ov5670->client, OV5670_REG_GROUP,
 					   OV5670_REG_VALUE_08BIT, 0x00);
-		ret = ov5670_write_reg(ov5670->client, OV5670_REG_EXPOSURE,
+		ret |= ov5670_write_reg(ov5670->client, OV5670_REG_EXPOSURE,
 				       OV5670_REG_VALUE_24BIT, ctrl->val << 4);
-		ret = ov5670_write_reg(ov5670->client, OV5670_REG_GROUP,
+		ret |= ov5670_write_reg(ov5670->client, OV5670_REG_GROUP,
 					   OV5670_REG_VALUE_08BIT, 0x10);
-		ret = ov5670_write_reg(ov5670->client, OV5670_REG_GROUP,
+		ret |= ov5670_write_reg(ov5670->client, OV5670_REG_GROUP,
 					   OV5670_REG_VALUE_08BIT, 0xa0);
 
 		break;
@@ -1518,16 +1500,16 @@ static int ov5670_set_ctrl(struct v4l2_ctrl *ctrl)
 		ret = ov5670_write_reg(ov5670->client, OV5670_REG_GROUP,
 					   OV5670_REG_VALUE_08BIT, 0x01);
 
-		ret = ov5670_write_reg(ov5670->client, OV5670_REG_GAIN_L,
+		ret |= ov5670_write_reg(ov5670->client, OV5670_REG_GAIN_L,
 				       OV5670_REG_VALUE_08BIT,
 				       ctrl->val & OV5670_GAIN_L_MASK);
 		ret |= ov5670_write_reg(ov5670->client, OV5670_REG_GAIN_H,
 				       OV5670_REG_VALUE_08BIT,
 				       (ctrl->val >> OV5670_GAIN_H_SHIFT) &
 				       OV5670_GAIN_H_MASK);
-		ret = ov5670_write_reg(ov5670->client, OV5670_REG_GROUP,
+		ret |= ov5670_write_reg(ov5670->client, OV5670_REG_GROUP,
 					   OV5670_REG_VALUE_08BIT, 0x11);
-		ret = ov5670_write_reg(ov5670->client, OV5670_REG_GROUP,
+		ret |= ov5670_write_reg(ov5670->client, OV5670_REG_GROUP,
 					   OV5670_REG_VALUE_08BIT, 0xa1);
 		break;
 	case V4L2_CID_VBLANK:
@@ -1625,7 +1607,7 @@ err_free_handler:
 
 static int ov5670_otp_read(struct ov5670 *ov5670)
 {
-	int otp_flag, addr, temp, i;
+	int otp_flag, addr, temp = 0, i;
 	struct ov5670_otp_info *otp_ptr;
 	struct device *dev = &ov5670->client->dev;
 	struct i2c_client *client = ov5670->client;
@@ -1804,7 +1786,7 @@ static int ov5670_parse_of(struct ov5670 *ov5670)
 	}
 
 	ov5670->lane_num = rval;
-	if (2 == ov5670->lane_num) {
+	if (ov5670->lane_num == 2) {
 		ov5670->cur_mode = &supported_modes_2lane[0];
 		supported_modes = supported_modes_2lane;
 		ov5670->cfg_num = ARRAY_SIZE(supported_modes_2lane);
@@ -1925,8 +1907,7 @@ static int ov5670_probe(struct i2c_client *client,
 
 #ifdef CONFIG_VIDEO_V4L2_SUBDEV_API
 	sd->internal_ops = &ov5670_internal_ops;
-	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE |
-		     V4L2_SUBDEV_FL_HAS_EVENTS;
+	sd->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 #endif
 #if defined(CONFIG_MEDIA_CONTROLLER)
 	ov5670->pad.flags = MEDIA_PAD_FL_SOURCE;

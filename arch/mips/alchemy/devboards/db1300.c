@@ -17,10 +17,8 @@
 #include <linux/interrupt.h>
 #include <linux/ata_platform.h>
 #include <linux/mmc/host.h>
-#include <linux/module.h>
 #include <linux/mtd/mtd.h>
-#include <linux/mtd/rawnand.h>
-#include <linux/mtd/partitions.h>
+#include <linux/mtd/platnand.h>
 #include <linux/platform_device.h>
 #include <linux/smsc911x.h>
 #include <linux/wm97xx.h>
@@ -149,11 +147,12 @@ static void __init db1300_gpio_config(void)
 
 /**********************************************************************/
 
-static void au1300_nand_cmd_ctrl(struct mtd_info *mtd, int cmd,
+static u64 au1300_all_dmamask = DMA_BIT_MASK(32);
+
+static void au1300_nand_cmd_ctrl(struct nand_chip *this, int cmd,
 				 unsigned int ctrl)
 {
-	struct nand_chip *this = mtd_to_nand(mtd);
-	unsigned long ioaddr = (unsigned long)this->IO_ADDR_W;
+	unsigned long ioaddr = (unsigned long)this->legacy.IO_ADDR_W;
 
 	ioaddr &= 0xffffff00;
 
@@ -165,14 +164,14 @@ static void au1300_nand_cmd_ctrl(struct mtd_info *mtd, int cmd,
 		/* assume we want to r/w real data  by default */
 		ioaddr += MEM_STNAND_DATA;
 	}
-	this->IO_ADDR_R = this->IO_ADDR_W = (void __iomem *)ioaddr;
+	this->legacy.IO_ADDR_R = this->legacy.IO_ADDR_W = (void __iomem *)ioaddr;
 	if (cmd != NAND_CMD_NONE) {
-		__raw_writeb(cmd, this->IO_ADDR_W);
+		__raw_writeb(cmd, this->legacy.IO_ADDR_W);
 		wmb();
 	}
 }
 
-static int au1300_nand_device_ready(struct mtd_info *mtd)
+static int au1300_nand_device_ready(struct nand_chip *this)
 {
 	return alchemy_rdsmem(AU1000_MEM_STSTAT) & 1;
 }
@@ -440,6 +439,8 @@ static struct resource db1300_ide_res[] = {
 
 static struct platform_device db1300_ide_dev = {
 	.dev	= {
+		.dma_mask		= &au1300_all_dmamask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
 		.platform_data	= &db1300_ide_info,
 	},
 	.name		= "pata_platform",
@@ -449,6 +450,7 @@ static struct platform_device db1300_ide_dev = {
 
 /**********************************************************************/
 
+#ifdef CONFIG_MMC_AU1X
 static irqreturn_t db1300_mmc_cd(int irq, void *ptr)
 {
 	disable_irq_nosync(irq);
@@ -457,14 +459,7 @@ static irqreturn_t db1300_mmc_cd(int irq, void *ptr)
 
 static irqreturn_t db1300_mmc_cdfn(int irq, void *ptr)
 {
-	void (*mmc_cd)(struct mmc_host *, unsigned long);
-
-	/* link against CONFIG_MMC=m.  We can only be called once MMC core has
-	 * initialized the controller, so symbol_get() should always succeed.
-	 */
-	mmc_cd = symbol_get(mmc_detect_change);
-	mmc_cd(ptr, msecs_to_jiffies(200));
-	symbol_put(mmc_detect_change);
+	mmc_detect_change(ptr, msecs_to_jiffies(200));
 
 	msleep(100);	/* debounce */
 	if (irq == DB1300_SD1_INSERT_INT)
@@ -562,7 +557,9 @@ static struct resource au1300_sd1_res[] = {
 
 static struct platform_device db1300_sd1_dev = {
 	.dev = {
-		.platform_data	= &db1300_sd1_platdata,
+		.dma_mask		= &au1300_all_dmamask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+		.platform_data		= &db1300_sd1_platdata,
 	},
 	.name		= "au1xxx-mmc",
 	.id		= 1,
@@ -627,13 +624,16 @@ static struct resource au1300_sd0_res[] = {
 
 static struct platform_device db1300_sd0_dev = {
 	.dev = {
-		.platform_data	= &db1300_sd0_platdata,
+		.dma_mask		= &au1300_all_dmamask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+		.platform_data		= &db1300_sd0_platdata,
 	},
 	.name		= "au1xxx-mmc",
 	.id		= 0,
 	.resource	= au1300_sd0_res,
 	.num_resources	= ARRAY_SIZE(au1300_sd0_res),
 };
+#endif /* CONFIG_MMC_AU1X */
 
 /**********************************************************************/
 
@@ -654,10 +654,18 @@ static struct platform_device db1300_i2sdma_dev = {
 
 static struct platform_device db1300_sndac97_dev = {
 	.name		= "db1300-ac97",
+	.dev = {
+		.dma_mask		= &au1300_all_dmamask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
 };
 
 static struct platform_device db1300_sndi2s_dev = {
 	.name		= "db1300-i2s",
+	.dev = {
+		.dma_mask		= &au1300_all_dmamask,
+		.coherent_dma_mask	= DMA_BIT_MASK(32),
+	},
 };
 
 /**********************************************************************/
@@ -702,13 +710,12 @@ static struct resource au1300_lcd_res[] = {
 	}
 };
 
-static u64 au1300_lcd_dmamask = DMA_BIT_MASK(32);
 
 static struct platform_device db1300_lcd_dev = {
 	.name		= "au1200-lcd",
 	.id		= 0,
 	.dev = {
-		.dma_mask		= &au1300_lcd_dmamask,
+		.dma_mask		= &au1300_all_dmamask,
 		.coherent_dma_mask	= DMA_BIT_MASK(32),
 		.platform_data		= &db1300fb_pd,
 	},
@@ -718,6 +725,7 @@ static struct platform_device db1300_lcd_dev = {
 
 /**********************************************************************/
 
+#if IS_ENABLED(CONFIG_TOUCHSCREEN_WM97XX)
 static void db1300_wm97xx_irqen(struct wm97xx *wm, int enable)
 {
 	if (enable)
@@ -749,6 +757,12 @@ static int db1300_wm97xx_probe(struct platform_device *pdev)
 
 	return wm97xx_register_mach_ops(wm, &db1300_wm97xx_ops);
 }
+#else
+static int db1300_wm97xx_probe(struct platform_device *pdev)
+{
+	return -ENODEV;
+}
+#endif
 
 static struct platform_driver db1300_wm97xx_driver = {
 	.driver.name	= "wm97xx-touch",
@@ -764,8 +778,10 @@ static struct platform_device *db1300_dev[] __initdata = {
 	&db1300_5waysw_dev,
 	&db1300_nand_dev,
 	&db1300_ide_dev,
+#ifdef CONFIG_MMC_AU1X
 	&db1300_sd0_dev,
 	&db1300_sd1_dev,
+#endif
 	&db1300_lcd_dev,
 	&db1300_ac97_dev,
 	&db1300_i2s_dev,

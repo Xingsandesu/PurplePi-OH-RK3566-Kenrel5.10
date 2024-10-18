@@ -356,7 +356,8 @@ static int wcove_set_pd_rx(struct tcpc_dev *tcpc, bool on)
 
 static int wcove_pd_transmit(struct tcpc_dev *tcpc,
 			     enum tcpm_transmit_type type,
-			     const struct pd_message *msg)
+			     const struct pd_message *msg,
+			     unsigned int negotiated_rev)
 {
 	struct wcove_typec *wcove = tcpc_to_wcove(tcpc);
 	unsigned int info = 0;
@@ -377,7 +378,7 @@ static int wcove_pd_transmit(struct tcpc_dev *tcpc,
 		const u8 *data = (void *)msg;
 		int i;
 
-		for (i = 0; i < pd_header_cnt(msg->header) * 4 + 2; i++) {
+		for (i = 0; i < pd_header_cnt_le(msg->header) * 4 + 2; i++) {
 			ret = regmap_write(wcove->regmap, USBC_TX_DATA + i,
 					   data[i]);
 			if (ret)
@@ -591,17 +592,14 @@ static const u32 snk_pdo[] = {
 	PDO_VAR(5000, 12000, 3000),
 };
 
-static struct tcpc_config wcove_typec_config = {
-	.src_pdo = src_pdo,
-	.nr_src_pdo = ARRAY_SIZE(src_pdo),
-	.snk_pdo = snk_pdo,
-	.nr_snk_pdo = ARRAY_SIZE(snk_pdo),
-
-	.operating_snk_mw = 15000,
-
-	.type = TYPEC_PORT_DRP,
-	.data = TYPEC_PORT_DRD,
-	.default_role = TYPEC_SINK,
+static const struct property_entry wcove_props[] = {
+	PROPERTY_ENTRY_STRING("data-role", "dual"),
+	PROPERTY_ENTRY_STRING("power-role", "dual"),
+	PROPERTY_ENTRY_STRING("try-power-role", "sink"),
+	PROPERTY_ENTRY_U32_ARRAY("source-pdos", src_pdo),
+	PROPERTY_ENTRY_U32_ARRAY("sink-pdos", snk_pdo),
+	PROPERTY_ENTRY_U32("op-sink-microwatt", 15000000),
+	{ }
 };
 
 static int wcove_typec_probe(struct platform_device *pdev)
@@ -620,10 +618,8 @@ static int wcove_typec_probe(struct platform_device *pdev)
 	wcove->regmap = pmic->regmap;
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		dev_err(&pdev->dev, "Failed to get IRQ: %d\n", irq);
+	if (irq < 0)
 		return irq;
-	}
 
 	irq = regmap_irq_get_virq(pmic->irq_chip_data_chgr, irq);
 	if (irq < 0)
@@ -652,17 +648,22 @@ static int wcove_typec_probe(struct platform_device *pdev)
 	wcove->tcpc.set_roles = wcove_set_roles;
 	wcove->tcpc.pd_transmit = wcove_pd_transmit;
 
-	wcove->tcpc.config = &wcove_typec_config;
+	wcove->tcpc.fwnode = fwnode_create_software_node(wcove_props, NULL);
+	if (IS_ERR(wcove->tcpc.fwnode))
+		return PTR_ERR(wcove->tcpc.fwnode);
 
 	wcove->tcpm = tcpm_register_port(wcove->dev, &wcove->tcpc);
-	if (IS_ERR(wcove->tcpm))
+	if (IS_ERR(wcove->tcpm)) {
+		fwnode_remove_software_node(wcove->tcpc.fwnode);
 		return PTR_ERR(wcove->tcpm);
+	}
 
 	ret = devm_request_threaded_irq(&pdev->dev, irq, NULL,
 					wcove_typec_irq, IRQF_ONESHOT,
 					"wcove_typec", wcove);
 	if (ret) {
 		tcpm_unregister_port(wcove->tcpm);
+		fwnode_remove_software_node(wcove->tcpc.fwnode);
 		return ret;
 	}
 
@@ -682,6 +683,7 @@ static int wcove_typec_remove(struct platform_device *pdev)
 	regmap_write(wcove->regmap, USBC_IRQMASK2, val | USBC_IRQMASK2_ALL);
 
 	tcpm_unregister_port(wcove->tcpm);
+	fwnode_remove_software_node(wcove->tcpc.fwnode);
 
 	return 0;
 }

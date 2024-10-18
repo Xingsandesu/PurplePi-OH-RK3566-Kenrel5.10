@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (c) 2022 Rockchip Electronics Co., Ltd
+ * Copyright (c) 2023 Rockchip Electronics Co., Ltd
  */
 #include <linux/bcd.h>
 #include <linux/kernel.h>
@@ -448,7 +448,7 @@ static int rk630_rtc_compensation(struct device *dev)
 	c_mon = DIV_ROUND_CLOSEST(30 * 24 * tcamp, 32768);
 
 	if (c_hour > 1)
-		regmap_write(rk630->rtc, RTC_COMP_H, (c_hour - 1) | trim_dir);
+		regmap_write(rk630->rtc, RTC_COMP_H, bin2bcd((c_hour - 1)) | trim_dir);
 	else
 		regmap_write(rk630->rtc, RTC_COMP_H, CLK32K_NO_COMP);
 
@@ -462,7 +462,7 @@ static int rk630_rtc_compensation(struct device *dev)
 
 	if (c_det_day > 1)
 		regmap_write(rk630->rtc, RTC_COMP_D,
-			     (c_det_day - 1) | trim_dir);
+			     bin2bcd((c_det_day - 1)) | trim_dir);
 	else
 		regmap_write(rk630->rtc, RTC_COMP_D, CLK32K_NO_COMP);
 
@@ -476,7 +476,7 @@ static int rk630_rtc_compensation(struct device *dev)
 
 	if (c_det_mon)
 		regmap_write(rk630->rtc, RTC_COMP_M,
-			     (c_det_mon - 1) | trim_dir);
+			     bin2bcd((c_det_mon - 1)) | trim_dir);
 	else
 		regmap_write(rk630->rtc, RTC_COMP_M, CLK32K_NO_COMP);
 

@@ -52,6 +52,8 @@ static struct nand_info spi_nand_tbl[] = {
 	{ 0xC2, 0x96, 0x00, 4, 0x40, 1, 1024, 0x0C, 18, 0x8, 1, { 0x04, 0x08, 0xFF, 0xFF }, &sfc_nand_get_ecc_status0 },
 	/* MX35UF2GE4AD */
 	{ 0xC2, 0xA6, 0x00, 4, 0x40, 1, 2048, 0x0C, 19, 0x8, 1, { 0x04, 0x08, 0xFF, 0xFF }, &sfc_nand_get_ecc_status0 },
+	/* MX35UF4GE4AD */
+	{ 0xC2, 0xB7, 0x00, 8, 0x40, 1, 2048, 0x0C, 20, 0x8, 1, { 0x04, 0x08, 0x14, 0x18 }, &sfc_nand_get_ecc_status0 },
 
 	/* GD5F1GQ4UAYIG */
 	{ 0xC8, 0xF1, 0x00, 4, 0x40, 1, 1024, 0x0C, 18, 0x8, 1, { 0x04, 0x08, 0xFF, 0xFF }, &sfc_nand_get_ecc_status0 },
@@ -129,7 +131,7 @@ static struct nand_info spi_nand_tbl[] = {
 	/* F35SQA512M */
 	{ 0xCD, 0x70, 0x00, 4, 0x40, 1, 512, 0x4C, 17, 0x1, 1, { 0x04, 0x08, 0xFF, 0xFF }, &sfc_nand_get_ecc_status1 },
 	/* F35UQA512M */
-	{ 0xCD, 0x70, 0x00, 4, 0x40, 1, 512, 0x4C, 17, 0x1, 1, { 0x04, 0x08, 0xFF, 0xFF }, &sfc_nand_get_ecc_status1 },
+	{ 0xCD, 0x60, 0x00, 4, 0x40, 1, 512, 0x4C, 17, 0x1, 1, { 0x04, 0x08, 0xFF, 0xFF }, &sfc_nand_get_ecc_status1 },
 
 	/* DS35Q1GA-IB */
 	{ 0xE5, 0x71, 0x00, 4, 0x40, 1, 1024, 0x0C, 18, 0x4, 1, { 0x04, 0x14, 0xFF, 0xFF }, &sfc_nand_get_ecc_status1 },
@@ -204,6 +206,8 @@ static struct nand_info spi_nand_tbl[] = {
 	{ 0xEA, 0xC1, 0x00, 4, 0x40, 1, 1024, 0x0C, 18, 0x4, 1, { 0x04, 0x08, 0xFF, 0xFF }, &sfc_nand_get_ecc_status1 },
 	/* TX25G01 */
 	{ 0xA1, 0xF1, 0x00, 4, 0x40, 1, 1024, 0x0C, 18, 0x4, 1, { 0x04, 0x14, 0xFF, 0xFF }, &sfc_nand_get_ecc_status8 },
+	/* S35ML02G3 */
+	{ 0x01, 0x25, 0x00, 4, 0x40, 2, 1024, 0x4C, 19, 0x4, 1, { 0x04, 0x08, 0x0C, 0x10 }, &sfc_nand_get_ecc_status9 },
 	/* S35ML04G3 */
 	{ 0x01, 0x35, 0x00, 4, 0x40, 2, 2048, 0x4C, 20, 0x4, 1, { 0x04, 0x08, 0x0C, 0x10 }, &sfc_nand_get_ecc_status9 },
 };
@@ -307,7 +311,7 @@ static int sfc_nand_write_feature(u32 addr, u8 status)
 	return ret;
 }
 
-static int sfc_nand_wait_busy(u8 *data, int timeout)
+static int sfc_nand_wait_busy_sleep(u8 *data, int timeout, int sleep_us)
 {
 	int ret;
 	int i;
@@ -315,7 +319,9 @@ static int sfc_nand_wait_busy(u8 *data, int timeout)
 
 	*data = 0;
 
-	for (i = 0; i < timeout; i++) {
+	for (i = 0; i < timeout; i += sleep_us) {
+		usleep_range(sleep_us, sleep_us + 50);
+
 		ret = sfc_nand_read_feature(0xC0, &status);
 
 		if (ret != SFC_OK)
@@ -325,8 +331,6 @@ static int sfc_nand_wait_busy(u8 *data, int timeout)
 
 		if (!(status & (1 << 0)))
 			return SFC_OK;
-
-		sfc_delay(1);
 	}
 
 	return SFC_NAND_WAIT_TIME_OUT;
@@ -790,7 +794,7 @@ u32 sfc_nand_erase_block(u8 cs, u32 addr)
 	if (ret != SFC_OK)
 		return ret;
 
-	ret = sfc_nand_wait_busy(&status, 1000 * 1000);
+	ret = sfc_nand_wait_busy_sleep(&status, 1000 * 1000, 1000);
 
 	if (status & (1 << 2))
 		return SFC_NAND_PROG_ERASE_ERROR;
@@ -847,6 +851,7 @@ u32 sfc_nand_prog_page_raw(u8 cs, u32 addr, u32 *p_page_buf)
 	op.sfctrl.d32 = 0;
 	op.sfctrl.b.datalines = sfc_nand_dev.prog_lines;
 	op.sfctrl.b.addrbits = 16;
+	op.sfctrl.b.enbledma = 0;
 	plane = p_nand_info->plane_per_die == 2 ? ((addr >> 6) & 0x1) << 12 : 0;
 	sfc_request(&op, plane, p_page_buf, page_size);
 
@@ -859,7 +864,7 @@ u32 sfc_nand_prog_page_raw(u8 cs, u32 addr, u32 *p_page_buf)
 	if (p_nand_info->id0 == MID_GIGADEV) {
 		sfc_nand_read_cache(addr, (u32 *)sfc_nand_dev.recheck_buffer, 0, data_area_size);
 		if (memcmp(sfc_nand_dev.recheck_buffer, p_page_buf, data_area_size)) {
-			rkflash_print_error("%s %x cache bitflip\n", __func__, addr);
+			rkflash_print_error("%s cache bitflip1\n", __func__);
 			msleep(1000);
 			sfc_request(&op, plane, p_page_buf, page_size);
 		}
@@ -876,7 +881,8 @@ u32 sfc_nand_prog_page_raw(u8 cs, u32 addr, u32 *p_page_buf)
 	if (ret != SFC_OK)
 		return ret;
 
-	ret = sfc_nand_wait_busy(&status, 1000 * 1000);
+	ret = sfc_nand_wait_busy_sleep(&status, 1000 * 1000, 200);
+
 	if (status & (1 << 3))
 		return SFC_NAND_PROG_ERASE_ERROR;
 
@@ -927,7 +933,10 @@ u32 sfc_nand_read(u32 row, u32 *p_page_buf, u32 column, u32 len)
 	    sfc_get_version() < SFC_VER_3)
 		sfc_nand_rw_preset();
 
-	sfc_nand_wait_busy(&status, 1000 * 1000);
+	sfc_nand_wait_busy_sleep(&status, 1000 * 1000, 50);
+	if (sfc_nand_dev.manufacturer == 0x01 && status)
+		sfc_nand_wait_busy_sleep(&status, 1000 * 1000, 50);
+
 	ecc_result = p_nand_info->ecc_status();
 
 	op.sfcmd.d32 = 0;
@@ -938,6 +947,7 @@ u32 sfc_nand_read(u32 row, u32 *p_page_buf, u32 column, u32 len)
 	op.sfctrl.d32 = 0;
 	op.sfctrl.b.datalines = sfc_nand_dev.read_lines;
 	op.sfctrl.b.addrbits = 16;
+	op.sfctrl.b.enbledma = 0;
 
 	plane = p_nand_info->plane_per_die == 2 ? ((row >> 6) & 0x1) << 12 : 0;
 	ret = sfc_request(&op, plane | column, p_page_buf, len);
@@ -962,7 +972,9 @@ u32 sfc_nand_read_page(u8 cs, u32 addr, u32 *p_data, u32 *p_spare)
 	u32 sec_per_page = p_nand_info->sec_per_page;
 	u32 data_size = sec_per_page * SFC_NAND_SECTOR_SIZE;
 	struct nand_mega_area *meta = &p_nand_info->meta;
+	int retries = 0;
 
+retry:
 	ret = sfc_nand_read_page_raw(cs, addr, gp_page_buf);
 	memcpy(p_data, gp_page_buf, data_size);
 	p_spare[0] = gp_page_buf[(data_size + meta->off0) / 4];
@@ -984,6 +996,10 @@ u32 sfc_nand_read_page(u8 cs, u32 addr, u32 *p_data, u32 *p_spare)
 
 		if (p_spare)
 			rkflash_print_hex("spare:", p_spare, 4, 2);
+		if (ret == SFC_NAND_ECC_ERROR && retries < 1) {
+			retries++;
+			goto retry;
+		}
 	}
 
 	return ret;

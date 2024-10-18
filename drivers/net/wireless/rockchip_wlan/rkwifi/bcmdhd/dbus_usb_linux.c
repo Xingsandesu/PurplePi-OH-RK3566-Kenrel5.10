@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Dongle BUS interface
  * USB Linux Implementation
@@ -511,9 +512,6 @@ typedef struct {
 	struct usb_interface     *intf;
 } probe_info_t;
 
-/* driver info, initialized when bcmsdh_register is called */
-static dbus_driver_t drvinfo = {NULL, NULL, NULL, NULL};
-
 /*
  * USB Linux dbus_intf_t
  */
@@ -591,6 +589,9 @@ static dbus_intf_t dbus_usbos_intf = {
 };
 
 static probe_info_t    g_probe_info;
+static probe_cb_t      probe_cb = NULL;
+static disconnect_cb_t disconnect_cb = NULL;
+static void            *probe_arg = NULL;
 static void            *disc_arg = NULL;
 
 
@@ -1232,46 +1233,26 @@ static int
 dbus_usbos_suspend(struct usb_interface *intf,
             pm_message_t message)
 {
-	usbos_info_t *usbos_info = (usbos_info_t *) g_probe_info.usbos_info;
-	int err = 0;
-
-	printf("%s Enter\n", __FUNCTION__);
-
+	DBUSERR(("%s suspend state: %d\n", __FUNCTION__, g_probe_info.suspend_state));
 	/* DHD for full dongle model */
 	g_probe_info.suspend_state = USBOS_SUSPEND_STATE_SUSPEND_PENDING;
-	if (drvinfo.suspend && disc_arg)
-		err = drvinfo.suspend(disc_arg);
-	if (err) {
-		printf("%s: err=%d\n", __FUNCTION__, err);
-//		g_probe_info.suspend_state = USBOS_SUSPEND_STATE_DEVICE_ACTIVE;
-//		return err;
-	}
-	usbos_info->pub->busstate = DBUS_STATE_SLEEP;
-
+	dbus_usbos_state_change((usbos_info_t*)g_probe_info.usbos_info, DBUS_STATE_SLEEP);
 	dbus_usbos_cancel_all_urbs((usbos_info_t*)g_probe_info.usbos_info);
 	g_probe_info.suspend_state = USBOS_SUSPEND_STATE_SUSPENDED;
 
-	printf("%s Exit err=%d\n", __FUNCTION__, err);
-	return err;
+	return 0;
 }
 
 /**
  * The resume method is called to tell the driver that the device has been resumed and the driver
  * can return to normal operation.  URBs may once more be submitted.
  */
-static int
-dbus_usbos_resume(struct usb_interface *intf)
+static int dbus_usbos_resume(struct usb_interface *intf)
 {
-	usbos_info_t *usbos_info = (usbos_info_t *) g_probe_info.usbos_info;
+	DBUSERR(("%s Device resumed\n", __FUNCTION__));
 
-	printf("%s Enter\n", __FUNCTION__);
-
+	dbus_usbos_state_change((usbos_info_t*)g_probe_info.usbos_info, DBUS_STATE_UP);
 	g_probe_info.suspend_state = USBOS_SUSPEND_STATE_DEVICE_ACTIVE;
-	if (drvinfo.resume && disc_arg)
-		drvinfo.resume(disc_arg);
-	usbos_info->pub->busstate = DBUS_STATE_UP;
-
-	printf("%s Exit\n", __FUNCTION__);
 	return 0;
 }
 
@@ -1279,16 +1260,13 @@ dbus_usbos_resume(struct usb_interface *intf)
 * This function is directly called by the Linux kernel, when the suspended device has been reset
 * instead of being resumed
 */
-static int
-dbus_usbos_reset_resume(struct usb_interface *intf)
+static int dbus_usbos_reset_resume(struct usb_interface *intf)
 {
-	printf("%s Enter\n", __FUNCTION__);
+	DBUSERR(("%s Device reset resumed\n", __FUNCTION__));
 
+	/* The device may have lost power, so a firmware download may be required */
+	dbus_usbos_state_change((usbos_info_t*)g_probe_info.usbos_info, DBUS_STATE_DL_NEEDED);
 	g_probe_info.suspend_state = USBOS_SUSPEND_STATE_DEVICE_ACTIVE;
-	if (drvinfo.resume && disc_arg)
-		drvinfo.resume(disc_arg);
-
-	printf("%s Exit\n", __FUNCTION__);
 	return 0;
 }
 
@@ -1577,8 +1555,8 @@ DBUS_USBOS_PROBE()
 		g_probe_info.device_speed = FULL_SPEED;
 		DBUSERR(("full speed device detected\n"));
 	}
-	if (g_probe_info.dereged == FALSE && drvinfo.probe) {
-		disc_arg = drvinfo.probe(usb->bus->busnum, usb->portnum, 0);
+	if (g_probe_info.dereged == FALSE && probe_cb) {
+		disc_arg = probe_cb(probe_arg, "", USB_BUS, usb->bus->busnum, usb->portnum, 0);
 	}
 
 	g_probe_info.disc_cb_done = FALSE;
@@ -1639,8 +1617,8 @@ DBUS_USBOS_DISCONNECT()
 	if (probe_usb_init_data) {
 		usbos_info = (usbos_info_t *) probe_usb_init_data->usbos_info;
 		if (usbos_info) {
-			if ((probe_usb_init_data->dereged == FALSE) && drvinfo.remove && disc_arg) {
-				drvinfo.remove(disc_arg);
+			if ((probe_usb_init_data->dereged == FALSE) && disconnect_cb && disc_arg) {
+				disconnect_cb(disc_arg);
 				disc_arg = NULL;
 				probe_usb_init_data->disc_cb_done = TRUE;
 			}
@@ -2577,11 +2555,18 @@ dbus_usbos_state_change(void *bus, int state)
 }
 
 int
-dbus_bus_osl_register(dbus_driver_t *driver, dbus_intf_t **intf)
+dbus_bus_osl_register(int vid, int pid, probe_cb_t prcb,
+	disconnect_cb_t discb, void *prarg, dbus_intf_t **intf, void *param1, void *param2)
 {
 	bzero(&g_probe_info, sizeof(probe_info_t));
 
-	drvinfo = *driver;
+	probe_cb = prcb;
+	disconnect_cb = discb;
+	probe_arg = prarg;
+
+	devid_table[0].idVendor = vid;
+	devid_table[0].idProduct = pid;
+
 	*intf = &dbus_usbos_intf;
 
 	USB_REGISTER();
@@ -2595,8 +2580,8 @@ dbus_bus_osl_deregister()
 	g_probe_info.dereged = TRUE;
 
 	DHD_MUTEX_LOCK();
-	if (drvinfo.remove && disc_arg && (g_probe_info.disc_cb_done == FALSE)) {
-		drvinfo.remove(disc_arg);
+	if (disconnect_cb && disc_arg && (g_probe_info.disc_cb_done == FALSE)) {
+		disconnect_cb(disc_arg);
 		disc_arg = NULL;
 	}
 	DHD_MUTEX_UNLOCK();
@@ -3198,10 +3183,8 @@ dbus_request_firmware(const char *name, const struct firmware **firmware)
 	return *firmware != NULL ? 0 : -ENOENT;
 }
 
-#ifndef DHD_LINUX_STD_FW_API
 static void *
-dbus_get_fwfile(int devid, int chiprev, uint8 **fw, int *fwlen,
-	uint16 boardtype, uint16 boardrev, char *path)
+dbus_get_fwfile(int devid, int chiprev, uint8 **fw, int *fwlen, uint16 boardtype, uint16 boardrev)
 {
 	const struct firmware *firmware = NULL;
 #ifndef OEM_ANDROID
@@ -3264,12 +3247,11 @@ dbus_get_fwfile(int devid, int chiprev, uint8 **fw, int *fwlen,
 	snprintf(file_name, sizeof(file_name), "%s", CONFIG_ANDROID_BCMDHD_FW_PATH);
 #endif /* OEM_ANDROID */
 
-	ret = dbus_request_firmware(path, &firmware);
+	ret = dbus_request_firmware(file_name, &firmware);
 	if (ret) {
-		DBUSERR(("fail to request firmware %s\n", path));
+		DBUSERR(("fail to request firmware %s\n", file_name));
 		return NULL;
-	} else
-		DBUSERR(("%s: %s (%zu bytes) open success\n", __FUNCTION__, path, firmware->size));
+	}
 
 	*fwlen = firmware->size;
 	*fw = (uint8 *)firmware->data;
@@ -3278,8 +3260,7 @@ dbus_get_fwfile(int devid, int chiprev, uint8 **fw, int *fwlen,
 }
 
 static void *
-dbus_get_nvfile(int devid, int chiprev, uint8 **fw, int *fwlen,
-	uint16 boardtype, uint16 boardrev, char *path)
+dbus_get_nvfile(int devid, int chiprev, uint8 **fw, int *fwlen, uint16 boardtype, uint16 boardrev)
 {
 	const struct firmware *firmware = NULL;
 #ifndef OEM_ANDROID
@@ -3347,9 +3328,9 @@ dbus_get_nvfile(int devid, int chiprev, uint8 **fw, int *fwlen,
 	snprintf(file_name, sizeof(file_name), "%s", CONFIG_ANDROID_BCMDHD_NVRAM_PATH);
 #endif /* OEM_ANDROID */
 
-	ret = dbus_request_firmware(path, &firmware);
+	ret = dbus_request_firmware(file_name, &firmware);
 	if (ret) {
-		DBUSERR(("fail to request nvram %s\n", path));
+		DBUSERR(("fail to request nvram %s\n", file_name));
 
 #ifndef OEM_ANDROID
 		/* Load generic nvram file */
@@ -3360,11 +3341,10 @@ dbus_get_nvfile(int devid, int chiprev, uint8 **fw, int *fwlen,
 #endif /* OEM_ANDROID */
 
 		if (ret) {
-			DBUSERR(("fail to request nvram %s\n", path));
+			DBUSERR(("fail to request nvram %s\n", file_name));
 			return NULL;
 		}
-	} else
-		DBUSERR(("%s: %s (%zu bytes) open success\n", __FUNCTION__, path, firmware->size));
+	}
 
 	*fwlen = firmware->size;
 	*fw = (uint8 *)firmware->data;
@@ -3373,39 +3353,17 @@ dbus_get_nvfile(int devid, int chiprev, uint8 **fw, int *fwlen,
 
 void *
 dbus_get_fw_nvfile(int devid, int chiprev, uint8 **fw, int *fwlen, int type, uint16 boardtype,
-	uint16 boardrev, char *path)
+	uint16 boardrev)
 {
 	switch (type) {
 		case DBUS_FIRMWARE:
-			return dbus_get_fwfile(devid, chiprev, fw, fwlen, boardtype, boardrev, path);
+			return dbus_get_fwfile(devid, chiprev, fw, fwlen, boardtype, boardrev);
 		case DBUS_NVFILE:
-			return dbus_get_nvfile(devid, chiprev, fw, fwlen, boardtype, boardrev, path);
+			return dbus_get_nvfile(devid, chiprev, fw, fwlen, boardtype, boardrev);
 		default:
 			return NULL;
 	}
 }
-#else
-void *
-dbus_get_fw_nvfile(int devid, int chiprev, uint8 **fw, int *fwlen, int type, uint16 boardtype,
-	uint16 boardrev, char *path)
-{
-	const struct firmware *firmware = NULL;
-	int err = DBUS_OK;
-
-	err = dbus_request_firmware(path, &firmware);
-	if (err) {
-		DBUSERR(("fail to request firmware %s\n", path));
-		return NULL;
-	} else {
-		DBUSERR(("%s: %s (%zu bytes) open success\n",
-			__FUNCTION__, path, firmware->size));
-	}
-
-	*fwlen = firmware->size;
-	*fw = (uint8 *)firmware->data;
-	return (void *)firmware;
-}
-#endif
 
 void
 dbus_release_fw_nvfile(void *firmware)
@@ -3446,10 +3404,3 @@ dbus_usbos_intf_wlan(struct usb_device *usb)
 	return intf_wlan;
 }
 #endif /* BCMUSBDEV_COMPOSITE */
-
-#ifdef LINUX
-struct device * dbus_get_dev(void)
-{
-	return &g_probe_info.usb->dev;
-}
-#endif /* LINUX */

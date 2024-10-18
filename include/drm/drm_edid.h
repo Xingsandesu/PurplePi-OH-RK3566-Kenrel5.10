@@ -91,6 +91,11 @@ struct detailed_data_string {
 	u8 str[13];
 } __attribute__((packed));
 
+#define DRM_EDID_DEFAULT_GTF_SUPPORT_FLAG   0x00
+#define DRM_EDID_RANGE_LIMITS_ONLY_FLAG     0x01
+#define DRM_EDID_SECONDARY_GTF_SUPPORT_FLAG 0x02
+#define DRM_EDID_CVT_SUPPORT_FLAG           0x04
+
 struct detailed_data_monitor_range {
 	u8 min_vfreq;
 	u8 max_vfreq;
@@ -177,21 +182,23 @@ struct detailed_timing {
 #define DRM_EDID_INPUT_BLANK_TO_BLACK  (1 << 4)
 #define DRM_EDID_INPUT_VIDEO_LEVEL     (3 << 5)
 #define DRM_EDID_INPUT_DIGITAL         (1 << 7)
-#define DRM_EDID_DIGITAL_DEPTH_MASK    (7 << 4)
-#define DRM_EDID_DIGITAL_DEPTH_UNDEF   (0 << 4)
-#define DRM_EDID_DIGITAL_DEPTH_6       (1 << 4)
-#define DRM_EDID_DIGITAL_DEPTH_8       (2 << 4)
-#define DRM_EDID_DIGITAL_DEPTH_10      (3 << 4)
-#define DRM_EDID_DIGITAL_DEPTH_12      (4 << 4)
-#define DRM_EDID_DIGITAL_DEPTH_14      (5 << 4)
-#define DRM_EDID_DIGITAL_DEPTH_16      (6 << 4)
-#define DRM_EDID_DIGITAL_DEPTH_RSVD    (7 << 4)
-#define DRM_EDID_DIGITAL_TYPE_UNDEF    (0)
-#define DRM_EDID_DIGITAL_TYPE_DVI      (1)
-#define DRM_EDID_DIGITAL_TYPE_HDMI_A   (2)
-#define DRM_EDID_DIGITAL_TYPE_HDMI_B   (3)
-#define DRM_EDID_DIGITAL_TYPE_MDDI     (4)
-#define DRM_EDID_DIGITAL_TYPE_DP       (5)
+#define DRM_EDID_DIGITAL_DEPTH_MASK    (7 << 4) /* 1.4 */
+#define DRM_EDID_DIGITAL_DEPTH_UNDEF   (0 << 4) /* 1.4 */
+#define DRM_EDID_DIGITAL_DEPTH_6       (1 << 4) /* 1.4 */
+#define DRM_EDID_DIGITAL_DEPTH_8       (2 << 4) /* 1.4 */
+#define DRM_EDID_DIGITAL_DEPTH_10      (3 << 4) /* 1.4 */
+#define DRM_EDID_DIGITAL_DEPTH_12      (4 << 4) /* 1.4 */
+#define DRM_EDID_DIGITAL_DEPTH_14      (5 << 4) /* 1.4 */
+#define DRM_EDID_DIGITAL_DEPTH_16      (6 << 4) /* 1.4 */
+#define DRM_EDID_DIGITAL_DEPTH_RSVD    (7 << 4) /* 1.4 */
+#define DRM_EDID_DIGITAL_TYPE_MASK     (7 << 0) /* 1.4 */
+#define DRM_EDID_DIGITAL_TYPE_UNDEF    (0 << 0) /* 1.4 */
+#define DRM_EDID_DIGITAL_TYPE_DVI      (1 << 0) /* 1.4 */
+#define DRM_EDID_DIGITAL_TYPE_HDMI_A   (2 << 0) /* 1.4 */
+#define DRM_EDID_DIGITAL_TYPE_HDMI_B   (3 << 0) /* 1.4 */
+#define DRM_EDID_DIGITAL_TYPE_MDDI     (4 << 0) /* 1.4 */
+#define DRM_EDID_DIGITAL_TYPE_DP       (5 << 0) /* 1.4 */
+#define DRM_EDID_DIGITAL_DFP_1_X       (1 << 0) /* 1.3 */
 
 #define DRM_EDID_FEATURE_DEFAULT_GTF      (1 << 0)
 #define DRM_EDID_FEATURE_PREFERRED_TIMING (1 << 1)
@@ -222,16 +229,7 @@ struct detailed_timing {
 				    DRM_EDID_YCBCR420_DC_36 | \
 				    DRM_EDID_YCBCR420_DC_30)
 
-#define DRM_EDID_CLRMETRY_xvYCC_601   (1 << 0)
-#define DRM_EDID_CLRMETRY_xvYCC_709   (1 << 1)
-#define DRM_EDID_CLRMETRY_sYCC_601    (1 << 2)
-#define DRM_EDID_CLRMETRY_ADBYCC_601  (1 << 3)
-#define DRM_EDID_CLRMETRY_ADB_RGB     (1 << 4)
-#define DRM_EDID_CLRMETRY_BT2020_CYCC (1 << 5)
-#define DRM_EDID_CLRMETRY_BT2020_YCC  (1 << 6)
-#define DRM_EDID_CLRMETRY_BT2020_RGB  (1 << 7)
-#define DRM_EDID_CLRMETRY_DCI_P3      (1 << 15)
-
+#ifdef CONFIG_NO_GKI
 /* HDMI 2.1 additional fields */
 #define DRM_EDID_MAX_FRL_RATE_MASK		0xf0
 #define DRM_EDID_FAPA_START_LOCATION		(1 << 0)
@@ -261,6 +259,7 @@ struct detailed_timing {
 #define DRM_EDID_DSC_MAX_FRL_RATE_MASK		0xf0
 #define DRM_EDID_DSC_MAX_SLICES			0xf
 #define DRM_EDID_DSC_TOTAL_CHUNK_KBYTES		0x3f
+#endif
 
 /* ELD Header Block */
 #define DRM_ELD_HEADER_BLOCK_SIZE	4
@@ -319,11 +318,6 @@ struct detailed_timing {
 #define DRM_ELD_MONITOR_NAME_STRING	20	/* offsets 20..(20+mnl-1) inclusive */
 
 #define DRM_ELD_CEA_SAD(mnl, sad)	(20 + (mnl) + 3 * (sad))
-
-/* HDMI 2.0 */
-#define DRM_EDID_3D_INDEPENDENT_VIEW	(1 << 2)
-#define DRM_EDID_3D_DUAL_VIEW		(1 << 1)
-#define DRM_EDID_3D_OSD_DISPARITY	(1 << 0)
 
 struct edid {
 	u8 header[8];
@@ -399,18 +393,26 @@ drm_load_edid_firmware(struct drm_connector *connector)
 
 int
 drm_hdmi_avi_infoframe_from_display_mode(struct hdmi_avi_infoframe *frame,
-					 const struct drm_display_mode *mode,
-					 bool is_hdmi2_sink);
+					 const struct drm_connector *connector,
+					 const struct drm_display_mode *mode);
 int
 drm_hdmi_vendor_infoframe_from_display_mode(struct hdmi_vendor_infoframe *frame,
-					    struct drm_connector *connector,
+					    const struct drm_connector *connector,
 					    const struct drm_display_mode *mode);
+
+void
+drm_hdmi_avi_infoframe_colorspace(struct hdmi_avi_infoframe *frame,
+				  const struct drm_connector_state *conn_state);
+
+void
+drm_hdmi_avi_infoframe_bars(struct hdmi_avi_infoframe *frame,
+			    const struct drm_connector_state *conn_state);
+
 void
 drm_hdmi_avi_infoframe_quant_range(struct hdmi_avi_infoframe *frame,
+				   const struct drm_connector *connector,
 				   const struct drm_display_mode *mode,
-				   enum hdmi_quantization_range rgb_quant_range,
-				   bool rgb_quant_range_selectable,
-				   bool is_hdmi2_sink);
+				   enum hdmi_quantization_range rgb_quant_range);
 
 int
 drm_hdmi_infoframe_set_hdr_metadata(struct hdmi_drm_infoframe *frame,
@@ -514,9 +516,7 @@ struct edid *drm_do_get_edid(struct drm_connector *connector,
 struct edid *drm_get_edid_switcheroo(struct drm_connector *connector,
 				     struct i2c_adapter *adapter);
 
-enum hdmi_picture_aspect drm_get_cea_aspect_ratio(const u8 video_code);
 bool drm_detect_hdmi_monitor(struct edid *edid);
-bool drm_rgb_quant_range_selectable(struct edid *edid);
 enum hdmi_quantization_range
 drm_default_rgb_quant_range(const struct drm_display_mode *mode);
 void drm_set_preferred_mode(struct drm_connector *connector,
@@ -525,10 +525,10 @@ void drm_set_preferred_mode(struct drm_connector *connector,
 int drm_edid_header_is_valid(const u8 *raw_edid);
 bool drm_edid_block_valid(u8 *raw_edid, int block, bool print_bad_edid,
 			  bool *edid_corrupt);
-bool drm_edid_is_valid(struct edid *edid);
-struct drm_display_mode *drm_mode_find_dmt(struct drm_device *dev,
-					   int hsize, int vsize, int fresh,
-					   bool rb);
+struct drm_display_mode *
+drm_display_mode_from_cea_vic(struct drm_device *dev,
+			      u8 video_code);
+
 #ifdef CONFIG_DRM_EDID
 struct edid *drm_get_edid(struct drm_connector *connector,
 			  struct i2c_adapter *adapter);
@@ -541,6 +541,11 @@ int drm_add_modes_noedid(struct drm_connector *connector,
 bool drm_detect_monitor_audio(struct edid *edid);
 void drm_edid_get_monitor_name(struct edid *edid, char *name,
 			       int buflen);
+bool drm_edid_is_valid(struct edid *edid);
+bool drm_edid_are_equal(const struct edid *edid1, const struct edid *edid2);
+struct drm_display_mode *drm_mode_find_dmt(struct drm_device *dev,
+					   int hsize, int vsize, int fresh,
+					   bool rb);
 #else
 static inline struct edid *drm_get_edid(struct drm_connector *connector,
 					struct i2c_adapter *adapter)
@@ -583,6 +588,23 @@ static inline bool drm_detect_monitor_audio(struct edid *edid)
 static inline void drm_edid_get_monitor_name(struct edid *edid, char *name,
 					     int buflen)
 {
+}
+
+static inline bool drm_edid_is_valid(struct edid *edid)
+{
+	return false;
+}
+
+static inline bool drm_edid_are_equal(const struct edid *edid1, const struct edid *edid2)
+{
+	return false;
+}
+
+static inline struct drm_display_mode *drm_mode_find_dmt(struct drm_device *dev,
+					   int hsize, int vsize, int fresh,
+					   bool rb)
+{
+	return NULL;
 }
 #endif
 

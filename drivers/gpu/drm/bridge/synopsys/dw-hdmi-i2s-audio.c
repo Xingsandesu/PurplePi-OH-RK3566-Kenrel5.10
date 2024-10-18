@@ -1,14 +1,16 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * dw-hdmi-i2s-audio.c
  *
  * Copyright (c) 2017 Renesas Solutions Corp.
  * Kuninori Morimoto <kuninori.morimoto.gx@renesas.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
+
+#include <linux/dma-mapping.h>
+#include <linux/module.h>
+
 #include <drm/bridge/dw_hdmi.h>
+#include <drm/drm_crtc.h>
 
 #include <sound/hdmi-codec.h>
 
@@ -48,17 +50,35 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	struct dw_hdmi *hdmi = audio->hdmi;
 	u8 conf0 = 0;
 	u8 conf1 = 0;
+	u8 conf2 = 0;
 	u8 inputclkfs = 0;
-	u8 val;
 
 	/* it cares I2S only */
-	if ((fmt->fmt != HDMI_I2S) ||
-	    (fmt->bit_clk_master | fmt->frame_clk_master)) {
-		dev_err(dev, "unsupported format/settings\n");
+	if (fmt->bit_clk_master | fmt->frame_clk_master) {
+		dev_err(dev, "unsupported clock settings\n");
 		return -EINVAL;
 	}
 
-	inputclkfs = HDMI_AUD_INPUTCLKFS_128FS;
+	/* Reset the FIFOs before applying new params */
+	hdmi_update_bits(audio, HDMI_AUD_CONF0_SW_RESET,
+			 HDMI_AUD_CONF0_SW_RESET, HDMI_AUD_CONF0);
+	hdmi_write(audio, (u8)~HDMI_MC_SWRSTZ_I2SSWRST_REQ, HDMI_MC_SWRSTZ);
+
+	inputclkfs	= HDMI_AUD_INPUTCLKFS_64FS;
+	conf0		= (HDMI_AUD_CONF0_I2S_SELECT | HDMI_AUD_CONF0_I2S_EN0);
+
+	/* Enable the required i2s lanes */
+	switch (hparms->channels) {
+	case 7 ... 8:
+		conf0 |= HDMI_AUD_CONF0_I2S_EN3;
+		fallthrough;
+	case 5 ... 6:
+		conf0 |= HDMI_AUD_CONF0_I2S_EN2;
+		fallthrough;
+	case 3 ... 4:
+		conf0 |= HDMI_AUD_CONF0_I2S_EN1;
+		/* Fall-thru */
+	}
 
 	switch (hparms->sample_width) {
 	case 16:
@@ -68,136 +88,72 @@ static int dw_hdmi_i2s_hw_params(struct device *dev, void *data,
 	case 32:
 		conf1 = HDMI_AUD_CONF1_WIDTH_24;
 		break;
+	}
+
+	switch (fmt->fmt) {
+	case HDMI_I2S:
+		conf1 |= HDMI_AUD_CONF1_MODE_I2S;
+		break;
+	case HDMI_RIGHT_J:
+		conf1 |= HDMI_AUD_CONF1_MODE_RIGHT_J;
+		break;
+	case HDMI_LEFT_J:
+		conf1 |= HDMI_AUD_CONF1_MODE_LEFT_J;
+		break;
+	case HDMI_DSP_A:
+		conf1 |= HDMI_AUD_CONF1_MODE_BURST_1;
+		break;
+	case HDMI_DSP_B:
+		conf1 |= HDMI_AUD_CONF1_MODE_BURST_2;
+		break;
 	default:
-		dev_err(dev, "unsupported sample width [%d]\n", hparms->sample_width);
+		dev_err(dev, "unsupported format\n");
 		return -EINVAL;
 	}
 
-	switch (hparms->channels) {
-	case 2:
-		conf0 = HDMI_AUD_CONF0_I2S_2CHANNEL_ENABLE;
-		break;
-	case 4:
-		conf0 = HDMI_AUD_CONF0_I2S_4CHANNEL_ENABLE;
-		break;
-	case 6:
-		conf0 = HDMI_AUD_CONF0_I2S_6CHANNEL_ENABLE;
-		break;
-	case 8:
-		conf0 = HDMI_AUD_CONF0_I2S_8CHANNEL_ENABLE;
+	switch (fmt->bit_fmt) {
+	case SNDRV_PCM_FORMAT_IEC958_SUBFRAME_LE:
+		conf1 = HDMI_AUD_CONF1_WIDTH_21;
+		conf2 = (hparms->channels == 8) ? HDMI_AUD_CONF2_HBR : HDMI_AUD_CONF2_NLPCM;
 		break;
 	default:
-		dev_err(dev, "unsupported channels [%d]\n", hparms->channels);
-		return -EINVAL;
-	}
-
-	/*
-	 * dw-hdmi introduced insert_pcuv bit in version 2.10a.
-	 * When set (1'b1), this bit enables the insertion of the PCUV
-	 * (Parity, Channel Status, User bit and Validity) bits on the
-	 * incoming audio stream (support limited to Linear PCM audio)
-	 */
-	val = 0;
-	if (hdmi_read(audio, HDMI_DESIGN_ID) >= 0x21)
-		val = HDMI_AUD_CONF2_INSERT_PCUV;
-
-	/*Mask fifo empty and full int and reset fifo*/
-	hdmi_update_bits(audio,
-			 HDMI_AUD_INT_FIFO_EMPTY_MSK |
-			 HDMI_AUD_INT_FIFO_FULL_MSK,
-			 HDMI_AUD_INT_FIFO_EMPTY_MSK |
-			 HDMI_AUD_INT_FIFO_FULL_MSK, HDMI_AUD_INT);
-	hdmi_update_bits(audio, HDMI_AUD_CONF0_SW_RESET,
-			 HDMI_AUD_CONF0_SW_RESET, HDMI_AUD_CONF0);
-	hdmi_update_bits(audio, HDMI_MC_SWRSTZ_I2S_RESET_MSK,
-			 HDMI_MC_SWRSTZ_I2S_RESET_MSK, HDMI_MC_SWRSTZ);
-
-	switch (hparms->mode) {
-	case NLPCM:
-		hdmi_write(audio, HDMI_AUD_CONF2_NLPCM, HDMI_AUD_CONF2);
-		conf1 = HDMI_AUD_CONF1_WIDTH_21;
-		break;
-	case HBR:
-		hdmi_write(audio, HDMI_AUD_CONF2_HBR, HDMI_AUD_CONF2);
-		conf1 = HDMI_AUD_CONF1_WIDTH_21;
-		break;
-	default:
-		hdmi_write(audio, val, HDMI_AUD_CONF2);
+		/*
+		 * dw-hdmi introduced insert_pcuv bit in version 2.10a.
+		 * When set (1'b1), this bit enables the insertion of the PCUV
+		 * (Parity, Channel Status, User bit and Validity) bits on the
+		 * incoming audio stream (support limited to Linear PCM audio)
+		 */
+		if (hdmi_read(audio, HDMI_DESIGN_ID) >= 0x21)
+			conf2 = HDMI_AUD_CONF2_INSERT_PCUV;
 		break;
 	}
 
 	dw_hdmi_set_sample_rate(hdmi, hparms->sample_rate);
+	dw_hdmi_set_channel_status(hdmi, hparms->iec.status);
+	dw_hdmi_set_channel_count(hdmi, hparms->channels);
+	dw_hdmi_set_channel_allocation(hdmi, hparms->cea.channel_allocation);
 
 	hdmi_write(audio, inputclkfs, HDMI_AUD_INPUTCLKFS);
 	hdmi_write(audio, conf0, HDMI_AUD_CONF0);
 	hdmi_write(audio, conf1, HDMI_AUD_CONF1);
+	hdmi_write(audio, conf2, HDMI_AUD_CONF2);
 
-	val = HDMI_FC_AUDSCONF_AUD_PACKET_LAYOUT_LAYOUT0;
-	if (hparms->channels > 2)
-		val = HDMI_FC_AUDSCONF_AUD_PACKET_LAYOUT_LAYOUT1;
-	hdmi_update_bits(audio, val, HDMI_FC_AUDSCONF_AUD_PACKET_LAYOUT_MASK,
-			 HDMI_FC_AUDSCONF);
+	return 0;
+}
 
-	switch (hparms->sample_rate) {
-	case 32000:
-		val = HDMI_FC_AUDSCHNLS_32K;
-		break;
-	case 44100:
-		val = HDMI_FC_AUDSCHNLS_441K;
-		break;
-	case 48000:
-		val = HDMI_FC_AUDSCHNLS_48K;
-		break;
-	case 88200:
-		val = HDMI_FC_AUDSCHNLS_882K;
-		break;
-	case 96000:
-		val = HDMI_FC_AUDSCHNLS_96K;
-		break;
-	case 176400:
-		val = HDMI_FC_AUDSCHNLS_1764K;
-		break;
-	case 192000:
-		val = HDMI_FC_AUDSCHNLS_192K;
-		break;
-	default:
-		val = HDMI_FC_AUDSCHNLS_441K;
-		break;
-	}
+static int dw_hdmi_i2s_prepare(struct device *dev, void *data,
+			       struct hdmi_codec_daifmt *fmt,
+			       struct hdmi_codec_params *hparms)
+{
+	return dw_hdmi_i2s_hw_params(dev, data, fmt, hparms);
+}
 
-	/* set channel status register */
-	hdmi_update_bits(audio, val,
-			 HDMI_FC_AUDSCHNLS7_SAMPFREQ_MASK,
-			 HDMI_FC_AUDSCHNLS7);
-	hdmi_write(audio,
-		   (((u8)~val) << HDMI_FC_AUDSCHNLS8_ORIGSAMPFREQ_OFFSET),
-		   HDMI_FC_AUDSCHNLS8);
-
-	/* Refer to CEA861-E Audio infoFrame
-	 * Set both Audio Channel Count and Audio Coding
-	 * Type Refer to Stream Head for HDMI
-	 */
-	hdmi_update_bits(audio,
-			 (hparms->channels - 1) << HDMI_FC_AUDICONF0_CC_OFFSET,
-			 HDMI_FC_AUDICONF0_CC_MASK, HDMI_FC_AUDICONF0);
-
-	/* Set both Audio Sample Size and Sample Frequency
-	 * Refer to Stream Head for HDMI
-	 */
-	hdmi_write(audio, 0x00, HDMI_FC_AUDICONF1);
-
-	/* Set Channel Allocation */
-	hdmi_write(audio, 0x00, HDMI_FC_AUDICONF2);
-
-	/* Set LFEPBLDOWN-MIX INH and LSV */
-	hdmi_write(audio, 0x00, HDMI_FC_AUDICONF3);
+static int dw_hdmi_i2s_audio_startup(struct device *dev, void *data)
+{
+	struct dw_hdmi_i2s_audio_data *audio = data;
+	struct dw_hdmi *hdmi = audio->hdmi;
 
 	dw_hdmi_audio_enable(hdmi);
-
-	hdmi_update_bits(audio, HDMI_AUD_CONF0_SW_RESET,
-			 HDMI_AUD_CONF0_SW_RESET, HDMI_AUD_CONF0);
-	hdmi_update_bits(audio, HDMI_MC_SWRSTZ_I2S_RESET_MSK,
-			 HDMI_MC_SWRSTZ_I2S_RESET_MSK, HDMI_MC_SWRSTZ);
 
 	return 0;
 }
@@ -208,13 +164,22 @@ static void dw_hdmi_i2s_audio_shutdown(struct device *dev, void *data)
 	struct dw_hdmi *hdmi = audio->hdmi;
 
 	dw_hdmi_audio_disable(hdmi);
+}
 
-	hdmi_update_bits(audio,
-			 HDMI_AUD_CONF0_SW_RESET,
-			 HDMI_AUD_CONF0_SW_RESET |
-				(HDMI_AUD_CONF0_I2S_ALL_ENABLE ^
-				 HDMI_AUD_CONF0_I2S_SELECT_MASK),
-			 HDMI_AUD_CONF0);
+static int dw_hdmi_i2s_get_eld(struct device *dev, void *data, uint8_t *buf,
+			       size_t len)
+{
+	struct dw_hdmi_i2s_audio_data *audio = data;
+	u8 *eld;
+
+	eld = audio->get_eld(audio->hdmi);
+	if (eld)
+		memcpy(buf, eld, min_t(size_t, MAX_ELD_BYTES, len));
+	else
+		/* Pass en empty ELD if connector not available */
+		memset(buf, 0, len);
+
+	return 0;
 }
 
 static int dw_hdmi_i2s_get_dai_id(struct snd_soc_component *component,
@@ -249,7 +214,10 @@ static int dw_hdmi_i2s_hook_plugged_cb(struct device *dev, void *data,
 
 static struct hdmi_codec_ops dw_hdmi_i2s_ops = {
 	.hw_params	= dw_hdmi_i2s_hw_params,
+	.prepare	= dw_hdmi_i2s_prepare,
+	.audio_startup  = dw_hdmi_i2s_audio_startup,
 	.audio_shutdown	= dw_hdmi_i2s_audio_shutdown,
+	.get_eld	= dw_hdmi_i2s_get_eld,
 	.get_dai_id	= dw_hdmi_i2s_get_dai_id,
 	.hook_plugged_cb = dw_hdmi_i2s_hook_plugged_cb,
 };

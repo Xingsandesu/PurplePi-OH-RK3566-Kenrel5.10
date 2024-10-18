@@ -29,6 +29,13 @@
 		status = "okay";
 	};
 
+	firmware {
+		optee: optee {
+			compatible = "linaro,optee-tz";
+			method = "smc";
+		};
+	};
+
 	debug: debug@fd904000 {
 		compatible = "rockchip,debug";
 		reg = <0x0 0xfd904000 0x0 0x1000>,
@@ -44,10 +51,16 @@
 			<0x0 0xfd90e000 0x0 0x1000>,
 			<0x0 0xfd90f000 0x0 0x1000>;
 	};
+
+	vendor_storage: vendor-storage {
+		compatible = "rockchip,ram-vendor-storage";
+		memory-region = <&vendor_storage_rm>;
+		status = "okay";
+	};
 };
 
 &reserved_memory {
-	cma {
+	linux,cma {
 		compatible = "shared-dma-pool";
 		inactive;
 		reusable;
@@ -62,6 +75,11 @@
 		console-size = <0x80000>;
 		ftrace-size = <0x00000>;
 		pmsg-size = <0x50000>;
+	};
+
+	vendor_storage_rm: vendor-storage-rm@00000000 {
+		compatible = "rockchip,vendor-storage-rm";
+		reg = <0x0 0x0 0x0 0x0>;
 	};
 };
 

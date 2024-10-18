@@ -117,14 +117,6 @@ static const char * const ov12d2q_supply_names[] = {
 #define MIRROR_BIT_MASK			BIT(2)
 #define FLIP_BIT_MASK			BIT(2)
 
-enum ov12d2q_max_pad {
-	PAD0,
-	PAD1,
-	PAD2,
-	PAD3,
-	PAD_MAX,
-};
-
 struct regval {
 	u16 addr;
 	u8 val;
@@ -2224,14 +2216,12 @@ static int ov12d2q_g_frame_interval(struct v4l2_subdev *sd,
 	struct ov12d2q *ov12d2q = to_ov12d2q(sd);
 	const struct ov12d2q_mode *mode = ov12d2q->cur_mode;
 
-	mutex_lock(&ov12d2q->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&ov12d2q->mutex);
 
 	return 0;
 }
 
-static int ov12d2q_g_mbus_config(struct v4l2_subdev *sd,
+static int ov12d2q_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
 	struct ov12d2q *ov12d2q = to_ov12d2q(sd);
@@ -2248,7 +2238,7 @@ static int ov12d2q_g_mbus_config(struct v4l2_subdev *sd,
 		V4L2_MBUS_CSI2_CONTINUOUS_CLOCK |
 		V4L2_MBUS_CSI2_CHANNEL_1;
 
-	config->type = V4L2_MBUS_CSI2;
+	config->type = V4L2_MBUS_CSI2_DPHY;
 	config->flags = val;
 
 	return 0;
@@ -2724,7 +2714,6 @@ static const struct v4l2_subdev_core_ops ov12d2q_core_ops = {
 static const struct v4l2_subdev_video_ops ov12d2q_video_ops = {
 	.s_stream = ov12d2q_s_stream,
 	.g_frame_interval = ov12d2q_g_frame_interval,
-	.g_mbus_config = ov12d2q_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops ov12d2q_pad_ops = {
@@ -2733,6 +2722,7 @@ static const struct v4l2_subdev_pad_ops ov12d2q_pad_ops = {
 	.enum_frame_interval = ov12d2q_enum_frame_interval,
 	.get_fmt = ov12d2q_get_fmt,
 	.set_fmt = ov12d2q_set_fmt,
+	.get_mbus_config = ov12d2q_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops ov12d2q_subdev_ops = {
@@ -2769,7 +2759,7 @@ static int ov12d2q_set_ctrl(struct v4l2_ctrl *ctrl)
 	switch (ctrl->id) {
 	case V4L2_CID_EXPOSURE:
 		if (ov12d2q->cur_mode->hdr_mode != NO_HDR)
-			return 0;
+			goto ctrl_end;
 		ret = ov12d2q_write_reg(ov12d2q->client,
 					OV12D2Q_REG_EXP_L_H,
 					OV12D2Q_REG_VALUE_16BIT,
@@ -2779,7 +2769,7 @@ static int ov12d2q_set_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	case V4L2_CID_ANALOGUE_GAIN:
 		if (ov12d2q->cur_mode->hdr_mode != NO_HDR)
-			return 0;
+			goto ctrl_end;
 		if (ctrl->val > 1984) {// >15.5x
 			dgain = ctrl->val * 10 / 155;
 			again = 1984;
@@ -2896,6 +2886,7 @@ static int ov12d2q_set_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	}
 
+ctrl_end:
 	pm_runtime_put(&client->dev);
 
 	return ret;

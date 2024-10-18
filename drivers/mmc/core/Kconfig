@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # MMC core configuration
 #
@@ -14,7 +15,7 @@ config PWRSEQ_EMMC
 
 config PWRSEQ_SD8787
 	tristate "HW reset support for SD8787 BT + Wifi module"
-	depends on OF && (MWIFIEX || BT_MRVL_SDIO)
+	depends on OF && (MWIFIEX || BT_MRVL_SDIO || LIBERTAS_SDIO)
 	help
 	  This selects hardware reset support for the SD8787 BT + Wifi
 	  module. By default this option is set to n.
@@ -89,7 +90,13 @@ config MMC_CRYPTO
 	  capabilities of the MMC device (if present) to perform crypto
 	  operations on data being transferred to/from the device.
 
-config SDIO_KEEPALIVE
-	bool "SDIO KEEPALIVE"
+config MMC_QUEUE_DEPTH
+	int "MMC Queue Depth number"
+	range 1 64
+	depends on ROCKCHIP_MINI_KERNEL
+	default 64
 	help
-	  support sdio keepalive during host poweroff
+	  Set a depth num for mmc queue, user can set it lower to decrease
+	  queue number to save memory, suggest set to NR_CPUS.
+
+	  If unsure, say 64 here.

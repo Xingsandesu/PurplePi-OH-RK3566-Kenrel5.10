@@ -39,7 +39,11 @@
 #include <dhd.h>
 #include <dhd_proto.h>
 
+#ifdef BCMDBUS
+#include <dbus.h>
+#else
 #include <dhd_bus.h>
+#endif /* BCMDBUS */
 
 #include <dhd_dbg.h>
 #include <siutils.h>

@@ -89,14 +89,6 @@ static const char * const imx258_supply_names[] = {
 
 #define IMX258_NUM_SUPPLIES ARRAY_SIZE(imx258_supply_names)
 
-enum imx258_max_pad {
-	PAD0,
-	PAD1,
-	PAD2,
-	PAD3,
-	PAD_MAX,
-};
-
 struct regval {
 	u16 addr;
 	u8 val;
@@ -968,9 +960,7 @@ static int imx258_g_frame_interval(struct v4l2_subdev *sd,
 	struct imx258 *imx258 = to_imx258(sd);
 	const struct imx258_mode *mode = imx258->cur_mode;
 
-	mutex_lock(&imx258->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&imx258->mutex);
 
 	return 0;
 }
@@ -990,14 +980,14 @@ static void imx258_get_otp(struct imx258_otp_info *otp,
 			if (imx258_module_info[i].id == otp->module_id)
 				break;
 		}
-		strlcpy(inf->fac.module, imx258_module_info[i].name,
+		strscpy(inf->fac.module, imx258_module_info[i].name,
 			sizeof(inf->fac.module));
 
 		for (i = 0; i < ARRAY_SIZE(imx258_lens_info) - 1; i++) {
 			if (imx258_lens_info[i].id == otp->lens_id)
 				break;
 		}
-		strlcpy(inf->fac.lens, imx258_lens_info[i].name,
+		strscpy(inf->fac.lens, imx258_lens_info[i].name,
 			sizeof(inf->fac.lens));
 	}
 	/* awb */
@@ -1042,11 +1032,11 @@ static void imx258_get_module_inf(struct imx258 *imx258,
 {
 	struct imx258_otp_info *otp = imx258->otp;
 
-	strlcpy(inf->base.sensor, IMX258_NAME, sizeof(inf->base.sensor));
-	strlcpy(inf->base.module,
+	strscpy(inf->base.sensor, IMX258_NAME, sizeof(inf->base.sensor));
+	strscpy(inf->base.module,
 		imx258->module_name,
 		sizeof(inf->base.module));
-	strlcpy(inf->base.lens, imx258->len_name, sizeof(inf->base.lens));
+	strscpy(inf->base.lens, imx258->len_name, sizeof(inf->base.lens));
 	if (otp)
 		imx258_get_otp(otp, inf);
 }
@@ -1599,7 +1589,7 @@ static int imx258_enum_frame_interval(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int imx258_g_mbus_config(struct v4l2_subdev *sd,
+static int imx258_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
 	u32 val = 0;
@@ -1607,7 +1597,7 @@ static int imx258_g_mbus_config(struct v4l2_subdev *sd,
 	val = 1 << (IMX258_LANES - 1) |
 	      V4L2_MBUS_CSI2_CHANNEL_0 |
 	      V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
-	config->type = V4L2_MBUS_CSI2;
+	config->type = V4L2_MBUS_CSI2_DPHY;
 	config->flags = val;
 
 	return 0;
@@ -1635,7 +1625,6 @@ static const struct v4l2_subdev_core_ops imx258_core_ops = {
 static const struct v4l2_subdev_video_ops imx258_video_ops = {
 	.s_stream = imx258_s_stream,
 	.g_frame_interval = imx258_g_frame_interval,
-	.g_mbus_config = imx258_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops imx258_pad_ops = {
@@ -1644,6 +1633,7 @@ static const struct v4l2_subdev_pad_ops imx258_pad_ops = {
 	.enum_frame_interval = imx258_enum_frame_interval,
 	.get_fmt = imx258_get_fmt,
 	.set_fmt = imx258_set_fmt,
+	.get_mbus_config = imx258_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops imx258_subdev_ops = {

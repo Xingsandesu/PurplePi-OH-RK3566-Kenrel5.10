@@ -56,7 +56,7 @@ typedef enum NC_COAX_CMD_DEF
 	COAX_CMD_OSD_LEFT,
 	COAX_CMD_OSD_RIGHT,
 	COAX_CMD_STOP,
-	
+
 	COAX_CMD_MAX,
 
 } NC_COAX_CMD_DEF;
@@ -86,7 +86,7 @@ typedef struct NC_VD_COAX_TEST_STR{
 	 unsigned char tx_sync_pos1;       //B3/4 0x0E/8E
 	 unsigned char tx_even;            //B3/4 0x2F/AF
 	 unsigned char tx_zero_length;     //B3/4 0x0C/
-}NC_VD_COAX_TEST_STR;
+} NC_VD_COAX_TEST_STR;
 
 typedef struct NC_VD_COAX_BANK_DUMP_STR{
 	 unsigned char ch;
@@ -95,7 +95,7 @@ typedef struct NC_VD_COAX_BANK_DUMP_STR{
 
 	 unsigned char rx_pelco_data[256];
 
-}NC_VD_COAX_BANK_DUMP_STR;
+} NC_VD_COAX_BANK_DUMP_STR;
 
 /*=============================================================
  * Coaxial UP/Down Stream Initialize Structure[APP -> DRV]
@@ -119,7 +119,7 @@ typedef struct NC_VD_COAX_STR{
 	 unsigned char rx_data5[8];
 	 unsigned char rx_data6[8];
 
-}NC_VD_COAX_STR;
+} NC_VD_COAX_STR;
 
 typedef struct _nvp6158_coax_str{
 	unsigned char ch;
@@ -134,7 +134,7 @@ typedef struct _nvp6158_coax_str{
 	unsigned char rx_data5[8];
 	unsigned char rx_data6[8];
 
-}nvp6158_coax_str;
+} nvp6158_coax_str;
 
 /*=============================================================
  * COAX FW Upgrade
@@ -146,20 +146,20 @@ typedef struct __file_information
   	unsigned char 	filename[64];           //
   	unsigned char 	filePullname[64+32];    // FirmUP FileNmae
   	unsigned int	filesize;
-  	unsigned int	filechecksum;			// (sum of file&0x0000FFFFF)
-  	unsigned int	currentpacketnum;		// current packet sequnce number(0,1,2........)
-  	unsigned int	filepacketnum;			// file packet number = (total size/128bytes), if remain exist, file packet number++
+  	unsigned int	filechecksum;		// (sum of file&0x0000FFFFF)
+  	unsigned int	currentpacketnum;	// current packet sequnce number(0,1,2........)
+  	unsigned int	filepacketnum;		// file packet number = (total size/128bytes), if remain exist, file packet number++
   	unsigned char 	onepacketbuf[128+32];
 
-  	unsigned int	currentFileOffset;		// Current file offset
-  	unsigned int	readsize;				// currnet read size
+  	unsigned int	currentFileOffset;	// Current file offset
+  	unsigned int	readsize;		// currnet read size
 
-  	unsigned int receive_addr;
+  	unsigned int	receive_addr;
 
   	unsigned int	ispossiblefirmup[16]; 	// is it possible to update firmware?
-  	int 			result;
+  	int 		result;
 
-  	int				appstatus[16];			// Application status
+  	int		appstatus[16];		// Application status
 
 } FIRMWARE_UP_FILE_INFO, *PFIRMWARE_UP_FILE_INFO;
 
@@ -172,10 +172,10 @@ void nvp6158_coax_tx_16bit_cmd_send( nvp6158_coax_str *ps_coax_str );
 void nvp6158_coax_tx_cvi_new_cmd_send( nvp6158_coax_str *ps_coax_str );
 
 // Coaxial Down Stream Function
-void nvp6158_coax_rx_init( nvp6158_coax_str *ps_coax_str );          // Coax Rx : Initialize
-void nvp6158_coax_rx_data_get( nvp6158_coax_str *coax_rx );      // Coax Rx : All Rx Buffer read
-void nvp6158_coax_rx_buffer_clear( nvp6158_coax_str *ps_coax_str );  // Coax Rx : Rx Buffer Clear
-void nvp6158_coax_rx_deinit( nvp6158_coax_str *ps_coax_str );        // Coax Rx : 3x63 Set[ 1 -> 0 ]
+void nvp6158_coax_rx_init( nvp6158_coax_str *ps_coax_str );          	// Coax Rx : Initialize
+void nvp6158_coax_rx_data_get( nvp6158_coax_str *coax_rx );      	// Coax Rx : All Rx Buffer read
+void nvp6158_coax_rx_buffer_clear( nvp6158_coax_str *ps_coax_str );  	// Coax Rx : Rx Buffer Clear
+void nvp6158_coax_rx_deinit( nvp6158_coax_str *ps_coax_str );        	// Coax Rx : 3x63 Set[ 1 -> 0 ]
 
 // Coaxial FW Update Function
 void nvp6158_coax_fw_ready_header_check_from_isp_recv(void *p_param);

@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Rockchip CIF Driver
+ *  Techpoint Lib
  *
- * Copyright (C) 2022 Rockchip Electronics Co., Ltd.
+ * Copyright (C) 2023 Rockchip Electronics Co., Ltd.
  */
 
 #ifndef _TECHPOINT_COMMON_H
@@ -52,6 +52,7 @@ enum techpoint_chips {
 	CHIP_TP2815,
 	CHIP_TP9930,
 	CHIP_TP9950,
+	CHIP_TP9951,
 };
 
 enum techpoint_input_type {
@@ -69,14 +70,6 @@ enum techpoint_support_reso {
 	TECHPOINT_S_RESO_PAL,
 	TECHPOINT_S_RESO_NTSC,
 	TECHPOINT_S_RESO_NUMS,
-};
-
-enum techpoint_max_pad {
-	PAD0,
-	PAD1,
-	PAD2,
-	PAD3,
-	PAD_MAX,
 };
 
 struct techpoint_video_modes {

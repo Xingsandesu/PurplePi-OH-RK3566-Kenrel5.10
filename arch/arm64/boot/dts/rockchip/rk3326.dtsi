@@ -1,7 +1,6 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Copyright (c) 2017 Fuzhou Rockchip Electronics Co., Ltd
- *
- * SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+ * Copyright (c) 2020 Fuzhou Rockchip Electronics Co., Ltd
  */
 
 #include "px30.dtsi"
@@ -9,6 +8,10 @@
 &cru {
 	assigned-clocks = <&cru PLL_NPLL>;
 	assigned-clock-rates = <1040000000>;
+};
+
+&display_subsystem {
+	ports = <&vopb_out>;
 };
 
 &gpu_opp_table {
@@ -77,3 +80,9 @@
 		};
 	};
 };
+
+/delete-node/ &dsi_in_vopl;
+/delete-node/ &lvds_vopl_in;
+/delete-node/ &rgb_in_vopl;
+/delete-node/ &vopl;
+/delete-node/ &vopl_mmu;

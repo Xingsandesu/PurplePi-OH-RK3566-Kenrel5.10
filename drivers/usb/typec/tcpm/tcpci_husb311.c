@@ -12,11 +12,13 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/regmap.h>
+#include <linux/regulator/consumer.h>
 #include <linux/usb/tcpm.h>
 #include "tcpci.h"
 
 #define HUSB311_VID		0x2E99
 #define HUSB311_PID		0x0311
+#define HUSB311_TCPC_POWER	0x90
 #define HUSB311_TCPC_SOFTRESET	0xA0
 #define HUSB311_TCPC_FILTER	0xA1
 #define HUSB311_TCPC_TDRP	0xA2
@@ -26,7 +28,14 @@ struct husb311_chip {
 	struct tcpci_data data;
 	struct tcpci *tcpci;
 	struct device *dev;
+	struct regulator *vbus;
+	bool vbus_on;
 };
+
+static int husb311_read8(struct husb311_chip *chip, unsigned int reg, u8 *val)
+{
+	return regmap_raw_read(chip->data.regmap, reg, val, sizeof(u8));
+}
 
 static int husb311_write8(struct husb311_chip *chip, unsigned int reg, u8 val)
 {
@@ -70,6 +79,33 @@ static int husb311_init(struct tcpci *tcpci, struct tcpci_data *tdata)
 	if (ret < 0)
 		dev_err(chip->dev, "fail to init registers(%d)\n", ret);
 
+	return ret;
+}
+
+static int husb311_set_vbus(struct tcpci *tcpci, struct tcpci_data *tdata,
+			    bool on, bool charge)
+{
+	struct husb311_chip *chip = tdata_to_husb311(tdata);
+	int ret = 0;
+
+	if (chip->vbus_on == on) {
+		dev_dbg(chip->dev, "vbus is already %s", on ? "On" : "Off");
+		goto done;
+	}
+
+	if (on)
+		ret = regulator_enable(chip->vbus);
+	else
+		ret = regulator_disable(chip->vbus);
+	if (ret < 0) {
+		dev_err(chip->dev, "cannot %s vbus regulator, ret=%d",
+			on ? "enable" : "disable", ret);
+		goto done;
+	}
+
+	chip->vbus_on = on;
+
+done:
 	return ret;
 }
 
@@ -133,12 +169,22 @@ static int husb311_probe(struct i2c_client *client,
 	chip->dev = &client->dev;
 	i2c_set_clientdata(client, chip);
 
+	chip->vbus = devm_regulator_get_optional(chip->dev, "vbus");
+	if (IS_ERR(chip->vbus)) {
+		ret = PTR_ERR(chip->vbus);
+		chip->vbus = NULL;
+		if (ret != -ENODEV)
+			return ret;
+	}
+
 	ret = husb311_sw_reset(chip);
 	if (ret < 0) {
 		dev_err(chip->dev, "fail to soft reset, ret = %d\n", ret);
 		return ret;
 	}
 
+	if (chip->vbus)
+		chip->data.set_vbus = husb311_set_vbus;
 	chip->data.init = husb311_init;
 	chip->tcpci = tcpci_register_port(chip->dev, &chip->data);
 	if (IS_ERR(chip->tcpci))
@@ -166,6 +212,53 @@ static int husb311_remove(struct i2c_client *client)
 	return 0;
 }
 
+static int husb311_pm_suspend(struct device *dev)
+{
+	struct husb311_chip *chip = dev->driver_data;
+	int ret = 0;
+	u8 pwr;
+
+	/*
+	 * Disable 12M oscillator to save power consumption, and it will be
+	 * enabled automatically when INT occur after system resume.
+	 */
+	ret = husb311_read8(chip, HUSB311_TCPC_POWER, &pwr);
+	if (ret < 0)
+		return ret;
+
+	pwr &= ~BIT(0);
+	ret = husb311_write8(chip, HUSB311_TCPC_POWER, pwr);
+	if (ret < 0)
+		return ret;
+
+	return 0;
+}
+
+static int husb311_pm_resume(struct device *dev)
+{
+	struct husb311_chip *chip = dev->driver_data;
+	int ret = 0;
+	u8 pwr;
+
+	/*
+	 * When the power of husb311 is lost or i2c read failed in PM S/R
+	 * process, we must reset the tcpm port first to ensure the devices
+	 * can attach again.
+	 */
+	ret = husb311_read8(chip, HUSB311_TCPC_POWER, &pwr);
+	if (pwr & BIT(0) || ret < 0) {
+		ret = husb311_sw_reset(chip);
+		if (ret < 0) {
+			dev_err(chip->dev, "fail to soft reset, ret = %d\n", ret);
+			return ret;
+		}
+
+		tcpm_tcpc_reset(tcpci_get_tcpm_port(chip->tcpci));
+	}
+
+	return 0;
+}
+
 static const struct i2c_device_id husb311_id[] = {
 	{ "husb311", 0 },
 	{ }
@@ -180,9 +273,15 @@ static const struct of_device_id husb311_of_match[] = {
 MODULE_DEVICE_TABLE(of, husb311_of_match);
 #endif
 
+static const struct dev_pm_ops husb311_pm_ops = {
+	.suspend = husb311_pm_suspend,
+	.resume = husb311_pm_resume,
+};
+
 static struct i2c_driver husb311_i2c_driver = {
 	.driver = {
 		.name = "husb311",
+		.pm = &husb311_pm_ops,
 		.of_match_table = of_match_ptr(husb311_of_match),
 	},
 	.probe = husb311_probe,

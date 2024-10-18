@@ -17,65 +17,103 @@
 
 USB_GADGET_COMPOSITE_OPTIONS();
 
-#if !defined(CONFIG_GADGET_UAC1) || !defined(CONFIG_GADGET_UAC1_LEGACY)
-#include "u_uac.h"
+#ifndef CONFIG_GADGET_UAC1
+#include "u_uac2.h"
 
 /* Playback(USB-IN) Default Stereo - Fl/Fr */
-static int p_chmask = UAC_DEF_PCHMASK;
-module_param(p_chmask, uint, S_IRUGO);
+static int p_chmask = UAC2_DEF_PCHMASK;
+module_param(p_chmask, uint, 0444);
 MODULE_PARM_DESC(p_chmask, "Playback Channel Mask");
 
 /* Playback Default 48 KHz */
-static int p_srate = UAC_DEF_PSRATE;
-module_param(p_srate, uint, S_IRUGO);
-MODULE_PARM_DESC(p_srate, "Playback Sampling Rate");
+static int p_srates[UAC_MAX_RATES] = {UAC2_DEF_PSRATE};
+static int p_srates_cnt = 1;
+module_param_array_named(p_srate, p_srates, uint, &p_srates_cnt, 0444);
+MODULE_PARM_DESC(p_srate, "Playback Sampling Rates (array)");
 
 /* Playback Default 16bits/sample */
-static int p_ssize = UAC_DEF_PSSIZE;
-module_param(p_ssize, uint, S_IRUGO);
+static int p_ssize = UAC2_DEF_PSSIZE;
+module_param(p_ssize, uint, 0444);
 MODULE_PARM_DESC(p_ssize, "Playback Sample Size(bytes)");
 
 /* Capture(USB-OUT) Default Stereo - Fl/Fr */
-static int c_chmask = UAC_DEF_CCHMASK;
-module_param(c_chmask, uint, S_IRUGO);
+static int c_chmask = UAC2_DEF_CCHMASK;
+module_param(c_chmask, uint, 0444);
 MODULE_PARM_DESC(c_chmask, "Capture Channel Mask");
 
 /* Capture Default 64 KHz */
-static int c_srate = UAC_DEF_CSRATE;
-module_param(c_srate, uint, S_IRUGO);
-MODULE_PARM_DESC(c_srate, "Capture Sampling Rate");
+static int c_srates[UAC_MAX_RATES] = {UAC2_DEF_CSRATE};
+static int c_srates_cnt = 1;
+module_param_array_named(c_srate, c_srates, uint, &c_srates_cnt, 0444);
+MODULE_PARM_DESC(c_srate, "Capture Sampling Rates (array)");
 
 /* Capture Default 16bits/sample */
-static int c_ssize = UAC_DEF_CSSIZE;
-module_param(c_ssize, uint, S_IRUGO);
+static int c_ssize = UAC2_DEF_CSSIZE;
+module_param(c_ssize, uint, 0444);
+MODULE_PARM_DESC(c_ssize, "Capture Sample Size(bytes)");
+#else
+#ifndef CONFIG_GADGET_UAC1_LEGACY
+#include "u_uac1.h"
+
+/* Playback(USB-IN) Default Stereo - Fl/Fr */
+static int p_chmask = UAC1_DEF_PCHMASK;
+module_param(p_chmask, uint, 0444);
+MODULE_PARM_DESC(p_chmask, "Playback Channel Mask");
+
+/* Playback Default 48 KHz */
+static int p_srates[UAC_MAX_RATES] = {UAC1_DEF_PSRATE};
+static int p_srates_cnt = 1;
+module_param_array_named(p_srate, p_srates, uint, &p_srates_cnt, 0444);
+MODULE_PARM_DESC(p_srate, "Playback Sampling Rates (array)");
+
+/* Playback Default 16bits/sample */
+static int p_ssize = UAC1_DEF_PSSIZE;
+module_param(p_ssize, uint, 0444);
+MODULE_PARM_DESC(p_ssize, "Playback Sample Size(bytes)");
+
+/* Capture(USB-OUT) Default Stereo - Fl/Fr */
+static int c_chmask = UAC1_DEF_CCHMASK;
+module_param(c_chmask, uint, 0444);
+MODULE_PARM_DESC(c_chmask, "Capture Channel Mask");
+
+/* Capture Default 48 KHz */
+static int c_srates[UAC_MAX_RATES] = {UAC1_DEF_CSRATE};
+static int c_srates_cnt = 1;
+module_param_array_named(c_srate, c_srates, uint, &c_srates_cnt, 0444);
+MODULE_PARM_DESC(c_srate, "Capture Sampling Rates (array)");
+
+/* Capture Default 16bits/sample */
+static int c_ssize = UAC1_DEF_CSSIZE;
+module_param(c_ssize, uint, 0444);
 MODULE_PARM_DESC(c_ssize, "Capture Sample Size(bytes)");
 #else /* CONFIG_GADGET_UAC1_LEGACY */
 #include "u_uac1_legacy.h"
 
 static char *fn_play = FILE_PCM_PLAYBACK;
-module_param(fn_play, charp, S_IRUGO);
+module_param(fn_play, charp, 0444);
 MODULE_PARM_DESC(fn_play, "Playback PCM device file name");
 
 static char *fn_cap = FILE_PCM_CAPTURE;
-module_param(fn_cap, charp, S_IRUGO);
+module_param(fn_cap, charp, 0444);
 MODULE_PARM_DESC(fn_cap, "Capture PCM device file name");
 
 static char *fn_cntl = FILE_CONTROL;
-module_param(fn_cntl, charp, S_IRUGO);
+module_param(fn_cntl, charp, 0444);
 MODULE_PARM_DESC(fn_cntl, "Control device file name");
 
 static int req_buf_size = UAC1_OUT_EP_MAX_PACKET_SIZE;
-module_param(req_buf_size, int, S_IRUGO);
+module_param(req_buf_size, int, 0444);
 MODULE_PARM_DESC(req_buf_size, "ISO OUT endpoint request buffer size");
 
 static int req_count = UAC1_REQ_COUNT;
-module_param(req_count, int, S_IRUGO);
+module_param(req_count, int, 0444);
 MODULE_PARM_DESC(req_count, "ISO OUT endpoint request count");
 
 static int audio_buf_size = UAC1_AUDIO_BUF_SIZE;
-module_param(audio_buf_size, int, S_IRUGO);
+module_param(audio_buf_size, int, 0444);
 MODULE_PARM_DESC(audio_buf_size, "Audio buffer size");
 #endif /* CONFIG_GADGET_UAC1_LEGACY */
+#endif
 
 /* string IDs are assigned dynamically */
 
@@ -201,10 +239,16 @@ static struct usb_configuration audio_config_driver = {
 
 static int audio_bind(struct usb_composite_dev *cdev)
 {
-#if !defined(CONFIG_GADGET_UAC1) || !defined(CONFIG_GADGET_UAC1_LEGACY)
-	struct f_uac_opts	*uac_opts;
+#ifndef CONFIG_GADGET_UAC1
+	struct f_uac2_opts	*uac2_opts;
+	int i;
+#else
+#ifndef CONFIG_GADGET_UAC1_LEGACY
+	struct f_uac1_opts	*uac1_opts;
+	int i;
 #else
 	struct f_uac1_legacy_opts	*uac1_opts;
+#endif
 #endif
 	int			status;
 
@@ -212,11 +256,9 @@ static int audio_bind(struct usb_composite_dev *cdev)
 	fi_uac2 = usb_get_function_instance("uac2");
 	if (IS_ERR(fi_uac2))
 		return PTR_ERR(fi_uac2);
-	uac_opts = container_of(fi_uac2, struct f_uac_opts, func_inst);
 #else
 #ifndef CONFIG_GADGET_UAC1_LEGACY
 	fi_uac1 = usb_get_function_instance("uac1");
-	uac_opts = container_of(fi_uac1, struct f_uac_opts, func_inst);
 #else
 	fi_uac1 = usb_get_function_instance("uac1_legacy");
 #endif
@@ -224,17 +266,37 @@ static int audio_bind(struct usb_composite_dev *cdev)
 		return PTR_ERR(fi_uac1);
 #endif
 
-#if !defined(CONFIG_GADGET_UAC1) || !defined(CONFIG_GADGET_UAC1_LEGACY)
-	memset(uac_opts, 0x0, sizeof(*uac_opts));
-	uac_opts->p_chmask = p_chmask;
-	uac_opts->p_srate[0] = p_srate;
-	uac_opts->p_srate_active = p_srate;
-	uac_opts->p_ssize = p_ssize;
-	uac_opts->c_chmask = c_chmask;
-	uac_opts->c_srate[0] = c_srate;
-	uac_opts->c_srate_active = c_srate;
-	uac_opts->c_ssize = c_ssize;
-	uac_opts->req_number = UAC_DEF_REQ_NUM;
+#ifndef CONFIG_GADGET_UAC1
+	uac2_opts = container_of(fi_uac2, struct f_uac2_opts, func_inst);
+	uac2_opts->p_chmask = p_chmask;
+
+	for (i = 0; i < p_srates_cnt; ++i)
+		uac2_opts->p_srates[i] = p_srates[i];
+
+	uac2_opts->p_ssize = p_ssize;
+	uac2_opts->c_chmask = c_chmask;
+
+	for (i = 0; i < c_srates_cnt; ++i)
+		uac2_opts->c_srates[i] = c_srates[i];
+
+	uac2_opts->c_ssize = c_ssize;
+	uac2_opts->req_number = UAC2_DEF_REQ_NUM;
+#else
+#ifndef CONFIG_GADGET_UAC1_LEGACY
+	uac1_opts = container_of(fi_uac1, struct f_uac1_opts, func_inst);
+	uac1_opts->p_chmask = p_chmask;
+
+	for (i = 0; i < p_srates_cnt; ++i)
+		uac1_opts->p_srates[i] = p_srates[i];
+
+	uac1_opts->p_ssize = p_ssize;
+	uac1_opts->c_chmask = c_chmask;
+
+	for (i = 0; i < c_srates_cnt; ++i)
+		uac1_opts->c_srates[i] = c_srates[i];
+
+	uac1_opts->c_ssize = c_ssize;
+	uac1_opts->req_number = UAC1_DEF_REQ_NUM;
 #else /* CONFIG_GADGET_UAC1_LEGACY */
 	uac1_opts = container_of(fi_uac1, struct f_uac1_legacy_opts, func_inst);
 	uac1_opts->fn_play = fn_play;
@@ -244,6 +306,7 @@ static int audio_bind(struct usb_composite_dev *cdev)
 	uac1_opts->req_count = req_count;
 	uac1_opts->audio_buf_size = audio_buf_size;
 #endif /* CONFIG_GADGET_UAC1_LEGACY */
+#endif
 
 	status = usb_string_ids_tab(cdev, strings_dev);
 	if (status < 0)

@@ -302,31 +302,7 @@
 #define ISP_GAMMA_OUT_Y39			(ISP_GAMMA_OUT_BASE + 0x000ac)
 #define ISP_GAMMA_OUT_Y40			(ISP_GAMMA_OUT_BASE + 0x000b0)
 
-#define SELF_RESIZE_BASE			0x00000C00
-#define SELF_RESIZE_CTRL			(SELF_RESIZE_BASE + 0x00000)
-#define SELF_RESIZE_SCALE_HY			(SELF_RESIZE_BASE + 0x00004)
-#define SELF_RESIZE_SCALE_HCB			(SELF_RESIZE_BASE + 0x00008)
-#define SELF_RESIZE_SCALE_HCR			(SELF_RESIZE_BASE + 0x0000c)
-#define SELF_RESIZE_SCALE_VY			(SELF_RESIZE_BASE + 0x00010)
-#define SELF_RESIZE_SCALE_VC			(SELF_RESIZE_BASE + 0x00014)
-#define SELF_RESIZE_PHASE_HY			(SELF_RESIZE_BASE + 0x00018)
-#define SELF_RESIZE_PHASE_HC			(SELF_RESIZE_BASE + 0x0001c)
-#define SELF_RESIZE_PHASE_VY			(SELF_RESIZE_BASE + 0x00020)
-#define SELF_RESIZE_PHASE_VC			(SELF_RESIZE_BASE + 0x00024)
-#define SELF_RESIZE_SCALE_LUT_ADDR		(SELF_RESIZE_BASE + 0x00028)
-#define SELF_RESIZE_SCALE_LUT			(SELF_RESIZE_BASE + 0x0002c)
-#define SELF_RESIZE_CTRL_SHD			(SELF_RESIZE_BASE + 0x00030)
-#define SELF_RESIZE_SCALE_HY_SHD		(SELF_RESIZE_BASE + 0x00034)
-#define SELF_RESIZE_SCALE_HCB_SHD		(SELF_RESIZE_BASE + 0x00038)
-#define SELF_RESIZE_SCALE_HCR_SHD		(SELF_RESIZE_BASE + 0x0003c)
-#define SELF_RESIZE_SCALE_VY_SHD		(SELF_RESIZE_BASE + 0x00040)
-#define SELF_RESIZE_SCALE_VC_SHD		(SELF_RESIZE_BASE + 0x00044)
-#define SELF_RESIZE_PHASE_HY_SHD		(SELF_RESIZE_BASE + 0x00048)
-#define SELF_RESIZE_PHASE_HC_SHD		(SELF_RESIZE_BASE + 0x0004c)
-#define SELF_RESIZE_PHASE_VY_SHD		(SELF_RESIZE_BASE + 0x00050)
-#define SELF_RESIZE_PHASE_VC_SHD		(SELF_RESIZE_BASE + 0x00054)
-
-#define MAIN_RESIZE_BASE			0x00001000
+#define MAIN_RESIZE_BASE			0x00000C00
 #define MAIN_RESIZE_CTRL			(MAIN_RESIZE_BASE + 0x00000)
 #define MAIN_RESIZE_SCALE_HY			(MAIN_RESIZE_BASE + 0x00004)
 #define MAIN_RESIZE_SCALE_HCB			(MAIN_RESIZE_BASE + 0x00008)
@@ -349,6 +325,30 @@
 #define MAIN_RESIZE_PHASE_HC_SHD		(MAIN_RESIZE_BASE + 0x0004c)
 #define MAIN_RESIZE_PHASE_VY_SHD		(MAIN_RESIZE_BASE + 0x00050)
 #define MAIN_RESIZE_PHASE_VC_SHD		(MAIN_RESIZE_BASE + 0x00054)
+
+#define SELF_RESIZE_BASE			0x00001000
+#define SELF_RESIZE_CTRL			(SELF_RESIZE_BASE + 0x00000)
+#define SELF_RESIZE_SCALE_HY			(SELF_RESIZE_BASE + 0x00004)
+#define SELF_RESIZE_SCALE_HCB			(SELF_RESIZE_BASE + 0x00008)
+#define SELF_RESIZE_SCALE_HCR			(SELF_RESIZE_BASE + 0x0000c)
+#define SELF_RESIZE_SCALE_VY			(SELF_RESIZE_BASE + 0x00010)
+#define SELF_RESIZE_SCALE_VC			(SELF_RESIZE_BASE + 0x00014)
+#define SELF_RESIZE_PHASE_HY			(SELF_RESIZE_BASE + 0x00018)
+#define SELF_RESIZE_PHASE_HC			(SELF_RESIZE_BASE + 0x0001c)
+#define SELF_RESIZE_PHASE_VY			(SELF_RESIZE_BASE + 0x00020)
+#define SELF_RESIZE_PHASE_VC			(SELF_RESIZE_BASE + 0x00024)
+#define SELF_RESIZE_SCALE_LUT_ADDR		(SELF_RESIZE_BASE + 0x00028)
+#define SELF_RESIZE_SCALE_LUT			(SELF_RESIZE_BASE + 0x0002c)
+#define SELF_RESIZE_CTRL_SHD			(SELF_RESIZE_BASE + 0x00030)
+#define SELF_RESIZE_SCALE_HY_SHD		(SELF_RESIZE_BASE + 0x00034)
+#define SELF_RESIZE_SCALE_HCB_SHD		(SELF_RESIZE_BASE + 0x00038)
+#define SELF_RESIZE_SCALE_HCR_SHD		(SELF_RESIZE_BASE + 0x0003c)
+#define SELF_RESIZE_SCALE_VY_SHD		(SELF_RESIZE_BASE + 0x00040)
+#define SELF_RESIZE_SCALE_VC_SHD		(SELF_RESIZE_BASE + 0x00044)
+#define SELF_RESIZE_PHASE_HY_SHD		(SELF_RESIZE_BASE + 0x00048)
+#define SELF_RESIZE_PHASE_HC_SHD		(SELF_RESIZE_BASE + 0x0004c)
+#define SELF_RESIZE_PHASE_VY_SHD		(SELF_RESIZE_BASE + 0x00050)
+#define SELF_RESIZE_PHASE_VC_SHD		(SELF_RESIZE_BASE + 0x00054)
 
 #define MI_BASE					0x00001400
 #define MI_WR_CTRL				(MI_BASE + 0x00000)
@@ -2492,6 +2492,7 @@
 
 /* HDRMGE */
 /* ISP_HDRMGE_CTRL */
+#define ISP_HDRMGE_MODE_MASK		GENMASK(3, 2)
 #define ISP_HDRMGE_EN			BIT(0)
 
 /* RAWNR */
@@ -2577,30 +2578,30 @@
 /* ISP21 DHAZ/DRC/BAY3D */
 #define ISP21_SELF_FORCE_UPD		BIT(31)
 
-static inline bool dmatx0_is_stream_stopped(void __iomem *base)
+static inline bool dmatx0_is_stream_stopped(struct rkisp_stream *stream)
 {
-	u32 ret = readl(base + CSI2RX_RAW0_WR_CTRL);
+	u32 ret = rkisp_read(stream->ispdev, CSI2RX_RAW0_WR_CTRL, true);
 
 	return !(ret & SW_CSI_RAW_WR_EN_SHD);
 }
 
-static inline bool dmatx1_is_stream_stopped(void __iomem *base)
+static inline bool dmatx1_is_stream_stopped(struct rkisp_stream *stream)
 {
-	u32 ret = readl(base + CSI2RX_RAW1_WR_CTRL);
+	u32 ret = rkisp_read(stream->ispdev, CSI2RX_RAW1_WR_CTRL, true);
 
 	return !(ret & SW_CSI_RAW_WR_EN_SHD);
 }
 
-static inline bool dmatx2_is_stream_stopped(void __iomem *base)
+static inline bool dmatx2_is_stream_stopped(struct rkisp_stream *stream)
 {
-	u32 ret = readl(base + CSI2RX_RAW2_WR_CTRL);
+	u32 ret = rkisp_read(stream->ispdev, CSI2RX_RAW2_WR_CTRL, true);
 
 	return !(ret & SW_CSI_RAW_WR_EN_SHD);
 }
 
-static inline bool dmatx3_is_stream_stopped(void __iomem *base)
+static inline bool dmatx3_is_stream_stopped(struct rkisp_stream *stream)
 {
-	u32 ret = readl(base + CSI2RX_RAW3_WR_CTRL);
+	u32 ret = rkisp_read(stream->ispdev, CSI2RX_RAW3_WR_CTRL, true);
 
 	return !(ret & SW_CSI_RAW_WR_EN_SHD);
 }
@@ -2697,8 +2698,13 @@ static inline void mi_raw_length(struct rkisp_stream *stream)
 		is_direct = false;
 	rkisp_write(stream->ispdev, stream->config->mi.length,
 		    stream->out_fmt.plane_fmt[0].bytesperline, is_direct);
-	if (stream->ispdev->isp_ver == ISP_V21)
+	if (stream->ispdev->isp_ver == ISP_V21 || stream->ispdev->isp_ver == ISP_V30)
 		rkisp_set_bits(stream->ispdev, MI_RD_CTRL2, 0, BIT(30), false);
+	if (stream->ispdev->hw_dev->unite) {
+		rkisp_next_write(stream->ispdev, stream->config->mi.length,
+				 stream->out_fmt.plane_fmt[0].bytesperline, is_direct);
+		rkisp_next_set_bits(stream->ispdev, MI_RD_CTRL2, 0, BIT(30), false);
+	}
 }
 
 static inline void rx_force_upd(void __iomem *base)

@@ -109,14 +109,6 @@
 		simple-audio-card,format = "i2s";
 		simple-audio-card,name = "rockchip,rk809-codec";
 		simple-audio-card,mclk-fs = <256>;
-		simple-audio-card,widgets =
-			"Microphone", "Mic Jack",
-			"Headphone", "Headphone Jack";
-		simple-audio-card,routing =
-			"Mic Jack", "MICBIAS1",
-			"IN1P", "Mic Jack",
-			"Headphone Jack", "HPOL",
-			"Headphone Jack", "HPOR";
 		simple-audio-card,cpu {
 			sound-dai = <&i2s0_8ch>;
 		};
@@ -504,18 +496,6 @@
 				remote-endpoint = <&ucam_out0>;
 				data-lanes = <1 2 3 4>;
 			};
-
-			mipi_in_ucam2: endpoint@2 {
-				reg = <2>;
-				remote-endpoint = <&ucam_out2>;
-				data-lanes = <1 2 3 4>;
-			};
-
-			mipi_in_ucam3: endpoint@3 {
-				reg = <3>;
-				remote-endpoint = <&ucam_out3>;
-				data-lanes = <1 2 3 4>;
-			};
 		};
 		port@1 {
 			reg = <1>;
@@ -569,7 +549,8 @@
 	non-removable;
 	mmc-hs200-1_8v;
 	rockchip,default-sample-phase = <90>;
-	supports-emmc;
+	no-sdio;
+	no-sd;
 	/delete-property/ pinctrl-names;
 	/delete-property/ pinctrl-0;
 	status = "okay";
@@ -878,56 +859,6 @@
 		port {
 			cam_para_out1: endpoint {
 				/* remote-endpoint = <&cif_para_in>; */
-			};
-		};
-	};
-
-	imx415: imx415@1a {
-		compatible = "sony,imx415";
-		reg = <0x1a>;
-		clocks = <&cru CLK_MIPICSI_OUT>;
-		clock-names = "xvclk";
-		power-domains = <&power RV1126_PD_VI>;
-		pinctrl-names = "rockchip,camera_default";
-		pinctrl-0 = <&mipicsi_clk0>;
-		avdd-supply = <&vcc_avdd>;
-		dovdd-supply = <&vcc_dovdd>;
-		dvdd-supply = <&vcc_dvdd>;
-		pwdn-gpios = <&gpio1 RK_PD4 GPIO_ACTIVE_HIGH>;
-		rockchip,camera-module-index = <1>;
-		rockchip,camera-module-facing = "front";
-		rockchip,camera-module-name = "YT10092";
-		rockchip,camera-module-lens-name = "IR0147-36IRC-8M-F20";
-		ir-cut = <&cam_ircut0>;
-		port {
-			ucam_out2: endpoint {
-				remote-endpoint = <&mipi_in_ucam2>;
-				data-lanes = <1 2 3 4>;
-			};
-		};
-	};
-
-	imx335: imx335@1a {
-		compatible = "sony,imx335";
-		reg = <0x1a>;
-		clocks = <&cru CLK_MIPICSI_OUT>;
-		clock-names = "xvclk";
-		power-domains = <&power RV1126_PD_VI>;
-		pinctrl-names = "rockchip,camera_default";
-		pinctrl-0 = <&mipicsi_clk0>;
-		avdd-supply = <&vcc_avdd>;
-		dovdd-supply = <&vcc_dovdd>;
-		dvdd-supply = <&vcc_dvdd>;
-		pwdn-gpios = <&gpio1 RK_PD4 GPIO_ACTIVE_HIGH>;
-		rockchip,camera-module-index = <1>;
-		rockchip,camera-module-facing = "front";
-		rockchip,camera-module-name = "MTV4-IR-E-P";
-		rockchip,camera-module-lens-name = "40IRC-4MP-F16";
-		ir-cut = <&cam_ircut0>;
-		port {
-			ucam_out3: endpoint {
-				remote-endpoint = <&mipi_in_ucam3>;
-				data-lanes = <1 2 3 4>;
 			};
 		};
 	};
@@ -1333,7 +1264,8 @@
 	cap-sd-highspeed;
 	card-detect-delay = <200>;
 	rockchip,default-sample-phase = <90>;
-	supports-sd;
+	no-sdio;
+	no-mmc;
 	sd-uhs-sdr12;
 	sd-uhs-sdr25;
 	sd-uhs-sdr104;
@@ -1351,7 +1283,8 @@
 	non-removable;
 	rockchip,default-sample-phase = <90>;
 	sd-uhs-sdr104;
-	supports-sdio;
+	no-sd;
+	no-mmc;
 	mmc-pwrseq = <&sdio_pwrseq>;
 	status = "okay";
 };
@@ -1360,6 +1293,14 @@
 	/delete-property/ pinctrl-names;
 	/delete-property/ pinctrl-0;
 	status = "okay";
+
+	flash@0 {
+		compatible = "spi-nand";
+		reg = <0>;
+		spi-max-frequency = <80000000>;
+		spi-rx-bus-width = <4>;
+		spi-tx-bus-width = <1>;
+	};
 };
 
 &u2phy0 {

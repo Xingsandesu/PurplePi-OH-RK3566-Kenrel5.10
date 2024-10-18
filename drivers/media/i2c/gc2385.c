@@ -443,9 +443,7 @@ static int gc2385_g_frame_interval(struct v4l2_subdev *sd,
 	struct gc2385 *gc2385 = to_gc2385(sd);
 	const struct gc2385_mode *mode = gc2385->cur_mode;
 
-	mutex_lock(&gc2385->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&gc2385->mutex);
 
 	return 0;
 }
@@ -729,7 +727,7 @@ static void __gc2385_power_off(struct gc2385 *gc2385)
 	regulator_bulk_disable(GC2385_NUM_SUPPLIES, gc2385->supplies);
 }
 
-static int gc2385_runtime_resume(struct device *dev)
+static int __maybe_unused gc2385_runtime_resume(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
@@ -738,7 +736,7 @@ static int gc2385_runtime_resume(struct device *dev)
 	return __gc2385_power_on(gc2385);
 }
 
-static int gc2385_runtime_suspend(struct device *dev)
+static int __maybe_unused gc2385_runtime_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
@@ -778,16 +776,14 @@ static int gc2385_enum_frame_interval(struct v4l2_subdev *sd,
 	if (fie->index >= ARRAY_SIZE(supported_modes))
 		return -EINVAL;
 
-	if (fie->code != MEDIA_BUS_FMT_SBGGR10_1X10)
-		return -EINVAL;
-
+	fie->code = MEDIA_BUS_FMT_SBGGR10_1X10;
 	fie->width = supported_modes[fie->index].width;
 	fie->height = supported_modes[fie->index].height;
 	fie->interval = supported_modes[fie->index].max_fps;
 	return 0;
 }
 
-static int gc2385_g_mbus_config(struct v4l2_subdev *sd,
+static int gc2385_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
 	u32 val = 0;
@@ -795,7 +791,7 @@ static int gc2385_g_mbus_config(struct v4l2_subdev *sd,
 	val = 1 << (GC2385_LANES - 1) |
 	      V4L2_MBUS_CSI2_CHANNEL_0 |
 	      V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
-	config->type = V4L2_MBUS_CSI2;
+	config->type = V4L2_MBUS_CSI2_DPHY;
 	config->flags = val;
 
 	return 0;
@@ -823,7 +819,6 @@ static const struct v4l2_subdev_core_ops gc2385_core_ops = {
 static const struct v4l2_subdev_video_ops gc2385_video_ops = {
 	.s_stream = gc2385_s_stream,
 	.g_frame_interval = gc2385_g_frame_interval,
-	.g_mbus_config = gc2385_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops gc2385_pad_ops = {
@@ -832,6 +827,7 @@ static const struct v4l2_subdev_pad_ops gc2385_pad_ops = {
 	.enum_frame_interval = gc2385_enum_frame_interval,
 	.get_fmt = gc2385_get_fmt,
 	.set_fmt = gc2385_set_fmt,
+	.get_mbus_config = gc2385_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops gc2385_subdev_ops = {

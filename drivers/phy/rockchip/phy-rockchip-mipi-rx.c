@@ -750,6 +750,9 @@ static int mipidphy_get_sensor_data_rate(struct v4l2_subdev *sd)
 	struct v4l2_querymenu qm = { .id = V4L2_CID_LINK_FREQ, };
 	int ret;
 
+	if (!sensor_sd)
+		return -ENODEV;
+
 	link_freq = v4l2_ctrl_find(sensor_sd->ctrl_handler, V4L2_CID_LINK_FREQ);
 	if (!link_freq) {
 		v4l2_warn(sd, "No pixel rate control in subdev\n");
@@ -777,11 +780,16 @@ static int mipidphy_update_sensor_mbus(struct v4l2_subdev *sd)
 {
 	struct mipidphy_priv *priv = to_dphy_priv(sd);
 	struct v4l2_subdev *sensor_sd = get_remote_sensor(sd);
-	struct mipidphy_sensor *sensor = sd_to_sensor(priv, sensor_sd);
+	struct mipidphy_sensor *sensor;
 	struct v4l2_mbus_config mbus;
 	int ret;
 
-	ret = v4l2_subdev_call(sensor_sd, video, g_mbus_config, &mbus);
+	if (!sensor_sd)
+		return -ENODEV;
+	sensor = sd_to_sensor(priv, sensor_sd);
+	if (!sensor)
+		return -ENODEV;
+	ret = v4l2_subdev_call(sensor_sd, pad, get_mbus_config, 0, &mbus);
 	if (ret)
 		return ret;
 
@@ -899,7 +907,7 @@ static int mipidphy_g_frame_interval(struct v4l2_subdev *sd,
 	return -EINVAL;
 }
 
-static int mipidphy_g_mbus_config(struct v4l2_subdev *sd,
+static int mipidphy_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad_id,
 				  struct v4l2_mbus_config *config)
 {
 	struct mipidphy_priv *priv = to_dphy_priv(sd);
@@ -909,6 +917,8 @@ static int mipidphy_g_mbus_config(struct v4l2_subdev *sd,
 	if (!sensor_sd)
 		return -ENODEV;
 	sensor = sd_to_sensor(priv, sensor_sd);
+	if (!sensor)
+		return -ENODEV;
 	mipidphy_update_sensor_mbus(sd);
 	*config = sensor->mbus;
 
@@ -925,7 +935,7 @@ static int mipidphy_s_power(struct v4l2_subdev *sd, int on)
 		return pm_runtime_put(priv->dev);
 }
 
-static int mipidphy_runtime_suspend(struct device *dev)
+static int __maybe_unused mipidphy_runtime_suspend(struct device *dev)
 {
 	struct media_entity *me = dev_get_drvdata(dev);
 	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(me);
@@ -940,7 +950,7 @@ static int mipidphy_runtime_suspend(struct device *dev)
 	return 0;
 }
 
-static int mipidphy_runtime_resume(struct device *dev)
+static int __maybe_unused mipidphy_runtime_resume(struct device *dev)
 {
 	struct media_entity *me = dev_get_drvdata(dev);
 	struct v4l2_subdev *sd = media_entity_to_v4l2_subdev(me);
@@ -970,13 +980,16 @@ static int mipidphy_get_set_fmt(struct v4l2_subdev *sd,
 {
 	struct mipidphy_priv *priv = to_dphy_priv(sd);
 	struct v4l2_subdev *sensor_sd = get_remote_sensor(sd);
-	struct mipidphy_sensor *sensor = sd_to_sensor(priv, sensor_sd);
+	struct mipidphy_sensor *sensor;
 	int ret;
 	/*
 	 * Do not allow format changes and just relay whatever
 	 * set currently in the sensor.
 	 */
 	if (!sensor_sd)
+		return -ENODEV;
+	sensor = sd_to_sensor(priv, sensor_sd);
+	if (!sensor)
 		return -ENODEV;
 	ret = v4l2_subdev_call(sensor_sd, pad, get_fmt, NULL, fmt);
 	if (!ret && fmt->pad == 0)
@@ -997,6 +1010,7 @@ static const struct v4l2_subdev_pad_ops mipidphy_subdev_pad_ops = {
 	.set_fmt = mipidphy_get_set_fmt,
 	.get_fmt = mipidphy_get_set_fmt,
 	.get_selection = mipidphy_get_selection,
+	.get_mbus_config = mipidphy_g_mbus_config,
 };
 
 static const struct v4l2_subdev_core_ops mipidphy_core_ops = {
@@ -1005,7 +1019,6 @@ static const struct v4l2_subdev_core_ops mipidphy_core_ops = {
 
 static const struct v4l2_subdev_video_ops mipidphy_video_ops = {
 	.g_frame_interval = mipidphy_g_frame_interval,
-	.g_mbus_config = mipidphy_g_mbus_config,
 	.s_stream = mipidphy_s_stream,
 };
 
@@ -1146,11 +1159,17 @@ static int mipidphy_rx_stream_on(struct mipidphy_priv *priv,
 				 struct v4l2_subdev *sd)
 {
 	struct v4l2_subdev *sensor_sd = get_remote_sensor(sd);
-	struct mipidphy_sensor *sensor = sd_to_sensor(priv, sensor_sd);
+	struct mipidphy_sensor *sensor;
 	const struct dphy_drv_data *drv_data = priv->drv_data;
 	const struct hsfreq_range *hsfreq_ranges = drv_data->hsfreq_ranges;
 	int num_hsfreq_ranges = drv_data->num_hsfreq_ranges;
 	int i, hsfreq = 0;
+
+	if (!sensor_sd)
+		return -ENODEV;
+	sensor = sd_to_sensor(priv, sensor_sd);
+	if (!sensor)
+		return -ENODEV;
 
 	for (i = 0; i < num_hsfreq_ranges; i++) {
 		if (hsfreq_ranges[i].range_h >= priv->data_rate_mbps) {
@@ -1237,11 +1256,17 @@ static int mipidphy_txrx_stream_on(struct mipidphy_priv *priv,
 				   struct v4l2_subdev *sd)
 {
 	struct v4l2_subdev *sensor_sd = get_remote_sensor(sd);
-	struct mipidphy_sensor *sensor = sd_to_sensor(priv, sensor_sd);
+	struct mipidphy_sensor *sensor;
 	const struct dphy_drv_data *drv_data = priv->drv_data;
 	const struct hsfreq_range *hsfreq_ranges = drv_data->hsfreq_ranges;
 	int num_hsfreq_ranges = drv_data->num_hsfreq_ranges;
 	int i, hsfreq = 0;
+
+	if (!sensor_sd)
+		return -ENODEV;
+	sensor = sd_to_sensor(priv, sensor_sd);
+	if (!sensor)
+		return -ENODEV;
 
 	for (i = 0; i < num_hsfreq_ranges; i++) {
 		if (hsfreq_ranges[i].range_h >= priv->data_rate_mbps) {
@@ -1356,13 +1381,19 @@ static int csi_mipidphy_stream_on(struct mipidphy_priv *priv,
 				  struct v4l2_subdev *sd)
 {
 	struct v4l2_subdev *sensor_sd = get_remote_sensor(sd);
-	struct mipidphy_sensor *sensor = sd_to_sensor(priv, sensor_sd);
+	struct mipidphy_sensor *sensor;
 	const struct dphy_drv_data *drv_data = priv->drv_data;
 	const struct hsfreq_range *hsfreq_ranges = drv_data->hsfreq_ranges;
 	int num_hsfreq_ranges = drv_data->num_hsfreq_ranges;
 	int i, hsfreq = 0;
 	u32 val = 0;
 	u32 clk_mode = 0x03;
+
+	if (!sensor_sd)
+		return -ENODEV;
+	sensor = sd_to_sensor(priv, sensor_sd);
+	if (!sensor)
+		return -ENODEV;
 
 	write_grf_reg(priv, GRF_DVP_V18SEL, 0x1);
 
@@ -1378,7 +1409,7 @@ static int csi_mipidphy_stream_on(struct mipidphy_priv *priv,
 	write_csiphy_reg(priv, CSIPHY_CTRL_PWRCTL, 0xe0);
 	usleep_range(500, 1000);
 
-	if (sensor->mbus.type == V4L2_MBUS_CSI2) {
+	if (sensor->mbus.type == V4L2_MBUS_CSI2_DPHY) {
 		/* Reset dphy digital part */
 		write_csiphy_reg(priv, CSIPHY_CTRL_DIG_RST, 0x1e);
 		write_csiphy_reg(priv, CSIPHY_CTRL_DIG_RST, 0x1f);
@@ -1652,7 +1683,8 @@ rockchip_mipidphy_notifier_unbind(struct v4l2_async_notifier *notifier,
 						  notifier);
 	struct mipidphy_sensor *sensor = sd_to_sensor(priv, sd);
 
-	sensor->sd = NULL;
+	if (sensor)
+		sensor->sd = NULL;
 }
 
 static const struct
@@ -1674,8 +1706,8 @@ static int rockchip_mipidphy_fwnode_parse(struct device *dev,
 		return -EINVAL;
 	}
 
-	if (vep->bus_type == V4L2_MBUS_CSI2) {
-		config->type = V4L2_MBUS_CSI2;
+	if (vep->bus_type == V4L2_MBUS_CSI2_DPHY) {
+		config->type = V4L2_MBUS_CSI2_DPHY;
 		config->flags = vep->bus.mipi_csi2.flags;
 		s_asd->lanes = vep->bus.mipi_csi2.num_data_lanes;
 	} else if (vep->bus_type == V4L2_MBUS_CCP2) {
@@ -1721,15 +1753,14 @@ static int rockchip_mipidphy_media_init(struct mipidphy_priv *priv)
 	if (ret < 0)
 		return ret;
 
+	v4l2_async_notifier_init(&priv->notifier);
+
 	ret = v4l2_async_notifier_parse_fwnode_endpoints_by_port(
 		priv->dev, &priv->notifier,
 		sizeof(struct sensor_async_subdev), 0,
 		rockchip_mipidphy_fwnode_parse);
 	if (ret < 0)
 		return ret;
-
-	if (!priv->notifier.num_subdevs)
-		return -ENODEV;	/* no endpoint */
 
 	priv->sd.subdev_notifier = &priv->notifier;
 	priv->notifier.ops = &rockchip_mipidphy_async_ops;

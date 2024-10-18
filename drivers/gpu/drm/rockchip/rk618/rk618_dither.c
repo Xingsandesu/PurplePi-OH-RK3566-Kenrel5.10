@@ -5,6 +5,7 @@
  * Author: Wyon Bi <bivvy.bi@rock-chips.com>
  */
 
+#include <linux/module.h>
 #include "rk618_dither.h"
 
 #define RK618_FRC_REG			0x0054
@@ -29,7 +30,6 @@ void rk618_frc_dither_init(struct rk618 *rk618, u32 bus_format)
 		val = FRC_OUT_MODE_RGB666 | FRC_DITHER_DISABLE;
 		break;
 	case MEDIA_BUS_FMT_RGB666_1X24_CPADHI:
-	case MEDIA_BUS_FMT_RGB666_1X7X3_JEIDA:
 		val = FRC_OUT_MODE_RGB888 | FRC_DITHER_ENABLE;
 		break;
 	case MEDIA_BUS_FMT_RGB888_1X24:
@@ -49,3 +49,5 @@ void rk618_frc_dclk_invert(struct rk618 *rk618)
 	regmap_write(rk618->regmap, RK618_FRC_REG, FRC_DCLK_INV);
 }
 EXPORT_SYMBOL_GPL(rk618_frc_dclk_invert);
+
+MODULE_LICENSE("GPL");

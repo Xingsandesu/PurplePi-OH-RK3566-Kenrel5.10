@@ -599,6 +599,7 @@ static void dm_bow_dtr(struct dm_target *ti)
 	struct bow_context *bc = (struct bow_context *) ti->private;
 	struct kobject *kobj;
 
+	mutex_lock(&bc->ranges_lock);
 	while (rb_first(&bc->ranges)) {
 		struct bow_range *br = container_of(rb_first(&bc->ranges),
 						    struct bow_range, node);
@@ -606,6 +607,8 @@ static void dm_bow_dtr(struct dm_target *ti)
 		rb_erase(&br->node, &bc->ranges);
 		kfree(br);
 	}
+	mutex_unlock(&bc->ranges_lock);
+
 	if (bc->workqueue)
 		destroy_workqueue(bc->workqueue);
 	if (bc->bufio)
@@ -627,7 +630,7 @@ static void dm_bow_io_hints(struct dm_target *ti, struct queue_limits *limits)
 	const unsigned int block_size = bc->block_size;
 
 	limits->logical_block_size =
-		max_t(unsigned short, limits->logical_block_size, block_size);
+		max_t(unsigned int, limits->logical_block_size, block_size);
 	limits->physical_block_size =
 		max_t(unsigned int, limits->physical_block_size, block_size);
 	limits->io_min = max_t(unsigned int, limits->io_min, block_size);
@@ -643,8 +646,7 @@ static void dm_bow_io_hints(struct dm_target *ti, struct queue_limits *limits)
 	}
 }
 
-static int dm_bow_ctr_optional(struct dm_target *ti, unsigned int argc,
-		char **argv)
+static int dm_bow_ctr_optional(struct dm_target *ti, unsigned int argc, char **argv)
 {
 	struct bow_context *bc = ti->private;
 	struct dm_arg_set as;
@@ -717,7 +719,8 @@ static int dm_bow_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 		goto bad;
 	}
 
-	bc->block_size = bc->dev->bdev->bd_queue->limits.logical_block_size;
+	bc->block_size =
+		bdev_get_queue(bc->dev->bdev)->limits.logical_block_size;
 	if (argc > 1) {
 		ret = dm_bow_ctr_optional(ti, argc - 1, &argv[1]);
 		if (ret)
@@ -788,7 +791,6 @@ static int dm_bow_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	rb_insert_color(&br->node, &bc->ranges);
 
 	ti->discards_supported = true;
-	ti->may_passthrough_inline_crypto = true;
 
 	return 0;
 
@@ -1182,6 +1184,7 @@ static void dm_bow_tablestatus(struct dm_target *ti, char *result,
 		return;
 	}
 
+	mutex_lock(&bc->ranges_lock);
 	for (i = rb_first(&bc->ranges); i; i = rb_next(i)) {
 		struct bow_range *br = container_of(i, struct bow_range, node);
 
@@ -1189,11 +1192,11 @@ static void dm_bow_tablestatus(struct dm_target *ti, char *result,
 				    readable_type[br->type],
 				    (unsigned long long)br->sector);
 		if (result >= end)
-			return;
+			goto unlock;
 
 		result += scnprintf(result, end - result, "\n");
 		if (result >= end)
-			return;
+			goto unlock;
 
 		if (br->type == TRIMMED)
 			++trimmed_range_count;
@@ -1215,19 +1218,22 @@ static void dm_bow_tablestatus(struct dm_target *ti, char *result,
 		if (!rb_next(i)) {
 			scnprintf(result, end - result,
 				  "\nERROR: Last range not of type TOP");
-			return;
+			goto unlock;
 		}
 
 		if (br->sector > range_top(br)) {
 			scnprintf(result, end - result,
 				  "\nERROR: sectors out of order");
-			return;
+			goto unlock;
 		}
 	}
 
 	if (trimmed_range_count != trimmed_list_length)
 		scnprintf(result, end - result,
 			  "\nERROR: not all trimmed ranges in trimmed list");
+
+unlock:
+	mutex_unlock(&bc->ranges_lock);
 }
 
 static void dm_bow_status(struct dm_target *ti, status_type_t type,
@@ -1267,6 +1273,7 @@ static int dm_bow_iterate_devices(struct dm_target *ti,
 static struct target_type bow_target = {
 	.name   = "bow",
 	.version = {1, 2, 0},
+	.features = DM_TARGET_PASSES_CRYPTO,
 	.module = THIS_MODULE,
 	.ctr    = dm_bow_ctr,
 	.dtr    = dm_bow_dtr,

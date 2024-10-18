@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0+
+/* SPDX-License-Identifier: GPL-2.0+ */
 /*
  * Copyright (c) 2001-2002 by David Brownell
  */
@@ -218,14 +218,13 @@ struct ehci_hcd {			/* one per controller */
 	unsigned		frame_index_bug:1; /* MosChip (AKA NetMos) */
 	unsigned		need_oc_pp_cycle:1; /* MPC834X port power */
 	unsigned		imx28_write_fix:1; /* For Freescale i.MX28 */
+	/*
+	 * __GENKSYMS__ test is an abi workaround for commit
+	 * 7f2d73788d90 ("usb: ehci: handshake CMD_RUN * instead of STS_HALT")
+	 */
+#ifndef __GENKSYMS__
 	unsigned		is_aspeed:1;
-	unsigned		has_usic:1;
-	#define	USIC_MICROFRAME_OFFSET	0x90
-	#define USIC_SCALE_DOWN_OFFSET	0xa0
-	#define USIC_ENABLE_OFFSET	0xb0
-	#define USIC_ENABLE		BIT(0)
-	#define USIC_SCALE_DOWN		BIT(2)
-	#define USIC_MICROFRAME_COUNT	0x1d4d
+#endif
 
 	/* required for usb32 quirk */
 	#define OHCI_CTRL_HCFS          (3 << 6)
@@ -243,9 +242,9 @@ struct ehci_hcd {			/* one per controller */
 	/* irq statistics */
 #ifdef EHCI_STATS
 	struct ehci_stats	stats;
-#	define COUNT(x) ((x)++)
+#	define INCR(x) ((x)++)
 #else
-#	define COUNT(x)
+#	define INCR(x) do {} while (0)
 #endif
 
 	/* debug files */
@@ -263,7 +262,7 @@ struct ehci_hcd {			/* one per controller */
 	struct list_head	tt_list;
 
 	/* platform-specific data -- must come last */
-	unsigned long		priv[0] __aligned(sizeof(s64));
+	unsigned long		priv[] __aligned(sizeof(s64));
 };
 
 /* convert between an HCD pointer and the corresponding EHCI_HCD */
@@ -468,7 +467,7 @@ struct ehci_iso_sched {
 	struct list_head	td_list;
 	unsigned		span;
 	unsigned		first_packet;
-	struct ehci_iso_packet	packet[0];
+	struct ehci_iso_packet	packet[];
 };
 
 /*

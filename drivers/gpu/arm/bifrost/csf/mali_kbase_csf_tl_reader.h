@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  *
- * (C) COPYRIGHT 2019-2021 ARM Limited. All rights reserved.
+ * (C) COPYRIGHT 2019-2023 ARM Limited. All rights reserved.
  *
  * This program is free software and is provided to you under the terms of the
  * GNU General Public License version 2 as published by the Free Software
@@ -40,38 +40,6 @@ struct kbase_tlstream;
 struct kbase_device;
 
 /**
- * struct kbase_ts_converter -
- * System timestamp to CPU timestamp converter state.
- *
- * @multiplier:	Numerator of the converter's fraction.
- * @divisor:	Denominator of the converter's fraction.
- * @offset:	Converter's offset term.
- *
- * According to Generic timer spec, system timer:
- * - Increments at a fixed frequency
- * - Starts operating from zero
- *
- * Hence CPU time is a linear function of System Time.
- *
- * CPU_ts = alpha * SYS_ts + beta
- *
- * Where
- * - alpha = 10^9/SYS_ts_freq
- * - beta is calculated by two timer samples taken at the same time:
- *   beta = CPU_ts_s - SYS_ts_s * alpha
- *
- * Since alpha is a rational number, we minimizing possible
- * rounding error by simplifying the ratio. Thus alpha is stored
- * as a simple `multiplier / divisor` ratio.
- *
- */
-struct kbase_ts_converter {
-	u64 multiplier;
-	u64 divisor;
-	s64 offset;
-};
-
-/**
  * struct kbase_csf_tl_reader - CSFFW timeline reader state.
  *
  * @read_timer:        Timer used for periodical tracebufer reading.
@@ -107,7 +75,6 @@ struct kbase_csf_tl_reader {
 		size_t size;
 		size_t btc;
 	} tl_header;
-	struct kbase_ts_converter ts_converter;
 
 	bool got_first_event;
 	bool is_active;
@@ -134,19 +101,16 @@ void kbase_csf_tl_reader_init(struct kbase_csf_tl_reader *self,
 void kbase_csf_tl_reader_term(struct kbase_csf_tl_reader *self);
 
 /**
- *  kbase_csf_tl_reader_flush_buffer() -
- *   Flush trace from buffer into CSFFW timeline stream.
+ *  kbase_csf_tl_reader_flush_buffer() - Flush trace from buffer into CSFFW timeline stream.
  *
  * @self:    CSFFW TL Reader instance.
  *
  * Return: Zero on success, negative error code (EBUSY) otherwise
  */
-
 int kbase_csf_tl_reader_flush_buffer(struct kbase_csf_tl_reader *self);
 
 /**
- * kbase_csf_tl_reader_start() -
- *	Start asynchronous copying of CSFFW timeline stream.
+ * kbase_csf_tl_reader_start() - Start asynchronous copying of CSFFW timeline stream.
  *
  * @self:	CSFFW TL Reader instance.
  * @kbdev:	Kbase device.
@@ -157,8 +121,7 @@ int kbase_csf_tl_reader_start(struct kbase_csf_tl_reader *self,
 	struct kbase_device *kbdev);
 
 /**
- * kbase_csf_tl_reader_stop() -
- *	Stop asynchronous copying of CSFFW timeline stream.
+ * kbase_csf_tl_reader_stop() - Stop asynchronous copying of CSFFW timeline stream.
  *
  * @self:	CSFFW TL Reader instance.
  */
@@ -166,8 +129,7 @@ void kbase_csf_tl_reader_stop(struct kbase_csf_tl_reader *self);
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 /**
- * kbase_csf_tl_reader_debugfs_init() -
- *	Initialize debugfs for CSFFW Timelime Stream Reader.
+ * kbase_csf_tl_reader_debugfs_init() - Initialize debugfs for CSFFW Timelime Stream Reader.
  *
  * @kbdev:	Kbase device.
  */
@@ -175,8 +137,7 @@ void kbase_csf_tl_reader_debugfs_init(struct kbase_device *kbdev);
 #endif
 
 /**
- * kbase_csf_tl_reader_reset() -
- *	Reset CSFFW timeline reader, it should be called before reset CSFFW.
+ * kbase_csf_tl_reader_reset() - Reset CSFFW timeline reader, it should be called before reset CSFFW.
  *
  * @self:	CSFFW TL Reader instance.
  */

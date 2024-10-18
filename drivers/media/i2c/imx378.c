@@ -127,14 +127,6 @@ static const char * const imx378_supply_names[] = {
 
 #define IMX378_NUM_SUPPLIES ARRAY_SIZE(imx378_supply_names)
 
-enum imx378_max_pad {
-	PAD0, /* link to isp */
-	PAD1, /* link to csi wr0 | hdr x2:L x3:M */
-	PAD2, /* link to csi wr1 | hdr      x3:L */
-	PAD3, /* link to csi wr2 | hdr x2:M x3:S */
-	PAD_MAX,
-};
-
 struct regval {
 	u16 addr;
 	u8 val;
@@ -2091,14 +2083,12 @@ static int imx378_g_frame_interval(struct v4l2_subdev *sd,
 	struct imx378 *imx378 = to_imx378(sd);
 	const struct imx378_mode *mode = imx378->cur_mode;
 
-	mutex_lock(&imx378->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&imx378->mutex);
 
 	return 0;
 }
 
-static int imx378_g_mbus_config(struct v4l2_subdev *sd,
+static int imx378_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
 	struct imx378 *imx378 = to_imx378(sd);
@@ -2116,7 +2106,7 @@ static int imx378_g_mbus_config(struct v4l2_subdev *sd,
 		V4L2_MBUS_CSI2_CONTINUOUS_CLOCK |
 		V4L2_MBUS_CSI2_CHANNEL_1;
 
-	config->type = V4L2_MBUS_CSI2;
+	config->type = V4L2_MBUS_CSI2_DPHY;
 	config->flags = val;
 
 	return 0;
@@ -2570,7 +2560,6 @@ static const struct v4l2_subdev_core_ops imx378_core_ops = {
 static const struct v4l2_subdev_video_ops imx378_video_ops = {
 	.s_stream = imx378_s_stream,
 	.g_frame_interval = imx378_g_frame_interval,
-	.g_mbus_config = imx378_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops imx378_pad_ops = {
@@ -2579,6 +2568,7 @@ static const struct v4l2_subdev_pad_ops imx378_pad_ops = {
 	.enum_frame_interval = imx378_enum_frame_interval,
 	.get_fmt = imx378_get_fmt,
 	.set_fmt = imx378_set_fmt,
+	.get_mbus_config = imx378_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops imx378_subdev_ops = {

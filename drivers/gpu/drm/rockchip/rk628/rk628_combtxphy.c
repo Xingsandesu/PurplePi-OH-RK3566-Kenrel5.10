@@ -90,7 +90,6 @@ struct rk628_combtxphy {
 	struct clk *pclk;
 	struct clk *ref_clk;
 	struct reset_control *rstc;
-	enum phy_mode mode;
 	unsigned int flags;
 
 	u16 frac_div;
@@ -229,10 +228,12 @@ int rk628_combtxphy_set_gvi_division_mode(struct phy *phy, u8 mode)
 
 	return 0;
 }
+EXPORT_SYMBOL(rk628_combtxphy_set_gvi_division_mode);
 
 static int rk628_combtxphy_power_on(struct phy *phy)
 {
 	struct rk628_combtxphy *combtxphy = phy_get_drvdata(phy);
+	enum phy_mode mode = phy_get_mode(phy);
 
 	clk_prepare_enable(combtxphy->pclk);
 	reset_control_assert(combtxphy->rstc);
@@ -247,24 +248,22 @@ static int rk628_combtxphy_power_on(struct phy *phy)
 			   SW_TX_IDLE_MASK | SW_TX_PD_MASK | SW_PD_PLL_MASK,
 			   SW_TX_IDLE(0x3ff) | SW_TX_PD(0x3ff) | SW_PD_PLL);
 
-	switch (combtxphy->mode) {
-	case PHY_MODE_VIDEO_MIPI:
+	switch (mode) {
+	case PHY_MODE_MIPI_DPHY:
 		regmap_update_bits(combtxphy->grf, GRF_POST_PROC_CON,
 				   SW_TXPHY_REFCLK_SEL_MASK,
 				   SW_TXPHY_REFCLK_SEL(0));
 		return rk628_combtxphy_dsi_power_on(combtxphy);
-	case PHY_MODE_VIDEO_LVDS:
+	case PHY_MODE_LVDS:
 		regmap_update_bits(combtxphy->grf, GRF_POST_PROC_CON,
 				   SW_TXPHY_REFCLK_SEL_MASK,
 				   SW_TXPHY_REFCLK_SEL(1));
 		return rk628_combtxphy_lvds_power_on(combtxphy);
-	case PHY_MODE_GVI:
+	default:
 		regmap_update_bits(combtxphy->grf, GRF_POST_PROC_CON,
 				   SW_TXPHY_REFCLK_SEL_MASK,
 				   SW_TXPHY_REFCLK_SEL(2));
 		return rk628_combtxphy_gvi_power_on(combtxphy);
-	default:
-		return -EINVAL;
 	}
 
 	return 0;
@@ -284,7 +283,8 @@ static int rk628_combtxphy_power_off(struct phy *phy)
 	return 0;
 }
 
-static int rk628_combtxphy_set_mode(struct phy *phy, enum phy_mode mode)
+static int rk628_combtxphy_set_mode(struct phy *phy, enum phy_mode mode,
+				    int submode)
 {
 	struct rk628_combtxphy *combtxphy = phy_get_drvdata(phy);
 	unsigned int bus_width = phy_get_bus_width(phy);
@@ -292,7 +292,7 @@ static int rk628_combtxphy_set_mode(struct phy *phy, enum phy_mode mode)
 	unsigned long fvco, fpfd;
 
 	switch (mode) {
-	case PHY_MODE_VIDEO_MIPI:
+	case PHY_MODE_MIPI_DPHY:
 	{
 		unsigned int fhsc = bus_width >> 8;
 		unsigned int flags = bus_width & 0xff;
@@ -330,7 +330,7 @@ static int rk628_combtxphy_set_mode(struct phy *phy, enum phy_mode mode)
 		phy_set_bus_width(phy, fhsc);
 		break;
 	}
-	case PHY_MODE_VIDEO_LVDS:
+	case PHY_MODE_LVDS:
 	{
 		unsigned int flags = bus_width & 0xff;
 		unsigned int rate = (bus_width >> 8) * 7;
@@ -348,7 +348,7 @@ static int rk628_combtxphy_set_mode(struct phy *phy, enum phy_mode mode)
 			combtxphy->rate_div = 1;
 		break;
 	}
-	case PHY_MODE_GVI:
+	default:
 	{
 		unsigned int i, delta_freq, best_delta_freq, fb_div;
 		unsigned long ref_clk;
@@ -366,6 +366,10 @@ static int rk628_combtxphy_set_mode(struct phy *phy, enum phy_mode mode)
 		ref_clk = clk_get_rate(combtxphy->ref_clk) / 1000; /* khz */
 		if (combtxphy->division_mode)
 			ref_clk /= 2;
+
+		if (!ref_clk)
+			return -EINVAL;
+
 		/*
 		 * the reference clock at PFD(FPFD = ref_clk / ref_div) about
 		 * 25MHz is recommende, FPFD must range from 16MHz to 35MHz,
@@ -399,14 +403,9 @@ static int rk628_combtxphy_set_mode(struct phy *phy, enum phy_mode mode)
 		combtxphy->fb_div = fb_div;
 
 		phy_set_bus_width(phy, bus_width);
-
 		break;
 	}
-	default:
-		return -EINVAL;
 	}
-
-	combtxphy->mode = mode;
 
 	return 0;
 }

@@ -1,13 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * rt5640.c  --  RT5640/RT5639 ALSA SoC audio codec driver
  *
  * Copyright 2011 Realtek Semiconductor Corp.
  * Author: Johnny Hsu <johnnyhsu@realtek.com>
  * Copyright (c) 2013, NVIDIA CORPORATION.  All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/module.h>
@@ -977,11 +974,11 @@ static int rt5640_hp_event(struct snd_soc_dapm_widget *w,
 	switch (event) {
 	case SND_SOC_DAPM_POST_PMU:
 		rt5640_pmu_depop(component);
-		rt5640->hp_mute = 0;
+		rt5640->hp_mute = false;
 		break;
 
 	case SND_SOC_DAPM_PRE_PMD:
-		rt5640->hp_mute = 1;
+		rt5640->hp_mute = true;
 		msleep(70);
 		break;
 
@@ -1656,7 +1653,7 @@ static int get_sdp_info(struct snd_soc_component *component, int dai_id)
 	if (component == NULL)
 		return -EINVAL;
 
-	val = snd_soc_component_read32(component, RT5640_I2S1_SDP);
+	val = snd_soc_component_read(component, RT5640_I2S1_SDP);
 	val = (val & RT5640_I2S_IF_MASK) >> RT5640_I2S_IF_SFT;
 	switch (dai_id) {
 	case RT5640_AIF1:
@@ -1667,7 +1664,7 @@ static int get_sdp_info(struct snd_soc_component *component, int dai_id)
 			break;
 		case RT5640_IF_113:
 			ret |= RT5640_U_IF1;
-			/* fall through */
+			fallthrough;
 		case RT5640_IF_312:
 		case RT5640_IF_213:
 			ret |= RT5640_U_IF2;
@@ -1683,7 +1680,7 @@ static int get_sdp_info(struct snd_soc_component *component, int dai_id)
 			break;
 		case RT5640_IF_223:
 			ret |= RT5640_U_IF1;
-			/* fall through */
+			fallthrough;
 		case RT5640_IF_123:
 		case RT5640_IF_321:
 			ret |= RT5640_U_IF2;
@@ -1842,9 +1839,6 @@ static int rt5640_set_dai_sysclk(struct snd_soc_dai *dai,
 	struct rt5640_priv *rt5640 = snd_soc_component_get_drvdata(component);
 	unsigned int reg_val = 0;
 	unsigned int pll_bit = 0;
-
-	if (freq == rt5640->sysclk && clk_id == rt5640->sysclk_src)
-		return 0;
 
 	switch (clk_id) {
 	case RT5640_SCLK_S_MCLK:
@@ -2086,7 +2080,7 @@ int rt5640_sel_asrc_clk_src(struct snd_soc_component *component,
 	snd_soc_component_update_bits(component, RT5640_ASRC_2,
 		asrc2_mask, asrc2_value);
 
-	if (snd_soc_component_read32(component, RT5640_ASRC_2)) {
+	if (snd_soc_component_read(component, RT5640_ASRC_2)) {
 		rt5640->asrc_en = true;
 		snd_soc_component_update_bits(component, RT5640_JD_CTRL, 0x3, 0x3);
 	} else {
@@ -2151,7 +2145,7 @@ static bool rt5640_micbias1_ovcd(struct snd_soc_component *component)
 {
 	int val;
 
-	val = snd_soc_component_read32(component, RT5640_IRQ_CTRL2);
+	val = snd_soc_component_read(component, RT5640_IRQ_CTRL2);
 	dev_dbg(component->dev, "irq ctrl2 %#04x\n", val);
 
 	return (val & RT5640_MB1_OC_STATUS);
@@ -2162,7 +2156,7 @@ static bool rt5640_jack_inserted(struct snd_soc_component *component)
 	struct rt5640_priv *rt5640 = snd_soc_component_get_drvdata(component);
 	int val;
 
-	val = snd_soc_component_read32(component, RT5640_INT_IRQ_ST);
+	val = snd_soc_component_read(component, RT5640_INT_IRQ_ST);
 	dev_dbg(component->dev, "irq status %#04x\n", val);
 
 	if (rt5640->jd_inverted)
@@ -2489,7 +2483,7 @@ static int rt5640_probe(struct snd_soc_component *component)
 	snd_soc_component_update_bits(component, RT5640_MICBIAS, 0x0030, 0x0030);
 	snd_soc_component_update_bits(component, RT5640_DSP_PATH2, 0xfc00, 0x0c00);
 
-	switch (snd_soc_component_read32(component, RT5640_RESET) & RT5640_ID_MASK) {
+	switch (snd_soc_component_read(component, RT5640_RESET) & RT5640_ID_MASK) {
 	case RT5640_ID_5640:
 	case RT5640_ID_5642:
 		snd_soc_add_component_controls(component,
@@ -2713,7 +2707,8 @@ static const struct snd_soc_component_driver soc_component_dev_rt5640 = {
 static const struct regmap_config rt5640_regmap = {
 	.reg_bits = 8,
 	.val_bits = 16,
-	.use_single_rw = true,
+	.use_single_read = true,
+	.use_single_write = true,
 
 	.max_register = RT5640_VENDOR_ID2 + 1 + (ARRAY_SIZE(rt5640_ranges) *
 					       RT5640_PR_SPACING),
@@ -2830,7 +2825,7 @@ static int rt5640_i2c_probe(struct i2c_client *i2c,
 	regmap_update_bits(rt5640->regmap, RT5640_DUMMY1,
 				RT5640_MCLK_DET, RT5640_MCLK_DET);
 
-	rt5640->hp_mute = 1;
+	rt5640->hp_mute = true;
 	rt5640->irq = i2c->irq;
 	INIT_DELAYED_WORK(&rt5640->bp_work, rt5640_button_press_work);
 	INIT_WORK(&rt5640->jack_work, rt5640_jack_work);

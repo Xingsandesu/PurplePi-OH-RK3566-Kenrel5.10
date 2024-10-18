@@ -1,17 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Rockchip eFuse Driver
  *
  * Copyright (c) 2015 Rockchip Electronics Co. Ltd.
  * Author: Caesar Wang <wxt@rock-chips.com>
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
- * more details.
  */
 
 #include <linux/clk.h>
@@ -547,7 +539,7 @@ static const struct of_device_id rockchip_efuse_match[] = {
 };
 MODULE_DEVICE_TABLE(of, rockchip_efuse_match);
 
-static int __init rockchip_efuse_probe(struct platform_device *pdev)
+static int rockchip_efuse_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	struct nvmem_device *nvmem;
@@ -591,19 +583,33 @@ static int __init rockchip_efuse_probe(struct platform_device *pdev)
 }
 
 static struct platform_driver rockchip_efuse_driver = {
+	.probe = rockchip_efuse_probe,
 	.driver = {
 		.name = "rockchip-efuse",
 		.of_match_table = rockchip_efuse_match,
 	},
 };
 
-static int __init rockchip_efuse_module_init(void)
+static int __init rockchip_efuse_init(void)
 {
-	return platform_driver_probe(&rockchip_efuse_driver,
-				     rockchip_efuse_probe);
+	int ret;
+
+	ret = platform_driver_register(&rockchip_efuse_driver);
+	if (ret) {
+		pr_err("failed to register efuse driver\n");
+		return ret;
+	}
+
+	return 0;
 }
 
-subsys_initcall(rockchip_efuse_module_init);
+static void __exit rockchip_efuse_exit(void)
+{
+	return platform_driver_unregister(&rockchip_efuse_driver);
+}
+
+subsys_initcall(rockchip_efuse_init);
+module_exit(rockchip_efuse_exit);
 
 MODULE_DESCRIPTION("rockchip_efuse driver");
 MODULE_LICENSE("GPL v2");

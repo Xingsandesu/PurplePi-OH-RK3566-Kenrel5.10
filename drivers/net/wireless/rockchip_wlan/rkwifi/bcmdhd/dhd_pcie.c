@@ -2367,7 +2367,11 @@ dhdpcie_dongle_attach(dhd_bus_t *bus)
 	bus->deep_sleep = TRUE;
 #endif
 
+#ifdef CUSTOMER_HW_ROCKCHIP
+	bus->idma_enabled = FALSE;
+#else
 	bus->idma_enabled = TRUE;
+#endif
 	bus->ifrm_enabled = TRUE;
 #ifdef BCMINTERNAL
 	bus->dma_chan = 0;
@@ -9702,7 +9706,7 @@ dhdpcie_bus_suspend(struct dhd_bus *bus, bool state)
 			/* Got D3 Ack. Suspend the bus */
 #ifdef OEM_ANDROID
 			if (active) {
-				DHD_ERROR(("%s():Suspend failed because of wakelock "
+				DHD_ERROR(("%s():Suspend failed because of wakelock"
 					"restoring Dongle to D0\n", __FUNCTION__));
 
 				if (bus->dhd->dhd_watchdog_ms_backup) {

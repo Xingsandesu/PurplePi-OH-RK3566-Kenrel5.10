@@ -7,7 +7,7 @@
 #include "rk3568-android.dtsi"
 
 / {
-	edp-panel {
+	panel-edp {
 		compatible = "simple-panel";
 		backlight = <&backlight>;
 		power-supply = <&vcc3v3_lcd0_n>;
@@ -15,25 +15,23 @@
 		enable-delay-ms = <120>;
 		unprepare-delay-ms = <120>;
 		disable-delay-ms = <120>;
+		width-mm = <120>;
+		height-mm = <160>;
 
-		display-timings {
-			native-mode = <&edp_timing>;
-
-			edp_timing: timing0 {
-				clock-frequency = <200000000>;
-				hactive = <1536>;
-				vactive = <2048>;
-				hfront-porch = <12>;
-				hsync-len = <16>;
-				hback-porch = <48>;
-				vfront-porch = <8>;
-				vsync-len = <4>;
-				vback-porch = <8>;
-				hsync-active = <0>;
-				vsync-active = <0>;
-				de-active = <0>;
-				pixelclk-active = <0>;
-			};
+		panel-timing {
+			clock-frequency = <200000000>;
+			hactive = <1536>;
+			vactive = <2048>;
+			hfront-porch = <12>;
+			hsync-len = <16>;
+			hback-porch = <48>;
+			vfront-porch = <8>;
+			vsync-len = <4>;
+			vback-porch = <8>;
+			hsync-active = <0>;
+			vsync-active = <0>;
+			de-active = <0>;
+			pixelclk-active = <0>;
 		};
 
 		port {

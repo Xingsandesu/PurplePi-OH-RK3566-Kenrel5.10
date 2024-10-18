@@ -8,6 +8,7 @@
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/module.h>
+#include <linux/nvmem-consumer.h>
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/of_graph.h>
@@ -17,14 +18,16 @@
 #include <linux/pm_runtime.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/regmap.h>
+#include <media/videobuf2-cma-sg.h>
 #include <media/videobuf2-dma-contig.h>
+#include <media/videobuf2-dma-sg.h>
 #include <media/v4l2-fwnode.h>
 #include <linux/iommu.h>
-#include <dt-bindings/soc/rockchip-system-status.h>
 #include <soc/rockchip/rockchip-system-status.h>
 #include <linux/io.h>
 #include <linux/mfd/syscon.h>
-#include "dev.h"
+#include <soc/rockchip/rockchip_iommu.h>
+#include "common.h"
 
 static const struct cif_reg px30_cif_regs[] = {
 	[CIF_REG_DVP_CTRL] = CIF_REG(CIF_CTRL),
@@ -597,6 +600,377 @@ static const struct cif_reg rk3568_cif_regs[] = {
 	[CIF_REG_GRF_CIFIO_CON1] = CIF_REG(CIF_GRF_VI_CON1),
 };
 
+static const char * const rk3588_cif_clks[] = {
+	"aclk_cif",
+	"hclk_cif",
+	"dclk_cif",
+	"iclk_host0",
+	"iclk_host1",
+};
+
+static const char * const rk3588_cif_rsts[] = {
+	"rst_cif_a",
+	"rst_cif_h",
+	"rst_cif_d",
+	"rst_cif_host0",
+	"rst_cif_host1",
+	"rst_cif_host2",
+	"rst_cif_host3",
+	"rst_cif_host4",
+	"rst_cif_host5",
+};
+
+static const struct cif_reg rk3588_cif_regs[] = {
+	[CIF_REG_DVP_CTRL] = CIF_REG(DVP_CTRL),
+	[CIF_REG_DVP_INTEN] = CIF_REG(DVP_INTEN),
+	[CIF_REG_DVP_INTSTAT] = CIF_REG(DVP_INTSTAT),
+	[CIF_REG_DVP_FOR] = CIF_REG(DVP_FOR),
+	[CIF_REG_DVP_MULTI_ID] = CIF_REG(DVP_MULTI_ID),
+	[CIF_REG_DVP_SAV_EAV] = CIF_REG(DVP_SAV_EAV),
+	[CIF_REG_DVP_FRM0_ADDR_Y] = CIF_REG(DVP_FRM0_ADDR_Y_ID0),
+	[CIF_REG_DVP_FRM0_ADDR_UV] = CIF_REG(DVP_FRM0_ADDR_UV_ID0),
+	[CIF_REG_DVP_FRM1_ADDR_Y] = CIF_REG(DVP_FRM1_ADDR_Y_ID0),
+	[CIF_REG_DVP_FRM1_ADDR_UV] = CIF_REG(DVP_FRM1_ADDR_UV_ID0),
+	[CIF_REG_DVP_FRM0_ADDR_Y_ID1] = CIF_REG(DVP_FRM0_ADDR_Y_ID1),
+	[CIF_REG_DVP_FRM0_ADDR_UV_ID1] = CIF_REG(DVP_FRM0_ADDR_UV_ID1),
+	[CIF_REG_DVP_FRM1_ADDR_Y_ID1] = CIF_REG(DVP_FRM1_ADDR_Y_ID1),
+	[CIF_REG_DVP_FRM1_ADDR_UV_ID1] = CIF_REG(DVP_FRM1_ADDR_UV_ID1),
+	[CIF_REG_DVP_FRM0_ADDR_Y_ID2] = CIF_REG(DVP_FRM0_ADDR_Y_ID2),
+	[CIF_REG_DVP_FRM0_ADDR_UV_ID2] = CIF_REG(DVP_FRM0_ADDR_UV_ID2),
+	[CIF_REG_DVP_FRM1_ADDR_Y_ID2] = CIF_REG(DVP_FRM1_ADDR_Y_ID2),
+	[CIF_REG_DVP_FRM1_ADDR_UV_ID2] = CIF_REG(DVP_FRM1_ADDR_UV_ID2),
+	[CIF_REG_DVP_FRM0_ADDR_Y_ID3] = CIF_REG(DVP_FRM0_ADDR_Y_ID3),
+	[CIF_REG_DVP_FRM0_ADDR_UV_ID3] = CIF_REG(DVP_FRM0_ADDR_UV_ID3),
+	[CIF_REG_DVP_FRM1_ADDR_Y_ID3] = CIF_REG(DVP_FRM1_ADDR_Y_ID3),
+	[CIF_REG_DVP_FRM1_ADDR_UV_ID3] = CIF_REG(DVP_FRM1_ADDR_UV_ID3),
+	[CIF_REG_DVP_VIR_LINE_WIDTH] = CIF_REG(DVP_VIR_LINE_WIDTH),
+	[CIF_REG_DVP_SET_SIZE] = CIF_REG(DVP_CROP_SIZE),
+	[CIF_REG_DVP_CROP] = CIF_REG(DVP_CROP),
+	[CIF_REG_DVP_LINE_INT_NUM] = CIF_REG(DVP_LINE_INT_NUM_01),
+	[CIF_REG_DVP_LINE_INT_NUM1] = CIF_REG(DVP_LINE_INT_NUM_23),
+	[CIF_REG_DVP_LINE_CNT] = CIF_REG(DVP_LINE_INT_NUM_01),
+	[CIF_REG_DVP_LINE_CNT1] = CIF_REG(DVP_LINE_INT_NUM_23),
+
+	[CIF_REG_MIPI_LVDS_ID0_CTRL0] = CIF_REG(CSI_MIPI0_ID0_CTRL0),
+	[CIF_REG_MIPI_LVDS_ID0_CTRL1] = CIF_REG(CSI_MIPI0_ID0_CTRL1),
+	[CIF_REG_MIPI_LVDS_ID1_CTRL0] = CIF_REG(CSI_MIPI0_ID1_CTRL0),
+	[CIF_REG_MIPI_LVDS_ID1_CTRL1] = CIF_REG(CSI_MIPI0_ID1_CTRL1),
+	[CIF_REG_MIPI_LVDS_ID2_CTRL0] = CIF_REG(CSI_MIPI0_ID2_CTRL0),
+	[CIF_REG_MIPI_LVDS_ID2_CTRL1] = CIF_REG(CSI_MIPI0_ID2_CTRL1),
+	[CIF_REG_MIPI_LVDS_ID3_CTRL0] = CIF_REG(CSI_MIPI0_ID3_CTRL0),
+	[CIF_REG_MIPI_LVDS_ID3_CTRL1] = CIF_REG(CSI_MIPI0_ID3_CTRL1),
+	[CIF_REG_MIPI_LVDS_CTRL] = CIF_REG(CSI_MIPI0_CTRL),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_Y_ID0] = CIF_REG(CSI_MIPI0_FRM0_ADDR_Y_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_Y_ID0] = CIF_REG(CSI_MIPI0_FRM1_ADDR_Y_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_UV_ID0] = CIF_REG(CSI_MIPI0_FRM0_ADDR_UV_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_UV_ID0] = CIF_REG(CSI_MIPI0_FRM1_ADDR_UV_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME0_VLW_Y_ID0] = CIF_REG(CSI_MIPI0_VLW_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_Y_ID1] = CIF_REG(CSI_MIPI0_FRM0_ADDR_Y_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_Y_ID1] = CIF_REG(CSI_MIPI0_FRM1_ADDR_Y_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_UV_ID1] = CIF_REG(CSI_MIPI0_FRM0_ADDR_UV_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_UV_ID1] = CIF_REG(CSI_MIPI0_FRM1_ADDR_UV_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME0_VLW_Y_ID1] = CIF_REG(CSI_MIPI0_VLW_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_Y_ID2] = CIF_REG(CSI_MIPI0_FRM0_ADDR_Y_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_Y_ID2] = CIF_REG(CSI_MIPI0_FRM1_ADDR_Y_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_UV_ID2] = CIF_REG(CSI_MIPI0_FRM0_ADDR_UV_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_UV_ID2] = CIF_REG(CSI_MIPI0_FRM1_ADDR_UV_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME0_VLW_Y_ID2] = CIF_REG(CSI_MIPI0_VLW_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_Y_ID3] = CIF_REG(CSI_MIPI0_FRM0_ADDR_Y_ID3),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_Y_ID3] = CIF_REG(CSI_MIPI0_FRM1_ADDR_Y_ID3),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_UV_ID3] = CIF_REG(CSI_MIPI0_FRM0_ADDR_UV_ID3),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_UV_ID3] = CIF_REG(CSI_MIPI0_FRM1_ADDR_UV_ID3),
+	[CIF_REG_MIPI_LVDS_FRAME0_VLW_Y_ID3] = CIF_REG(CSI_MIPI0_VLW_ID3),
+	[CIF_REG_MIPI_LVDS_INTEN] = CIF_REG(CSI_MIPI0_INTEN),
+	[CIF_REG_MIPI_LVDS_INTSTAT] = CIF_REG(CSI_MIPI0_INTSTAT),
+	[CIF_REG_MIPI_LVDS_LINE_INT_NUM_ID0_1] = CIF_REG(CSI_MIPI0_LINE_INT_NUM_ID0_1),
+	[CIF_REG_MIPI_LVDS_LINE_INT_NUM_ID2_3] = CIF_REG(CSI_MIPI0_LINE_INT_NUM_ID2_3),
+	[CIF_REG_MIPI_LVDS_LINE_LINE_CNT_ID0_1] = CIF_REG(CSI_MIPI0_LINE_CNT_ID0_1),
+	[CIF_REG_MIPI_LVDS_LINE_LINE_CNT_ID2_3] = CIF_REG(CSI_MIPI0_LINE_CNT_ID2_3),
+	[CIF_REG_MIPI_LVDS_ID0_CROP_START] = CIF_REG(CSI_MIPI0_ID0_CROP_START),
+	[CIF_REG_MIPI_LVDS_ID1_CROP_START] = CIF_REG(CSI_MIPI0_ID1_CROP_START),
+	[CIF_REG_MIPI_LVDS_ID2_CROP_START] = CIF_REG(CSI_MIPI0_ID2_CROP_START),
+	[CIF_REG_MIPI_LVDS_ID3_CROP_START] = CIF_REG(CSI_MIPI0_ID3_CROP_START),
+	[CIF_REG_MIPI_FRAME_NUM_VC0] = CIF_REG(CSI_MIPI0_FRAME_NUM_VC0),
+	[CIF_REG_MIPI_FRAME_NUM_VC1] = CIF_REG(CSI_MIPI0_FRAME_NUM_VC1),
+	[CIF_REG_MIPI_FRAME_NUM_VC2] = CIF_REG(CSI_MIPI0_FRAME_NUM_VC2),
+	[CIF_REG_MIPI_FRAME_NUM_VC3] = CIF_REG(CSI_MIPI0_FRAME_NUM_VC3),
+	[CIF_REG_MIPI_EFFECT_CODE_ID0] = CIF_REG(CSI_MIPI0_EFFECT_CODE_ID0),
+	[CIF_REG_MIPI_EFFECT_CODE_ID1] = CIF_REG(CSI_MIPI0_EFFECT_CODE_ID1),
+	[CIF_REG_MIPI_EFFECT_CODE_ID2] = CIF_REG(CSI_MIPI0_EFFECT_CODE_ID2),
+	[CIF_REG_MIPI_EFFECT_CODE_ID3] = CIF_REG(CSI_MIPI0_EFFECT_CODE_ID3),
+	[CIF_REG_MIPI_FRAME_SIZE_ID0] = CIF_REG(CSI_MIPI0_FRAME_SIZE_ID0),
+	[CIF_REG_MIPI_FRAME_SIZE_ID1] = CIF_REG(CSI_MIPI0_FRAME_SIZE_ID1),
+	[CIF_REG_MIPI_FRAME_SIZE_ID2] = CIF_REG(CSI_MIPI0_FRAME_SIZE_ID2),
+	[CIF_REG_MIPI_FRAME_SIZE_ID3] = CIF_REG(CSI_MIPI0_FRAME_SIZE_ID3),
+	[CIF_REG_MIPI_ON_PAD] = CIF_REG(CSI_MIPI0_ON_PAD),
+
+	[CIF_REG_GLB_CTRL] = CIF_REG(GLB_CTRL),
+	[CIF_REG_GLB_INTEN] = CIF_REG(GLB_INTEN),
+	[CIF_REG_GLB_INTST] = CIF_REG(GLB_INTST),
+
+	[CIF_REG_SCL_CH_CTRL] = CIF_REG(SCL_CH_CTRL),
+	[CIF_REG_SCL_CTRL] = CIF_REG(SCL_CTRL),
+	[CIF_REG_SCL_FRM0_ADDR_CH0] = CIF_REG(SCL_FRM0_ADDR_CH0),
+	[CIF_REG_SCL_FRM1_ADDR_CH0] = CIF_REG(SCL_FRM1_ADDR_CH0),
+	[CIF_REG_SCL_VLW_CH0] = CIF_REG(SCL_VLW_CH0),
+	[CIF_REG_SCL_FRM0_ADDR_CH1] = CIF_REG(SCL_FRM0_ADDR_CH1),
+	[CIF_REG_SCL_FRM1_ADDR_CH1] = CIF_REG(SCL_FRM1_ADDR_CH1),
+	[CIF_REG_SCL_VLW_CH1] = CIF_REG(SCL_VLW_CH1),
+	[CIF_REG_SCL_FRM0_ADDR_CH2] = CIF_REG(SCL_FRM0_ADDR_CH2),
+	[CIF_REG_SCL_FRM1_ADDR_CH2] = CIF_REG(SCL_FRM1_ADDR_CH2),
+	[CIF_REG_SCL_VLW_CH2] = CIF_REG(SCL_VLW_CH2),
+	[CIF_REG_SCL_FRM0_ADDR_CH3] = CIF_REG(SCL_FRM0_ADDR_CH3),
+	[CIF_REG_SCL_FRM1_ADDR_CH3] = CIF_REG(SCL_FRM1_ADDR_CH3),
+	[CIF_REG_SCL_VLW_CH3] = CIF_REG(SCL_VLW_CH3),
+	[CIF_REG_SCL_BLC_CH0] = CIF_REG(SCL_BLC_CH0),
+	[CIF_REG_SCL_BLC_CH1] = CIF_REG(SCL_BLC_CH1),
+	[CIF_REG_SCL_BLC_CH2] = CIF_REG(SCL_BLC_CH2),
+	[CIF_REG_SCL_BLC_CH3] = CIF_REG(SCL_BLC_CH3),
+	[CIF_REG_TOISP0_CTRL] = CIF_REG(TOISP0_CH_CTRL),
+	[CIF_REG_TOISP0_SIZE] = CIF_REG(TOISP0_CROP_SIZE),
+	[CIF_REG_TOISP0_CROP] = CIF_REG(TOISP0_CROP),
+	[CIF_REG_TOISP1_CTRL] = CIF_REG(TOISP1_CH_CTRL),
+	[CIF_REG_TOISP1_SIZE] = CIF_REG(TOISP1_CROP_SIZE),
+	[CIF_REG_TOISP1_CROP] = CIF_REG(TOISP1_CROP),
+	[CIF_REG_GRF_CIFIO_CON] = CIF_REG(CIF_GRF_SOC_CON2),
+};
+
+static const char * const rv1106_cif_clks[] = {
+	"aclk_cif",
+	"hclk_cif",
+	"dclk_cif",
+	"pclk_cif",
+	"i0clk_cif",
+	"i1clk_cif",
+	"rx0clk_cif",
+	"rx1clk_cif",
+	"isp0clk_cif",
+	"sclk_m0_cif",
+	"sclk_m1_cif",
+	"pclk_vepu_cif",
+};
+
+static const char * const rv1106_cif_rsts[] = {
+	"rst_cif_a",
+	"rst_cif_h",
+	"rst_cif_d",
+	"rst_cif_p",
+	"rst_cif_i0",
+	"rst_cif_i1",
+	"rst_cif_rx0",
+	"rst_cif_rx1",
+	"rst_cif_isp0",
+	"rst_cif_pclk_vepu",
+};
+
+static const struct cif_reg rv1106_cif_regs[] = {
+	[CIF_REG_DVP_CTRL] = CIF_REG(DVP_CTRL),
+	[CIF_REG_DVP_INTEN] = CIF_REG(DVP_INTEN),
+	[CIF_REG_DVP_INTSTAT] = CIF_REG(DVP_INTSTAT),
+	[CIF_REG_DVP_FOR] = CIF_REG(DVP_FOR),
+	[CIF_REG_DVP_SAV_EAV] = CIF_REG(DVP_SAV_EAV),
+	[CIF_REG_DVP_FRM0_ADDR_Y] = CIF_REG(DVP_FRM0_ADDR_Y_ID0),
+	[CIF_REG_DVP_FRM0_ADDR_UV] = CIF_REG(DVP_FRM0_ADDR_UV_ID0),
+	[CIF_REG_DVP_FRM1_ADDR_Y] = CIF_REG(DVP_FRM1_ADDR_Y_ID0),
+	[CIF_REG_DVP_FRM1_ADDR_UV] = CIF_REG(DVP_FRM1_ADDR_UV_ID0),
+	[CIF_REG_DVP_VIR_LINE_WIDTH] = CIF_REG(DVP_VIR_LINE_WIDTH),
+	[CIF_REG_DVP_SET_SIZE] = CIF_REG(DVP_CROP_SIZE),
+	[CIF_REG_DVP_CROP] = CIF_REG(DVP_CROP),
+	[CIF_REG_DVP_LINE_INT_NUM] = CIF_REG(DVP_LINE_INT_NUM_01),
+	[CIF_REG_DVP_LINE_CNT] = CIF_REG(DVP_LINE_CNT_01),
+
+	[CIF_REG_MIPI_LVDS_ID0_CTRL0] = CIF_REG(CSI_MIPI0_ID0_CTRL0),
+	[CIF_REG_MIPI_LVDS_ID0_CTRL1] = CIF_REG(CSI_MIPI0_ID0_CTRL1),
+	[CIF_REG_MIPI_LVDS_ID1_CTRL0] = CIF_REG(CSI_MIPI0_ID1_CTRL0),
+	[CIF_REG_MIPI_LVDS_ID1_CTRL1] = CIF_REG(CSI_MIPI0_ID1_CTRL1),
+	[CIF_REG_MIPI_LVDS_ID2_CTRL0] = CIF_REG(CSI_MIPI0_ID2_CTRL0),
+	[CIF_REG_MIPI_LVDS_ID2_CTRL1] = CIF_REG(CSI_MIPI0_ID2_CTRL1),
+	[CIF_REG_MIPI_LVDS_ID3_CTRL0] = CIF_REG(CSI_MIPI0_ID3_CTRL0),
+	[CIF_REG_MIPI_LVDS_ID3_CTRL1] = CIF_REG(CSI_MIPI0_ID3_CTRL1),
+	[CIF_REG_MIPI_LVDS_CTRL] = CIF_REG(CSI_MIPI0_CTRL),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_Y_ID0] = CIF_REG(CSI_MIPI0_FRM0_ADDR_Y_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_Y_ID0] = CIF_REG(CSI_MIPI0_FRM1_ADDR_Y_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_UV_ID0] = CIF_REG(CSI_MIPI0_FRM0_ADDR_UV_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_UV_ID0] = CIF_REG(CSI_MIPI0_FRM1_ADDR_UV_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME0_VLW_Y_ID0] = CIF_REG(CSI_MIPI0_VLW_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_Y_ID1] = CIF_REG(CSI_MIPI0_FRM0_ADDR_Y_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_Y_ID1] = CIF_REG(CSI_MIPI0_FRM1_ADDR_Y_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_UV_ID1] = CIF_REG(CSI_MIPI0_FRM0_ADDR_UV_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_UV_ID1] = CIF_REG(CSI_MIPI0_FRM1_ADDR_UV_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME0_VLW_Y_ID1] = CIF_REG(CSI_MIPI0_VLW_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_Y_ID2] = CIF_REG(CSI_MIPI0_FRM0_ADDR_Y_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_Y_ID2] = CIF_REG(CSI_MIPI0_FRM1_ADDR_Y_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_UV_ID2] = CIF_REG(CSI_MIPI0_FRM0_ADDR_UV_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_UV_ID2] = CIF_REG(CSI_MIPI0_FRM1_ADDR_UV_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME0_VLW_Y_ID2] = CIF_REG(CSI_MIPI0_VLW_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_Y_ID3] = CIF_REG(CSI_MIPI0_FRM0_ADDR_Y_ID3),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_Y_ID3] = CIF_REG(CSI_MIPI0_FRM1_ADDR_Y_ID3),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_UV_ID3] = CIF_REG(CSI_MIPI0_FRM0_ADDR_UV_ID3),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_UV_ID3] = CIF_REG(CSI_MIPI0_FRM1_ADDR_UV_ID3),
+	[CIF_REG_MIPI_LVDS_FRAME0_VLW_Y_ID3] = CIF_REG(CSI_MIPI0_VLW_ID3),
+	[CIF_REG_MIPI_LVDS_INTEN] = CIF_REG(CSI_MIPI0_INTEN),
+	[CIF_REG_MIPI_LVDS_INTSTAT] = CIF_REG(CSI_MIPI0_INTSTAT),
+	[CIF_REG_MIPI_LVDS_LINE_INT_NUM_ID0_1] = CIF_REG(CSI_MIPI0_LINE_INT_NUM_ID0_1),
+	[CIF_REG_MIPI_LVDS_LINE_INT_NUM_ID2_3] = CIF_REG(CSI_MIPI0_LINE_INT_NUM_ID2_3),
+	[CIF_REG_MIPI_LVDS_LINE_LINE_CNT_ID0_1] = CIF_REG(CSI_MIPI0_LINE_CNT_ID0_1),
+	[CIF_REG_MIPI_LVDS_LINE_LINE_CNT_ID2_3] = CIF_REG(CSI_MIPI0_LINE_CNT_ID2_3),
+	[CIF_REG_MIPI_LVDS_ID0_CROP_START] = CIF_REG(CSI_MIPI0_ID0_CROP_START),
+	[CIF_REG_MIPI_LVDS_ID1_CROP_START] = CIF_REG(CSI_MIPI0_ID1_CROP_START),
+	[CIF_REG_MIPI_LVDS_ID2_CROP_START] = CIF_REG(CSI_MIPI0_ID2_CROP_START),
+	[CIF_REG_MIPI_LVDS_ID3_CROP_START] = CIF_REG(CSI_MIPI0_ID3_CROP_START),
+	[CIF_REG_MIPI_FRAME_NUM_VC0] = CIF_REG(CSI_MIPI0_FRAME_NUM_VC0),
+	[CIF_REG_MIPI_FRAME_NUM_VC1] = CIF_REG(CSI_MIPI0_FRAME_NUM_VC1),
+	[CIF_REG_MIPI_FRAME_NUM_VC2] = CIF_REG(CSI_MIPI0_FRAME_NUM_VC2),
+	[CIF_REG_MIPI_FRAME_NUM_VC3] = CIF_REG(CSI_MIPI0_FRAME_NUM_VC3),
+	[CIF_REG_MIPI_EFFECT_CODE_ID0] = CIF_REG(CSI_MIPI0_EFFECT_CODE_ID0),
+	[CIF_REG_MIPI_EFFECT_CODE_ID1] = CIF_REG(CSI_MIPI0_EFFECT_CODE_ID1),
+	[CIF_REG_MIPI_EFFECT_CODE_ID2] = CIF_REG(CSI_MIPI0_EFFECT_CODE_ID2),
+	[CIF_REG_MIPI_EFFECT_CODE_ID3] = CIF_REG(CSI_MIPI0_EFFECT_CODE_ID3),
+	[CIF_REG_MIPI_FRAME_SIZE_ID0] = CIF_REG(CSI_MIPI0_FRAME_SIZE_ID0),
+	[CIF_REG_MIPI_FRAME_SIZE_ID1] = CIF_REG(CSI_MIPI0_FRAME_SIZE_ID1),
+	[CIF_REG_MIPI_FRAME_SIZE_ID2] = CIF_REG(CSI_MIPI0_FRAME_SIZE_ID2),
+	[CIF_REG_MIPI_FRAME_SIZE_ID3] = CIF_REG(CSI_MIPI0_FRAME_SIZE_ID3),
+	[CIF_REG_MIPI_ON_PAD] = CIF_REG(CSI_MIPI0_ON_PAD),
+	[CIF_REG_LVDS_ID0_CTRL0] = CIF_REG(CIF_LVDS0_ID0_CTRL0),
+	[CIF_REG_LVDS_ID1_CTRL0] = CIF_REG(CIF_LVDS0_ID1_CTRL0),
+	[CIF_REG_LVDS_ID2_CTRL0] = CIF_REG(CIF_LVDS0_ID2_CTRL0),
+	[CIF_REG_LVDS_ID3_CTRL0] = CIF_REG(CIF_LVDS0_ID3_CTRL0),
+	[CIF_REG_LVDS_SAV_EAV_ACT0_ID0] = CIF_REG(CIF_LVDS_SAV_EAV_ACT0_ID0_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_BLK0_ID0] = CIF_REG(CIF_LVDS_SAV_EAV_BLK0_ID0_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_ACT1_ID0] = CIF_REG(CIF_LVDS_SAV_EAV_ACT1_ID0_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_BLK1_ID0] = CIF_REG(CIF_LVDS_SAV_EAV_BLK1_ID0_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_ACT0_ID1] = CIF_REG(CIF_LVDS_SAV_EAV_ACT0_ID1_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_BLK0_ID1] = CIF_REG(CIF_LVDS_SAV_EAV_BLK0_ID1_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_ACT1_ID1] = CIF_REG(CIF_LVDS_SAV_EAV_ACT1_ID1_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_BLK1_ID1] = CIF_REG(CIF_LVDS_SAV_EAV_BLK1_ID1_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_ACT0_ID2] = CIF_REG(CIF_LVDS_SAV_EAV_ACT0_ID2_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_BLK0_ID2] = CIF_REG(CIF_LVDS_SAV_EAV_BLK0_ID2_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_ACT1_ID2] = CIF_REG(CIF_LVDS_SAV_EAV_ACT1_ID2_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_BLK1_ID2] = CIF_REG(CIF_LVDS_SAV_EAV_BLK1_ID2_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_ACT0_ID3] = CIF_REG(CIF_LVDS_SAV_EAV_ACT0_ID3_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_BLK0_ID3] = CIF_REG(CIF_LVDS_SAV_EAV_BLK0_ID3_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_ACT1_ID3] = CIF_REG(CIF_LVDS_SAV_EAV_ACT1_ID3_RV1106),
+	[CIF_REG_LVDS_SAV_EAV_BLK1_ID3] = CIF_REG(CIF_LVDS_SAV_EAV_BLK1_ID3_RV1106),
+	[CIF_REG_GLB_CTRL] = CIF_REG(GLB_CTRL),
+	[CIF_REG_GLB_INTEN] = CIF_REG(GLB_INTEN),
+	[CIF_REG_GLB_INTST] = CIF_REG(GLB_INTST),
+
+	[CIF_REG_SCL_CH_CTRL] = CIF_REG(SCL_CH_CTRL),
+	[CIF_REG_SCL_CTRL] = CIF_REG(SCL_CTRL),
+	[CIF_REG_SCL_FRM0_ADDR_CH0] = CIF_REG(SCL_FRM0_ADDR_CH0),
+	[CIF_REG_SCL_FRM1_ADDR_CH0] = CIF_REG(SCL_FRM1_ADDR_CH0),
+	[CIF_REG_SCL_VLW_CH0] = CIF_REG(SCL_VLW_CH0),
+	[CIF_REG_SCL_FRM0_ADDR_CH1] = CIF_REG(SCL_FRM0_ADDR_CH1),
+	[CIF_REG_SCL_FRM1_ADDR_CH1] = CIF_REG(SCL_FRM1_ADDR_CH1),
+	[CIF_REG_SCL_VLW_CH1] = CIF_REG(SCL_VLW_CH1),
+	[CIF_REG_SCL_FRM0_ADDR_CH2] = CIF_REG(SCL_FRM0_ADDR_CH2),
+	[CIF_REG_SCL_FRM1_ADDR_CH2] = CIF_REG(SCL_FRM1_ADDR_CH2),
+	[CIF_REG_SCL_VLW_CH2] = CIF_REG(SCL_VLW_CH2),
+	[CIF_REG_SCL_FRM0_ADDR_CH3] = CIF_REG(SCL_FRM0_ADDR_CH3),
+	[CIF_REG_SCL_FRM1_ADDR_CH3] = CIF_REG(SCL_FRM1_ADDR_CH3),
+	[CIF_REG_SCL_VLW_CH3] = CIF_REG(SCL_VLW_CH3),
+	[CIF_REG_SCL_BLC_CH0] = CIF_REG(SCL_BLC_CH0),
+	[CIF_REG_SCL_BLC_CH1] = CIF_REG(SCL_BLC_CH1),
+	[CIF_REG_SCL_BLC_CH2] = CIF_REG(SCL_BLC_CH2),
+	[CIF_REG_SCL_BLC_CH3] = CIF_REG(SCL_BLC_CH3),
+
+	[CIF_REG_TOISP0_CTRL] = CIF_REG(TOISP0_CH_CTRL),
+	[CIF_REG_TOISP0_SIZE] = CIF_REG(TOISP0_CROP_SIZE),
+	[CIF_REG_TOISP0_CROP] = CIF_REG(TOISP0_CROP),
+	[CIF_REG_GRF_CIFIO_CON] = CIF_REG(RV1106_CIF_GRF_VI_CON),
+	[CIF_REG_GRF_CIFIO_VENC] = CIF_REG(RV1106_CIF_GRF_VENC_WRAPPER),
+};
+
+static const char * const rk3562_cif_clks[] = {
+	"aclk_cif",
+	"hclk_cif",
+	"dclk_cif",
+	"csirx0_data",
+	"csirx1_data",
+	"csirx2_data",
+	"csirx3_data",
+};
+
+static const char * const rk3562_cif_rsts[] = {
+	"rst_cif_a",
+	"rst_cif_h",
+	"rst_cif_d",
+	"rst_cif_i0",
+	"rst_cif_i1",
+	"rst_cif_i2",
+	"rst_cif_i3",
+};
+
+static const struct cif_reg rk3562_cif_regs[] = {
+	[CIF_REG_MIPI_LVDS_ID0_CTRL0] = CIF_REG(CSI_MIPI0_ID0_CTRL0),
+	[CIF_REG_MIPI_LVDS_ID0_CTRL1] = CIF_REG(CSI_MIPI0_ID0_CTRL1),
+	[CIF_REG_MIPI_LVDS_ID1_CTRL0] = CIF_REG(CSI_MIPI0_ID1_CTRL0),
+	[CIF_REG_MIPI_LVDS_ID1_CTRL1] = CIF_REG(CSI_MIPI0_ID1_CTRL1),
+	[CIF_REG_MIPI_LVDS_ID2_CTRL0] = CIF_REG(CSI_MIPI0_ID2_CTRL0),
+	[CIF_REG_MIPI_LVDS_ID2_CTRL1] = CIF_REG(CSI_MIPI0_ID2_CTRL1),
+	[CIF_REG_MIPI_LVDS_ID3_CTRL0] = CIF_REG(CSI_MIPI0_ID3_CTRL0),
+	[CIF_REG_MIPI_LVDS_ID3_CTRL1] = CIF_REG(CSI_MIPI0_ID3_CTRL1),
+	[CIF_REG_MIPI_LVDS_CTRL] = CIF_REG(CSI_MIPI0_CTRL),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_Y_ID0] = CIF_REG(CSI_MIPI0_FRM0_ADDR_Y_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_Y_ID0] = CIF_REG(CSI_MIPI0_FRM1_ADDR_Y_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_UV_ID0] = CIF_REG(CSI_MIPI0_FRM0_ADDR_UV_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_UV_ID0] = CIF_REG(CSI_MIPI0_FRM1_ADDR_UV_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME0_VLW_Y_ID0] = CIF_REG(CSI_MIPI0_VLW_ID0),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_Y_ID1] = CIF_REG(CSI_MIPI0_FRM0_ADDR_Y_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_Y_ID1] = CIF_REG(CSI_MIPI0_FRM1_ADDR_Y_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_UV_ID1] = CIF_REG(CSI_MIPI0_FRM0_ADDR_UV_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_UV_ID1] = CIF_REG(CSI_MIPI0_FRM1_ADDR_UV_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME0_VLW_Y_ID1] = CIF_REG(CSI_MIPI0_VLW_ID1),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_Y_ID2] = CIF_REG(CSI_MIPI0_FRM0_ADDR_Y_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_Y_ID2] = CIF_REG(CSI_MIPI0_FRM1_ADDR_Y_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_UV_ID2] = CIF_REG(CSI_MIPI0_FRM0_ADDR_UV_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_UV_ID2] = CIF_REG(CSI_MIPI0_FRM1_ADDR_UV_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME0_VLW_Y_ID2] = CIF_REG(CSI_MIPI0_VLW_ID2),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_Y_ID3] = CIF_REG(CSI_MIPI0_FRM0_ADDR_Y_ID3),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_Y_ID3] = CIF_REG(CSI_MIPI0_FRM1_ADDR_Y_ID3),
+	[CIF_REG_MIPI_LVDS_FRAME0_ADDR_UV_ID3] = CIF_REG(CSI_MIPI0_FRM0_ADDR_UV_ID3),
+	[CIF_REG_MIPI_LVDS_FRAME1_ADDR_UV_ID3] = CIF_REG(CSI_MIPI0_FRM1_ADDR_UV_ID3),
+	[CIF_REG_MIPI_LVDS_FRAME0_VLW_Y_ID3] = CIF_REG(CSI_MIPI0_VLW_ID3),
+	[CIF_REG_MIPI_LVDS_INTEN] = CIF_REG(CSI_MIPI0_INTEN),
+	[CIF_REG_MIPI_LVDS_INTSTAT] = CIF_REG(CSI_MIPI0_INTSTAT),
+	[CIF_REG_MIPI_LVDS_LINE_INT_NUM_ID0_1] = CIF_REG(CSI_MIPI0_LINE_INT_NUM_ID0_1),
+	[CIF_REG_MIPI_LVDS_LINE_INT_NUM_ID2_3] = CIF_REG(CSI_MIPI0_LINE_INT_NUM_ID2_3),
+	[CIF_REG_MIPI_LVDS_LINE_LINE_CNT_ID0_1] = CIF_REG(CSI_MIPI0_LINE_CNT_ID0_1),
+	[CIF_REG_MIPI_LVDS_LINE_LINE_CNT_ID2_3] = CIF_REG(CSI_MIPI0_LINE_CNT_ID2_3),
+	[CIF_REG_MIPI_LVDS_ID0_CROP_START] = CIF_REG(CSI_MIPI0_ID0_CROP_START),
+	[CIF_REG_MIPI_LVDS_ID1_CROP_START] = CIF_REG(CSI_MIPI0_ID1_CROP_START),
+	[CIF_REG_MIPI_LVDS_ID2_CROP_START] = CIF_REG(CSI_MIPI0_ID2_CROP_START),
+	[CIF_REG_MIPI_LVDS_ID3_CROP_START] = CIF_REG(CSI_MIPI0_ID3_CROP_START),
+	[CIF_REG_MIPI_FRAME_NUM_VC0] = CIF_REG(CSI_MIPI0_FRAME_NUM_VC0),
+	[CIF_REG_MIPI_FRAME_NUM_VC1] = CIF_REG(CSI_MIPI0_FRAME_NUM_VC1),
+	[CIF_REG_MIPI_FRAME_NUM_VC2] = CIF_REG(CSI_MIPI0_FRAME_NUM_VC2),
+	[CIF_REG_MIPI_FRAME_NUM_VC3] = CIF_REG(CSI_MIPI0_FRAME_NUM_VC3),
+	[CIF_REG_MIPI_EFFECT_CODE_ID0] = CIF_REG(CSI_MIPI0_EFFECT_CODE_ID0),
+	[CIF_REG_MIPI_EFFECT_CODE_ID1] = CIF_REG(CSI_MIPI0_EFFECT_CODE_ID1),
+	[CIF_REG_MIPI_EFFECT_CODE_ID2] = CIF_REG(CSI_MIPI0_EFFECT_CODE_ID2),
+	[CIF_REG_MIPI_EFFECT_CODE_ID3] = CIF_REG(CSI_MIPI0_EFFECT_CODE_ID3),
+	[CIF_REG_MIPI_FRAME_SIZE_ID0] = CIF_REG(CSI_MIPI0_FRAME_SIZE_ID0),
+	[CIF_REG_MIPI_FRAME_SIZE_ID1] = CIF_REG(CSI_MIPI0_FRAME_SIZE_ID1),
+	[CIF_REG_MIPI_FRAME_SIZE_ID2] = CIF_REG(CSI_MIPI0_FRAME_SIZE_ID2),
+	[CIF_REG_MIPI_FRAME_SIZE_ID3] = CIF_REG(CSI_MIPI0_FRAME_SIZE_ID3),
+	[CIF_REG_MIPI_ON_PAD] = CIF_REG(CSI_MIPI0_ON_PAD),
+
+	[CIF_REG_GLB_CTRL] = CIF_REG(GLB_CTRL),
+	[CIF_REG_GLB_INTEN] = CIF_REG(GLB_INTEN),
+	[CIF_REG_GLB_INTST] = CIF_REG(GLB_INTST),
+
+	[CIF_REG_SCL_CH_CTRL] = CIF_REG(SCL_CH_CTRL),
+	[CIF_REG_SCL_CTRL] = CIF_REG(SCL_CTRL),
+	[CIF_REG_SCL_FRM0_ADDR_CH0] = CIF_REG(SCL_FRM0_ADDR_CH0),
+	[CIF_REG_SCL_FRM1_ADDR_CH0] = CIF_REG(SCL_FRM1_ADDR_CH0),
+	[CIF_REG_SCL_VLW_CH0] = CIF_REG(SCL_VLW_CH0),
+	[CIF_REG_SCL_BLC_CH0] = CIF_REG(SCL_BLC_CH0),
+
+	[CIF_REG_TOISP0_CTRL] = CIF_REG(TOISP0_CH_CTRL),
+	[CIF_REG_TOISP0_SIZE] = CIF_REG(TOISP0_CROP_SIZE),
+	[CIF_REG_TOISP0_CROP] = CIF_REG(TOISP0_CROP),
+};
+
 static const struct rkcif_hw_match_data px30_cif_match_data = {
 	.chip_id = CHIP_PX30_CIF,
 	.clks = px30_cif_clks,
@@ -678,6 +1052,32 @@ static const struct rkcif_hw_match_data rk3568_cif_match_data = {
 	.cif_regs = rk3568_cif_regs,
 };
 
+static const struct rkcif_hw_match_data rk3588_cif_match_data = {
+	.chip_id = CHIP_RK3588_CIF,
+	.clks = rk3588_cif_clks,
+	.clks_num = ARRAY_SIZE(rk3588_cif_clks),
+	.rsts = rk3588_cif_rsts,
+	.rsts_num = ARRAY_SIZE(rk3588_cif_rsts),
+	.cif_regs = rk3588_cif_regs,
+};
+
+static const struct rkcif_hw_match_data rv1106_cif_match_data = {
+	.chip_id = CHIP_RV1106_CIF,
+	.clks = rv1106_cif_clks,
+	.clks_num = ARRAY_SIZE(rv1106_cif_clks),
+	.rsts = rv1106_cif_rsts,
+	.rsts_num = ARRAY_SIZE(rv1106_cif_rsts),
+	.cif_regs = rv1106_cif_regs,
+};
+
+static const struct rkcif_hw_match_data rk3562_cif_match_data = {
+	.chip_id = CHIP_RK3562_CIF,
+	.clks = rk3562_cif_clks,
+	.clks_num = ARRAY_SIZE(rk3562_cif_clks),
+	.rsts = rk3562_cif_rsts,
+	.rsts_num = ARRAY_SIZE(rk3562_cif_rsts),
+	.cif_regs = rk3562_cif_regs,
+};
 
 static const struct of_device_id rkcif_plat_of_match[] = {
 #ifdef CONFIG_CPU_PX30
@@ -722,6 +1122,12 @@ static const struct of_device_id rkcif_plat_of_match[] = {
 		.data = &rk3568_cif_match_data,
 	},
 #endif
+#ifdef CONFIG_CPU_RK3588
+	{
+		.compatible = "rockchip,rk3588-cif",
+		.data = &rk3588_cif_match_data,
+	},
+#endif
 #ifdef CONFIG_CPU_RV1126
 	{
 		.compatible = "rockchip,rv1126-cif",
@@ -732,6 +1138,18 @@ static const struct of_device_id rkcif_plat_of_match[] = {
 		.data = &rv1126_cif_lite_match_data,
 	},
 #endif
+#ifdef CONFIG_CPU_RV1106
+	{
+		.compatible = "rockchip,rv1106-cif",
+		.data = &rv1106_cif_match_data,
+	},
+#endif
+#ifdef CONFIG_CPU_RK3562
+	{
+		.compatible = "rockchip,rk3562-cif",
+		.data = &rk3562_cif_match_data,
+	},
+#endif
 	{},
 };
 
@@ -739,16 +1157,32 @@ static irqreturn_t rkcif_irq_handler(int irq, void *ctx)
 {
 	struct device *dev = ctx;
 	struct rkcif_hw *cif_hw = dev_get_drvdata(dev);
+	unsigned int intstat_glb = 0;
+	u64 irq_start, irq_stop;
 	int i;
-	struct rkcif_device *tmp_dev = NULL;
 
-	for (i = 0; i < cif_hw->dev_num; i++) {
-		tmp_dev = cif_hw->cif_dev[i];
-		if (tmp_dev->isr_hdl &&
-		    (atomic_read(&tmp_dev->pipe.stream_cnt) != 0))
-			tmp_dev->isr_hdl(irq, tmp_dev);
+	irq_start = ktime_get_ns();
+	if (cif_hw->chip_id >= CHIP_RK3588_CIF) {
+		intstat_glb = rkcif_irq_global(cif_hw->cif_dev[0]);
+		if (intstat_glb)
+			rkcif_write_register(cif_hw->cif_dev[0], CIF_REG_GLB_INTST, intstat_glb);
 	}
 
+	for (i = 0; i < cif_hw->dev_num; i++) {
+		if (cif_hw->cif_dev[i]->isr_hdl) {
+			cif_hw->cif_dev[i]->isr_hdl(irq, cif_hw->cif_dev[i]);
+			if (cif_hw->cif_dev[i]->err_state &&
+			    (!work_busy(&cif_hw->cif_dev[i]->err_state_work.work))) {
+				cif_hw->cif_dev[i]->err_state_work.err_state = cif_hw->cif_dev[i]->err_state;
+				cif_hw->cif_dev[i]->err_state = 0;
+				schedule_work(&cif_hw->cif_dev[i]->err_state_work.work);
+			}
+			if (cif_hw->chip_id >= CHIP_RK3588_CIF && intstat_glb)
+				rkcif_irq_handle_toisp(cif_hw->cif_dev[i], intstat_glb);
+		}
+	}
+	irq_stop = ktime_get_ns();
+	cif_hw->irq_time = irq_stop - irq_start;
 	return IRQ_HANDLED;
 }
 
@@ -783,17 +1217,14 @@ err:
 
 static void rkcif_iommu_cleanup(struct rkcif_hw *cif_hw)
 {
-	if (cif_hw->domain)
-		iommu_detach_device(cif_hw->domain, cif_hw->dev);
+	if (cif_hw->iommu_en)
+		rockchip_iommu_disable(cif_hw->dev);
 }
 
 static void rkcif_iommu_enable(struct rkcif_hw *cif_hw)
 {
-	if (!cif_hw->domain)
-		cif_hw->domain = iommu_get_domain_for_dev(cif_hw->dev);
-
-	if (cif_hw->domain)
-		iommu_attach_device(cif_hw->domain, cif_hw->dev);
+	if (cif_hw->iommu_en)
+		rockchip_iommu_enable(cif_hw->dev);
 }
 
 static inline bool is_iommu_enable(struct device *dev)
@@ -833,81 +1264,49 @@ void rkcif_hw_soft_reset(struct rkcif_hw *cif_hw, bool is_rst_iommu)
 		rkcif_iommu_enable(cif_hw);
 }
 
-static char *rkcif_get_monitor_mode(enum rkcif_monitor_mode mode)
+static int rkcif_get_efuse_value(struct device_node *np, char *porp_name,
+				    u8 *value)
 {
-	switch (mode) {
-	case RKCIF_MONITOR_MODE_IDLE:
-		return "idle";
-	case RKCIF_MONITOR_MODE_CONTINUE:
-		return "continue";
-	case RKCIF_MONITOR_MODE_TRIGGER:
-		return "trigger";
-	case RKCIF_MONITOR_MODE_HOTPLUG:
-		return "hotplug";
-	default:
-		return "unknown";
-	}
+	struct nvmem_cell *cell;
+	unsigned char *buf;
+	size_t len;
+
+	cell = of_nvmem_cell_get(np, porp_name);
+	if (IS_ERR(cell))
+		return PTR_ERR(cell);
+
+	buf = (unsigned char *)nvmem_cell_read(cell, &len);
+
+	nvmem_cell_put(cell);
+
+	if (IS_ERR(buf))
+		return PTR_ERR(buf);
+
+	*value = buf[0];
+
+	kfree(buf);
+
+	return 0;
 }
 
-static void rkcif_init_reset_timer(struct rkcif_hw *hw)
+static int rkcif_get_speciand_package_number(struct device_node *np)
 {
-	struct device_node *node = hw->dev->of_node;
-	struct rkcif_hw_timer *hw_timer = &hw->hw_timer;
-	u32 para[8];
-	int i;
+	u8 spec = 0, package = 0, low = 0, high = 0;
 
-	if (!of_property_read_u32_array(node,
-					OF_CIF_MONITOR_PARA,
-					para,
-					CIF_MONITOR_PARA_NUM)) {
-		for (i = 0; i < CIF_MONITOR_PARA_NUM; i++) {
-			if (i == 0) {
-				hw_timer->monitor_mode = para[0];
-				dev_info(hw->dev,
-					 "%s: timer monitor mode:%s\n",
-					 __func__, rkcif_get_monitor_mode(hw_timer->monitor_mode));
-			}
+	if (rkcif_get_efuse_value(np, "specification", &spec))
+		return -EINVAL;
+	if (rkcif_get_efuse_value(np, "package_low", &low))
+		return -EINVAL;
+	if (rkcif_get_efuse_value(np, "package_high", &high))
+		return -EINVAL;
 
-			if (i == 1) {
-				hw_timer->monitor_cycle = para[1];
-				dev_info(hw->dev,
-					 "timer of monitor cycle:%d\n",
-					 hw_timer->monitor_cycle);
-			}
+	package = ((high & 0x1) << 3) | low;
 
-			if (i == 2) {
-				hw_timer->err_time_interval = para[2];
-				dev_info(hw->dev,
-					 "timer err time for keeping:%d ms\n",
-					 hw_timer->err_time_interval);
-			}
+	/* RK3588S */
+	if (spec == 0x13)
+		return package;
 
-			if (i == 3) {
-				hw_timer->err_ref_cnt = para[3];
-				dev_info(hw->dev,
-					 "timer err ref val for resetting:%d\n",
-					 hw_timer->err_ref_cnt);
-			}
-
-			if (i == 4) {
-				hw_timer->is_reset_by_user = para[4];
-				dev_info(hw->dev,
-					 "reset by user:%d\n",
-					 hw_timer->is_reset_by_user);
-			}
-		}
-	} else {
-		hw_timer->monitor_mode = RKCIF_MONITOR_MODE_IDLE;
-		hw_timer->err_time_interval = 0xffffffff;
-		hw_timer->monitor_cycle = 0xffffffff;
-		hw_timer->err_ref_cnt = 0xffffffff;
-		hw_timer->is_reset_by_user = 0;
-	}
-
-	hw_timer->is_running = false;
-	spin_lock_init(&hw_timer->timer_lock);
-	hw->reset_info.is_need_reset = 0;
-	timer_setup(&hw_timer->timer, rkcif_reset_watchdog_timer_handler, 0);
+	return -EINVAL;
 }
 
 static int rkcif_plat_hw_probe(struct platform_device *pdev)
@@ -921,6 +1320,9 @@ static int rkcif_plat_hw_probe(struct platform_device *pdev)
 	const struct rkcif_hw_match_data *data;
 	struct resource *res;
 	int i, ret, irq;
+	bool is_mem_reserved = false;
+	struct notifier_block *notifier;
+	int package = 0;
 
 	match = of_match_node(rkcif_plat_of_match, node);
 	if (IS_ERR(match))
@@ -934,6 +1336,13 @@ static int rkcif_plat_hw_probe(struct platform_device *pdev)
 	dev_set_drvdata(dev, cif_hw);
 	cif_hw->dev = dev;
 
+	package = rkcif_get_speciand_package_number(node);
+	if (package == 0x2) {
+		cif_hw->is_rk3588s2 = true;
+		dev_info(dev, "attach rk3588s2\n");
+	} else {
+		cif_hw->is_rk3588s2 = false;
+	}
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
 		return irq;
@@ -949,10 +1358,7 @@ static int rkcif_plat_hw_probe(struct platform_device *pdev)
 	cif_hw->irq = irq;
 	cif_hw->match_data = data;
 	cif_hw->chip_id = data->chip_id;
-	if (data->chip_id == CHIP_RK1808_CIF ||
-	    data->chip_id == CHIP_RV1126_CIF ||
-	    data->chip_id == CHIP_RV1126_CIF_LITE ||
-	    data->chip_id == CHIP_RK3568_CIF) {
+	if (data->chip_id >= CHIP_RK1808_CIF) {
 		res = platform_get_resource_byname(pdev,
 						   IORESOURCE_MEM,
 						   "cif_regs");
@@ -972,6 +1378,11 @@ static int rkcif_plat_hw_probe(struct platform_device *pdev)
 		cif_hw->base_addr = devm_ioremap_resource(dev, res);
 		if (IS_ERR(cif_hw->base_addr))
 			return PTR_ERR(cif_hw->base_addr);
+	}
+
+	if (of_property_read_bool(np, "rockchip,android-usb-camerahal-enable")) {
+		dev_info(dev, "config cif adapt to android usb camera hal!\n");
+		cif_hw->adapt_to_usbcamerahal = true;
 	}
 
 	cif_hw->grf = syscon_regmap_lookup_by_phandle(np, "rockchip,grf");
@@ -1003,25 +1414,32 @@ static int rkcif_plat_hw_probe(struct platform_device *pdev)
 		if (data->rsts[i])
 			rst = devm_reset_control_get(dev, data->rsts[i]);
 		if (IS_ERR(rst)) {
+			cif_hw->cif_rst[i] = NULL;
 			dev_err(dev, "failed to get %s\n", data->rsts[i]);
-			return PTR_ERR(rst);
+		} else {
+			cif_hw->cif_rst[i] = rst;
 		}
-		cif_hw->cif_rst[i] = rst;
 	}
 
 	cif_hw->cif_regs = data->cif_regs;
 
-	cif_hw->iommu_en = is_iommu_enable(dev);
-	if (!cif_hw->iommu_en) {
-		ret = of_reserved_mem_device_init(dev);
-		if (ret)
-			dev_info(dev, "No reserved memory region assign to CIF\n");
-	}
+	cif_hw->is_dma_sg_ops = true;
+	cif_hw->is_dma_contig = true;
+	mutex_init(&cif_hw->dev_lock);
+	spin_lock_init(&cif_hw->group_lock);
+	atomic_set(&cif_hw->power_cnt, 0);
 
-	if (data->chip_id != CHIP_RK1808_CIF &&
-	    data->chip_id != CHIP_RV1126_CIF &&
-	    data->chip_id != CHIP_RV1126_CIF_LITE &&
-	    data->chip_id != CHIP_RK3568_CIF) {
+	cif_hw->iommu_en = is_iommu_enable(dev);
+	ret = of_reserved_mem_device_init(dev);
+	if (ret) {
+		is_mem_reserved = false;
+		dev_info(dev, "No reserved memory region assign to CIF\n");
+	}
+	if (cif_hw->iommu_en && !is_mem_reserved)
+		cif_hw->is_dma_contig = false;
+	cif_hw->mem_ops = &vb2_cma_sg_memops;
+
+	if (data->chip_id < CHIP_RK1808_CIF) {
 		cif_dev = devm_kzalloc(dev, sizeof(*cif_dev), GFP_KERNEL);
 		if (!cif_dev)
 			return -ENOMEM;
@@ -1036,19 +1454,20 @@ static int rkcif_plat_hw_probe(struct platform_device *pdev)
 			return ret;
 	}
 
-	rkcif_hw_soft_reset(cif_hw, true);
-
 	mutex_init(&cif_hw->dev_lock);
 
 	pm_runtime_enable(&pdev->dev);
-	rkcif_init_reset_timer(cif_hw);
 
-	if (data->chip_id == CHIP_RK1808_CIF ||
-	    data->chip_id == CHIP_RV1126_CIF ||
-	    data->chip_id == CHIP_RK3568_CIF) {
+	if (data->chip_id >= CHIP_RK1808_CIF &&
+	    data->chip_id != CHIP_RV1126_CIF_LITE) {
 		platform_driver_register(&rkcif_plat_drv);
 		platform_driver_register(&rkcif_subdev_driver);
 	}
+
+	notifier = &cif_hw->reset_notifier;
+	notifier->priority = 1;
+	notifier->notifier_call = rkcif_reset_notifier;
+	rkcif_csi2_register_notifier(notifier);
 
 	return 0;
 }
@@ -1062,19 +1481,53 @@ static int rkcif_plat_remove(struct platform_device *pdev)
 		rkcif_iommu_cleanup(cif_hw);
 
 	mutex_destroy(&cif_hw->dev_lock);
-	if (cif_hw->chip_id != CHIP_RK1808_CIF &&
-	    cif_hw->chip_id != CHIP_RV1126_CIF &&
-	    cif_hw->chip_id != CHIP_RV1126_CIF_LITE &&
-	    cif_hw->chip_id != CHIP_RK3568_CIF)
+	if (cif_hw->chip_id < CHIP_RK1808_CIF)
 		rkcif_plat_uninit(cif_hw->cif_dev[0]);
-	del_timer_sync(&cif_hw->hw_timer.timer);
+
+	rkcif_csi2_unregister_notifier(&cif_hw->reset_notifier);
+
 	return 0;
+}
+
+static void rkcif_hw_shutdown(struct platform_device *pdev)
+{
+	struct rkcif_hw *cif_hw = platform_get_drvdata(pdev);
+	struct rkcif_device *cif_dev = NULL;
+	int i = 0;
+
+	if (pm_runtime_get_if_in_use(&pdev->dev) <= 0)
+		return;
+
+	if (cif_hw->chip_id == CHIP_RK3588_CIF ||
+	    cif_hw->chip_id == CHIP_RV1106_CIF ||
+	    cif_hw->chip_id == CHIP_RK3562_CIF) {
+		write_cif_reg(cif_hw->base_addr, 0, 0);
+	} else {
+		for (i = 0; i < cif_hw->dev_num; i++) {
+			cif_dev = cif_hw->cif_dev[i];
+			if (atomic_read(&cif_dev->pipe.stream_cnt)) {
+				if (cif_dev->inf_id == RKCIF_MIPI_LVDS)
+					rkcif_write_register(cif_dev,
+							     CIF_REG_MIPI_LVDS_CTRL,
+							     0);
+				else
+					rkcif_write_register(cif_dev,
+							     CIF_REG_DVP_CTRL,
+							     0);
+			}
+		}
+	}
+	if (cif_hw->irq > 0)
+		disable_irq(cif_hw->irq);
+	pm_runtime_put(&pdev->dev);
 }
 
 static int __maybe_unused rkcif_runtime_suspend(struct device *dev)
 {
 	struct rkcif_hw *cif_hw = dev_get_drvdata(dev);
 
+	if (atomic_dec_return(&cif_hw->power_cnt))
+		return 0;
 	rkcif_disable_sys_clk(cif_hw);
 
 	return pinctrl_pm_select_sleep_state(dev);
@@ -1085,17 +1538,49 @@ static int __maybe_unused rkcif_runtime_resume(struct device *dev)
 	struct rkcif_hw *cif_hw = dev_get_drvdata(dev);
 	int ret;
 
+	if (atomic_inc_return(&cif_hw->power_cnt) > 1)
+		return 0;
 	ret = pinctrl_pm_select_default_state(dev);
 	if (ret < 0)
 		return ret;
 	rkcif_enable_sys_clk(cif_hw);
+	rkcif_hw_soft_reset(cif_hw, true);
+
+	return 0;
+}
+
+static int __maybe_unused rkcif_sleep_suspend(struct device *dev)
+{
+	struct rkcif_hw *cif_hw = dev_get_drvdata(dev);
+
+	if (atomic_read(&cif_hw->power_cnt) == 0)
+		return 0;
+
+	rkcif_disable_sys_clk(cif_hw);
+
+	return pinctrl_pm_select_sleep_state(dev);
+}
+
+static int __maybe_unused rkcif_sleep_resume(struct device *dev)
+{
+	struct rkcif_hw *cif_hw = dev_get_drvdata(dev);
+	int ret;
+
+	if (atomic_read(&cif_hw->power_cnt) == 0)
+		return 0;
+
+	ret = pinctrl_pm_select_default_state(dev);
+	if (ret < 0)
+		return ret;
+	rkcif_enable_sys_clk(cif_hw);
+	rkcif_hw_soft_reset(cif_hw, true);
 
 	return 0;
 }
 
 static const struct dev_pm_ops rkcif_plat_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend,
-				pm_runtime_force_resume)
+	SET_LATE_SYSTEM_SLEEP_PM_OPS(rkcif_sleep_suspend,
+				rkcif_sleep_resume)
 	SET_RUNTIME_PM_OPS(rkcif_runtime_suspend, rkcif_runtime_resume, NULL)
 };
 
@@ -1107,15 +1592,17 @@ static struct platform_driver rkcif_hw_plat_drv = {
 	},
 	.probe = rkcif_plat_hw_probe,
 	.remove = rkcif_plat_remove,
+	.shutdown = rkcif_hw_shutdown,
 };
 
-static int __init rk_cif_plat_drv_init(void)
+int rk_cif_plat_drv_init(void)
 {
 	int ret;
 
 	ret = platform_driver_register(&rkcif_hw_plat_drv);
 	if (ret)
 		return ret;
+	rkcif_csi2_hw_plat_drv_init();
 	return rkcif_csi2_plat_drv_init();
 }
 
@@ -1123,9 +1610,16 @@ static void __exit rk_cif_plat_drv_exit(void)
 {
 	platform_driver_unregister(&rkcif_hw_plat_drv);
 	rkcif_csi2_plat_drv_exit();
+	rkcif_csi2_hw_plat_drv_exit();
 }
 
+#if defined(CONFIG_VIDEO_ROCKCHIP_THUNDER_BOOT_ISP) && !defined(CONFIG_INITCALL_ASYNC)
+subsys_initcall(rk_cif_plat_drv_init);
+#else
+#if !defined(CONFIG_VIDEO_REVERSE_IMAGE)
 module_init(rk_cif_plat_drv_init);
+#endif
+#endif
 module_exit(rk_cif_plat_drv_exit);
 
 MODULE_AUTHOR("Rockchip Camera/ISP team");

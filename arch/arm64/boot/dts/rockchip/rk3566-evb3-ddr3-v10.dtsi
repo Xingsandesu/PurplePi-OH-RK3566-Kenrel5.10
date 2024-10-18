@@ -44,6 +44,13 @@
 	};
 };
 
+&bt_sound {
+	status = "disabled";
+	simple-audio-card,cpu {
+		sound-dai = <&i2s2_2ch>;
+	};
+};
+
 &combphy1_usq {
 	status = "okay";
 };
@@ -266,6 +273,12 @@
 	status = "disabled";
 };
 
+&i2s2_2ch {
+	pinctrl-0 = <&i2s2m0_sclktx &i2s2m0_lrcktx &i2s2m0_sdi &i2s2m0_sdo>;
+	rockchip,bclk-fs = <32>;
+	status = "disabled";
+};
+
 &i2s3_2ch {
 	status = "okay";
 	pinctrl-names = "default";
@@ -420,7 +433,7 @@
 		sound-dai = <&i2s3_2ch>;
 	};
 	simple-audio-card,codec {
-		sound-dai = <&rk809_codec>;
+		sound-dai = <&rk809_codec 0>;
 	};
 };
 
@@ -439,7 +452,8 @@
 
 &sdmmc1 {
 	max-frequency = <150000000>;
-	supports-sdio;
+	no-sd;
+	no-mmc;
 	bus-width = <4>;
 	disable-wp;
 	cap-sd-highspeed;
@@ -491,6 +505,7 @@
 	pinctrl-names = "default";
 	pinctrl-0 = <&wifi_host_wake_irq>;
 	WIFI,host_wake_irq = <&gpio2 RK_PB2 GPIO_ACTIVE_HIGH>;
+	WIFI,poweren_gpio = <&gpio2 RK_PB1 GPIO_ACTIVE_HIGH>;
 };
 
 &work_led {

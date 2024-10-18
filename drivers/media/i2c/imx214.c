@@ -872,9 +872,7 @@ static int imx214_g_frame_interval(struct v4l2_subdev *sd,
 	struct imx214 *imx214 = to_imx214(sd);
 	const struct imx214_mode *mode = imx214->cur_mode;
 
-	mutex_lock(&imx214->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&imx214->mutex);
 
 	return 0;
 }
@@ -1445,9 +1443,7 @@ static int imx214_enum_frame_interval(struct v4l2_subdev *sd,
 	if (fie->index >= imx214->cfg_num)
 		return -EINVAL;
 
-	if (fie->code != IMX214_MEDIA_BUS_FMT)
-		return -EINVAL;
-
+	fie->code = IMX214_MEDIA_BUS_FMT;
 	fie->width = imx214->support_modes[fie->index].width;
 	fie->height = imx214->support_modes[fie->index].height;
 	fie->interval = imx214->support_modes[fie->index].max_fps;
@@ -1455,7 +1451,7 @@ static int imx214_enum_frame_interval(struct v4l2_subdev *sd,
 	return 0;
 }
 
-static int imx214_g_mbus_config(struct v4l2_subdev *sd,
+static int imx214_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad,
 				struct v4l2_mbus_config *config)
 {
 	struct imx214 *imx214 = to_imx214(sd);
@@ -1466,10 +1462,40 @@ static int imx214_g_mbus_config(struct v4l2_subdev *sd,
 		V4L2_MBUS_CSI2_CHANNEL_0 |
 		V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
 
-	config->type = V4L2_MBUS_CSI2;
+	config->type = V4L2_MBUS_CSI2_DPHY;
 	config->flags = val;
 
 	return 0;
+}
+
+#define CROP_START(SRC, DST) (((SRC) - (DST)) / 2 / 4 * 4)
+#define DST_WIDTH_2096 2096
+#define DST_HEIGHT_1560 1560
+
+static int imx214_get_selection(struct v4l2_subdev *sd,
+				struct v4l2_subdev_pad_config *cfg,
+				struct v4l2_subdev_selection *sel)
+{
+	struct imx214 *imx214 = to_imx214(sd);
+
+	if (sel->target == V4L2_SEL_TGT_CROP_BOUNDS) {
+		if (imx214->cur_mode->width == 2104) {
+			sel->r.left = CROP_START(imx214->cur_mode->width, DST_WIDTH_2096);
+			sel->r.width = DST_WIDTH_2096;
+			sel->r.top = CROP_START(imx214->cur_mode->height, DST_HEIGHT_1560);
+			sel->r.height = DST_HEIGHT_1560;
+		} else {
+			sel->r.left = CROP_START(imx214->cur_mode->width,
+							imx214->cur_mode->width);
+			sel->r.width = imx214->cur_mode->width;
+			sel->r.top = CROP_START(imx214->cur_mode->height,
+							imx214->cur_mode->height);
+			sel->r.height = imx214->cur_mode->height;
+		}
+		return 0;
+	}
+
+	return -EINVAL;
 }
 
 static const struct dev_pm_ops imx214_pm_ops = {
@@ -1494,7 +1520,6 @@ static const struct v4l2_subdev_core_ops imx214_core_ops = {
 static const struct v4l2_subdev_video_ops imx214_video_ops = {
 	.s_stream = imx214_s_stream,
 	.g_frame_interval = imx214_g_frame_interval,
-	.g_mbus_config = imx214_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops imx214_pad_ops = {
@@ -1503,6 +1528,8 @@ static const struct v4l2_subdev_pad_ops imx214_pad_ops = {
 	.enum_frame_interval = imx214_enum_frame_interval,
 	.get_fmt = imx214_get_fmt,
 	.set_fmt = imx214_set_fmt,
+	.get_selection = imx214_get_selection,
+	.get_mbus_config = imx214_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops imx214_subdev_ops = {
@@ -1944,4 +1971,4 @@ device_initcall_sync(sensor_mod_init);
 module_exit(sensor_mod_exit);
 
 MODULE_DESCRIPTION("Sony  imx214 sensor driver");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");

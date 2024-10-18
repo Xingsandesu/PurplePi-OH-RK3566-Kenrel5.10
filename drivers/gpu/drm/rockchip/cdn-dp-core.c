@@ -1,35 +1,25 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) Fuzhou Rockchip Electronics Co.Ltd
  * Author: Chris Zhong <zyw@rock-chips.com>
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
-
-#include <drm/drmP.h>
-#include <drm/drm_atomic_helper.h>
-#include <drm/drm_crtc_helper.h>
-#include <drm/drm_dp_helper.h>
-#include <drm/drm_edid.h>
-#include <drm/drm_of.h>
 
 #include <linux/clk.h>
 #include <linux/component.h>
-#include <linux/extcon.h>
 #include <linux/firmware.h>
-#include <linux/regmap.h>
-#include <linux/reset.h>
 #include <linux/mfd/syscon.h>
 #include <linux/phy/phy.h>
-#include <uapi/linux/videodev2.h>
+#include <linux/regmap.h>
+#include <linux/reset.h>
 
 #include <sound/hdmi-codec.h>
+
+#include <drm/drm_atomic_helper.h>
+#include <drm/drm_dp_helper.h>
+#include <drm/drm_edid.h>
+#include <drm/drm_of.h>
+#include <drm/drm_probe_helper.h>
+#include <drm/drm_simple_kms_helper.h>
 
 #include "cdn-dp-core.h"
 #include "cdn-dp-reg.h"
@@ -152,24 +142,7 @@ static void cdn_dp_clk_disable(struct cdn_dp_device *dp)
 
 static int cdn_dp_get_port_lanes(struct cdn_dp_port *port)
 {
-	struct extcon_dev *edev = port->extcon;
-	union extcon_property_value property;
-	int dptx;
-	u8 lanes;
-
-	dptx = extcon_get_state(edev, EXTCON_DISP_DP);
-	if (dptx > 0) {
-		extcon_get_property(edev, EXTCON_DISP_DP,
-				    EXTCON_PROP_USB_SS, &property);
-		if (property.intval)
-			lanes = 2;
-		else
-			lanes = 4;
-	} else {
-		lanes = 0;
-	}
-
-	return lanes;
+	return phy_get_bus_width(port->phy);
 }
 
 static int cdn_dp_get_sink_count(struct cdn_dp_device *dp, u8 *sink_count)
@@ -203,15 +176,12 @@ static struct cdn_dp_port *cdn_dp_connected_port(struct cdn_dp_device *dp)
 static bool cdn_dp_check_sink_connection(struct cdn_dp_device *dp)
 {
 	unsigned long timeout = jiffies + msecs_to_jiffies(CDN_DPCD_TIMEOUT_MS);
-	struct cdn_dp_port *port;
 	u8 sink_count = 0;
 
 	if (dp->active_port < 0 || dp->active_port >= dp->ports) {
 		DRM_DEV_ERROR(dp->dev, "active_port is wrong!\n");
 		return false;
 	}
-
-	port = dp->port[dp->active_port];
 
 	/*
 	 * Attempt to read sink count, retry in case the sink may not be ready.
@@ -220,9 +190,6 @@ static bool cdn_dp_check_sink_connection(struct cdn_dp_device *dp)
 	 * some docks need more time to power up.
 	 */
 	while (time_before(jiffies, timeout)) {
-		if (!extcon_get_state(port->extcon, EXTCON_DISP_DP))
-			return false;
-
 		if (!cdn_dp_get_sink_count(dp, &sink_count))
 			return sink_count ? true : false;
 
@@ -253,22 +220,11 @@ static void cdn_dp_connector_destroy(struct drm_connector *connector)
 	drm_connector_cleanup(connector);
 }
 
-static int
-cdn_dp_atomic_connector_get_property(struct drm_connector *connector,
-				     const struct drm_connector_state *state,
-				     struct drm_property *property,
-				     uint64_t *val)
+static void cdn_dp_oob_hotplug_event(struct drm_connector *connector)
 {
 	struct cdn_dp_device *dp = connector_to_dp(connector);
-	struct rockchip_drm_private *private = connector->dev->dev_private;
 
-	if (property == private->connector_id_prop) {
-		*val = dp->id;
-		return 0;
-	}
-
-	DRM_ERROR("failed to get rockchip CDN DP property\n");
-	return -EINVAL;
+	schedule_delayed_work(&dp->event_work, msecs_to_jiffies(100));
 }
 
 static const struct drm_connector_funcs cdn_dp_atomic_connector_funcs = {
@@ -278,7 +234,6 @@ static const struct drm_connector_funcs cdn_dp_atomic_connector_funcs = {
 	.reset = drm_atomic_helper_connector_reset,
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
-	.atomic_get_property = cdn_dp_atomic_connector_get_property,
 };
 
 static int cdn_dp_connector_get_modes(struct drm_connector *connector)
@@ -298,27 +253,19 @@ static int cdn_dp_connector_get_modes(struct drm_connector *connector)
 		if (ret)
 			drm_connector_update_edid_property(connector,
 								edid);
-	} else {
-		ret = rockchip_drm_add_modes_noedid(connector);
-
-		dev_info(dp->dev, "failed to get edid\n");
 	}
 	mutex_unlock(&dp->lock);
 
 	return ret;
 }
 
-static int cdn_dp_connector_mode_valid(struct drm_connector *connector,
-				       struct drm_display_mode *mode)
+static enum drm_mode_status
+cdn_dp_connector_mode_valid(struct drm_connector *connector,
+			    struct drm_display_mode *mode)
 {
 	struct cdn_dp_device *dp = connector_to_dp(connector);
 	struct drm_display_info *display_info = &dp->connector.display_info;
 	u32 requested, actual, rate, sink_max, source_max = 0;
-	struct drm_encoder *encoder = connector->encoder;
-	enum drm_mode_status status = MODE_OK;
-	struct drm_device *dev = connector->dev;
-	struct rockchip_drm_private *priv = dev->dev_private;
-	struct drm_crtc *crtc;
 	u8 lanes, bpc;
 
 	/* If DP is disconnected, every mode is invalid */
@@ -336,9 +283,6 @@ static int cdn_dp_connector_mode_valid(struct drm_connector *connector,
 		bpc = 8;
 		break;
 	}
-
-	if (!IS_ALIGNED(mode->hdisplay * bpc, 8))
-		return MODE_H_ILLEGAL;
 
 	requested = mode->clock * bpc * 3 / 1000;
 
@@ -360,42 +304,6 @@ static int cdn_dp_connector_mode_valid(struct drm_connector *connector,
 				  "requested=%d, actual=%d, clock=%d\n",
 				  requested, actual, mode->clock);
 		return MODE_CLOCK_HIGH;
-	}
-
-	if (!encoder) {
-		const struct drm_connector_helper_funcs *funcs;
-
-		funcs = connector->helper_private;
-		if (funcs->atomic_best_encoder)
-			encoder = funcs->atomic_best_encoder(connector,
-							     connector->state);
-		else if (funcs->best_encoder)
-			encoder = funcs->best_encoder(connector);
-		else
-			encoder = drm_atomic_helper_best_encoder(connector);
-	}
-
-	if (!encoder || !encoder->possible_crtcs)
-		return MODE_BAD;
-	/*
-	 * ensure all drm display mode can work, if someone want support more
-	 * resolutions, please limit the possible_crtc, only connect to
-	 * needed crtc.
-	 */
-	drm_for_each_crtc(crtc, connector->dev) {
-		int pipe = drm_crtc_index(crtc);
-		const struct rockchip_crtc_funcs *funcs =
-						priv->crtc_funcs[pipe];
-
-		if (!(encoder->possible_crtcs & drm_crtc_mask(crtc)))
-			continue;
-		if (!funcs || !funcs->mode_valid)
-			continue;
-
-		status = funcs->mode_valid(crtc, mode,
-					   DRM_MODE_CONNECTOR_HDMIA);
-		if (status != MODE_OK)
-			return status;
 	}
 
 	return MODE_OK;
@@ -458,7 +366,6 @@ static int cdn_dp_get_sink_capability(struct cdn_dp_device *dp)
 
 static int cdn_dp_enable_phy(struct cdn_dp_device *dp, struct cdn_dp_port *port)
 {
-	union extcon_property_value property;
 	int ret;
 
 	if (!port->phy_enabled) {
@@ -485,15 +392,8 @@ static int cdn_dp_enable_phy(struct cdn_dp_device *dp, struct cdn_dp_port *port)
 		goto err_power_on;
 	}
 
-	ret = extcon_get_property(port->extcon, EXTCON_DISP_DP,
-				  EXTCON_PROP_USB_TYPEC_POLARITY, &property);
-	if (ret) {
-		DRM_DEV_ERROR(dp->dev, "get property failed\n");
-		goto err_power_on;
-	}
-
 	port->lanes = cdn_dp_get_port_lanes(port);
-	ret = cdn_dp_set_host_cap(dp, port->lanes, property.intval);
+	ret = cdn_dp_set_host_cap(dp, port->lanes, 0);
 	if (ret) {
 		DRM_DEV_ERROR(dp->dev, "set host capabilities failed: %d\n",
 			      ret);
@@ -555,8 +455,8 @@ static int cdn_dp_disable(struct cdn_dp_device *dp)
 	cdn_dp_set_firmware_active(dp, false);
 	cdn_dp_clk_disable(dp);
 	dp->active = false;
-	dp->link.rate = 0;
-	dp->link.num_lanes = 0;
+	dp->max_lanes = 0;
+	dp->max_rate = 0;
 	if (!dp->connected) {
 		kfree(dp->edid);
 		dp->edid = NULL;
@@ -639,7 +539,7 @@ static void cdn_dp_encoder_mode_set(struct drm_encoder *encoder,
 	video->v_sync_polarity = !!(mode->flags & DRM_MODE_FLAG_NVSYNC);
 	video->h_sync_polarity = !!(mode->flags & DRM_MODE_FLAG_NHSYNC);
 
-	memcpy(&dp->mode, adjusted, sizeof(*mode));
+	drm_mode_copy(&dp->mode, adjusted);
 }
 
 static bool cdn_dp_check_link_status(struct cdn_dp_device *dp)
@@ -648,7 +548,7 @@ static bool cdn_dp_check_link_status(struct cdn_dp_device *dp)
 	struct cdn_dp_port *port = cdn_dp_connected_port(dp);
 	u8 sink_lanes = drm_dp_max_lane_count(dp->dpcd);
 
-	if (!port || !dp->link.rate || !dp->link.num_lanes)
+	if (!port || !dp->max_rate || !dp->max_lanes)
 		return false;
 
 	if (drm_dp_dpcd_read_link_status(&dp->aux, link_status) !=
@@ -751,32 +651,18 @@ static void cdn_dp_encoder_disable(struct drm_encoder *encoder)
 	 *    run the event_work to re-connect it.
 	 */
 	if (!dp->connected && cdn_dp_connected_port(dp))
-		schedule_work(&dp->event_work);
+		schedule_delayed_work(&dp->event_work, 0);
 }
 
 static int cdn_dp_encoder_atomic_check(struct drm_encoder *encoder,
 				       struct drm_crtc_state *crtc_state,
 				       struct drm_connector_state *conn_state)
 {
-	struct cdn_dp_device *dp = encoder_to_dp(encoder);
-	struct drm_display_info *di = &dp->connector.display_info;
 	struct rockchip_crtc_state *s = to_rockchip_crtc_state(crtc_state);
-
-	switch (di->bpc) {
-	case 6:
-		s->bus_format = MEDIA_BUS_FMT_RGB666_1X24_CPADHI;
-		break;
-	case 8:
-	default:
-		s->bus_format = MEDIA_BUS_FMT_RGB888_1X24;
-		break;
-	}
 
 	s->output_mode = ROCKCHIP_OUT_MODE_AAAA;
 	s->output_type = DRM_MODE_CONNECTOR_DisplayPort;
 	s->tv_state = &conn_state->tv;
-	s->eotf = TRADITIONAL_GAMMA_SDR;
-	s->color_space = V4L2_COLORSPACE_DEFAULT;
 
 	return 0;
 }
@@ -786,10 +672,6 @@ static const struct drm_encoder_helper_funcs cdn_dp_encoder_helper_funcs = {
 	.enable = cdn_dp_encoder_enable,
 	.disable = cdn_dp_encoder_disable,
 	.atomic_check = cdn_dp_encoder_atomic_check,
-};
-
-static const struct drm_encoder_funcs cdn_dp_encoder_funcs = {
-	.destroy = drm_encoder_cleanup,
 };
 
 static int cdn_dp_parse_dt(struct cdn_dp_device *dp)
@@ -863,53 +745,6 @@ static int cdn_dp_parse_dt(struct cdn_dp_device *dp)
 	return 0;
 }
 
-struct dp_sdp {
-	struct dp_sdp_header sdp_header;
-	u8 db[28];
-} __packed;
-
-static int cdn_dp_setup_audio_infoframe(struct cdn_dp_device *dp)
-{
-	struct dp_sdp infoframe_sdp;
-	struct hdmi_audio_infoframe frame;
-	u8 buffer[14];
-	ssize_t err;
-
-	/* Prepare VSC packet as per EDP 1.4 spec, Table 6.9 */
-	memset(&infoframe_sdp, 0, sizeof(infoframe_sdp));
-	infoframe_sdp.sdp_header.HB0 = 0;
-	infoframe_sdp.sdp_header.HB1 = HDMI_INFOFRAME_TYPE_AUDIO;
-	infoframe_sdp.sdp_header.HB2 = 0x1b;
-	infoframe_sdp.sdp_header.HB3 = 0x48;
-
-	err = hdmi_audio_infoframe_init(&frame);
-	if (err < 0) {
-		DRM_DEV_ERROR(dp->dev, "Failed to setup audio infoframe: %zd\n",
-			      err);
-		return err;
-	}
-
-	frame.coding_type = HDMI_AUDIO_CODING_TYPE_STREAM;
-	frame.sample_frequency = HDMI_AUDIO_SAMPLE_FREQUENCY_STREAM;
-	frame.sample_size = HDMI_AUDIO_SAMPLE_SIZE_STREAM;
-	frame.channels = 0;
-
-	err = hdmi_audio_infoframe_pack(&frame, buffer, sizeof(buffer));
-	if (err < 0) {
-		DRM_DEV_ERROR(dp->dev, "Failed to pack audio infoframe: %zd\n",
-			      err);
-		return err;
-	}
-
-	memcpy(&infoframe_sdp.db[0], &buffer[HDMI_INFOFRAME_HEADER_SIZE],
-	       sizeof(buffer) - HDMI_INFOFRAME_HEADER_SIZE);
-
-	cdn_dp_infoframe_set(dp, 0, (u8 *)&infoframe_sdp,
-			     sizeof(infoframe_sdp), 0x84);
-
-	return 0;
-}
-
 static int cdn_dp_audio_hw_params(struct device *dev,  void *data,
 				  struct hdmi_codec_daifmt *daifmt,
 				  struct hdmi_codec_params *params)
@@ -924,7 +759,7 @@ static int cdn_dp_audio_hw_params(struct device *dev,  void *data,
 
 	mutex_lock(&dp->lock);
 	if (!dp->active) {
-		ret = 0;
+		ret = -ENODEV;
 		goto out;
 	}
 
@@ -940,10 +775,6 @@ static int cdn_dp_audio_hw_params(struct device *dev,  void *data,
 		ret = -EINVAL;
 		goto out;
 	}
-
-	ret = cdn_dp_setup_audio_infoframe(dp);
-	if (ret)
-		goto out;
 
 	ret = cdn_dp_audio_config(dp, &audio);
 	if (!ret)
@@ -970,15 +801,15 @@ out:
 	mutex_unlock(&dp->lock);
 }
 
-static int cdn_dp_audio_digital_mute(struct device *dev, void *data,
-				     bool enable)
+static int cdn_dp_audio_mute_stream(struct device *dev, void *data,
+				    bool enable, int direction)
 {
 	struct cdn_dp_device *dp = dev_get_drvdata(dev);
 	int ret;
 
 	mutex_lock(&dp->lock);
 	if (!dp->active) {
-		ret = 0;
+		ret = -ENODEV;
 		goto out;
 	}
 
@@ -1002,8 +833,9 @@ static int cdn_dp_audio_get_eld(struct device *dev, void *data,
 static const struct hdmi_codec_ops audio_codec_ops = {
 	.hw_params = cdn_dp_audio_hw_params,
 	.audio_shutdown = cdn_dp_audio_shutdown,
-	.digital_mute = cdn_dp_audio_digital_mute,
+	.mute_stream = cdn_dp_audio_mute_stream,
 	.get_eld = cdn_dp_audio_get_eld,
+	.no_capture_mute = 1,
 };
 
 static int cdn_dp_audio_codec_init(struct cdn_dp_device *dp,
@@ -1038,8 +870,7 @@ static int cdn_dp_request_firmware(struct cdn_dp_device *dp)
 	mutex_unlock(&dp->lock);
 
 	while (time_before(jiffies, timeout)) {
-		ret = request_firmware_direct(&dp->fw, CDN_DP_FIRMWARE,
-					      dp->dev);
+		ret = request_firmware(&dp->fw, CDN_DP_FIRMWARE, dp->dev);
 		if (ret == -ENOENT) {
 			msleep(sleep);
 			sleep *= 2;
@@ -1062,27 +893,9 @@ out:
 	return ret;
 }
 
-static bool cdn_dp_needs_link_retrain(struct cdn_dp_device *dp)
-{
-	u8 link_status[DP_LINK_STATUS_SIZE];
-
-	/*
-	 * Validate the cached values of link parameters before attempting to
-	 * retrain.
-	 */
-	if (!dp->link.rate || !dp->link.num_lanes)
-		return false;
-
-	if (drm_dp_dpcd_read_link_status(&dp->aux, link_status) < 0)
-		return false;
-
-	/* Retrain if Channel EQ or CR not ok */
-	return !drm_dp_channel_eq_ok(link_status, dp->link.num_lanes);
-}
-
 static void cdn_dp_pd_event_work(struct work_struct *work)
 {
-	struct cdn_dp_device *dp = container_of(work, struct cdn_dp_device,
+	struct cdn_dp_device *dp = container_of(to_delayed_work(work), struct cdn_dp_device,
 						event_work);
 	struct drm_connector *connector = &dp->connector;
 	enum drm_connector_status old_status;
@@ -1120,9 +933,9 @@ static void cdn_dp_pd_event_work(struct work_struct *work)
 		dp->connected = false;
 
 	/* Enabled and connected with a sink, re-train if requested */
-	} else if (cdn_dp_needs_link_retrain(dp)) {
-		unsigned int rate = dp->link.rate;
-		unsigned int lanes = dp->link.num_lanes;
+	} else if (!cdn_dp_check_link_status(dp)) {
+		unsigned int rate = dp->max_rate;
+		unsigned int lanes = dp->max_lanes;
 		struct drm_display_mode *mode = &dp->mode;
 
 		DRM_DEV_INFO(dp->dev, "Connected with sink. Re-train link\n");
@@ -1135,7 +948,7 @@ static void cdn_dp_pd_event_work(struct work_struct *work)
 
 		/* If training result is changed, update the video config */
 		if (mode->clock &&
-		    (rate != dp->link.rate || lanes != dp->link.num_lanes)) {
+		    (rate != dp->max_rate || lanes != dp->max_lanes)) {
 			ret = cdn_dp_config_video(dp);
 			if (ret) {
 				dp->connected = false;
@@ -1153,23 +966,6 @@ out:
 	connector->status = connector->funcs->detect(connector, false);
 	if (old_status != connector->status)
 		drm_kms_helper_hotplug_event(dp->drm_dev);
-}
-
-static int cdn_dp_pd_event(struct notifier_block *nb,
-			   unsigned long event, void *priv)
-{
-	struct cdn_dp_port *port = container_of(nb, struct cdn_dp_port,
-						event_nb);
-	struct cdn_dp_device *dp = port->dp;
-
-	/*
-	 * It would be nice to be able to just do the work inline right here.
-	 * However, we need to make a bunch of calls that might sleep in order
-	 * to turn on the block/phy, so use a worker instead.
-	 */
-	schedule_work(&dp->event_work);
-
-	return NOTIFY_DONE;
 }
 
 static ssize_t cdn_dp_aux_transfer(struct drm_dp_aux *aux,
@@ -1211,10 +1007,8 @@ static int cdn_dp_bind(struct device *dev, struct device *master, void *data)
 	struct cdn_dp_device *dp = dev_get_drvdata(dev);
 	struct drm_encoder *encoder;
 	struct drm_connector *connector;
-	struct cdn_dp_port *port;
 	struct drm_device *drm_dev = data;
-	struct rockchip_drm_private *private = drm_dev->dev_private;
-	int ret, i;
+	int ret;
 
 	ret = cdn_dp_parse_dt(dp);
 	if (ret < 0)
@@ -1233,16 +1027,16 @@ static int cdn_dp_bind(struct device *dev, struct device *master, void *data)
 	if (ret)
 		return ret;
 
-	INIT_WORK(&dp->event_work, cdn_dp_pd_event_work);
+	INIT_DELAYED_WORK(&dp->event_work, cdn_dp_pd_event_work);
 
 	encoder = &dp->encoder;
 
-	encoder->possible_crtcs = drm_of_find_possible_crtcs(drm_dev,
-							     dev->of_node);
+	encoder->possible_crtcs = rockchip_drm_of_find_possible_crtcs(drm_dev,
+								      dev->of_node);
 	DRM_DEBUG_KMS("possible_crtcs = 0x%x\n", encoder->possible_crtcs);
 
-	ret = drm_encoder_init(drm_dev, encoder, &cdn_dp_encoder_funcs,
-			       DRM_MODE_ENCODER_TMDS, NULL);
+	ret = drm_simple_encoder_init(drm_dev, encoder,
+				      DRM_MODE_ENCODER_TMDS);
 	if (ret) {
 		DRM_ERROR("failed to initialize encoder with drm\n");
 		return ret;
@@ -1269,25 +1063,15 @@ static int cdn_dp_bind(struct device *dev, struct device *master, void *data)
 		DRM_ERROR("failed to attach connector and encoder\n");
 		goto err_free_connector;
 	}
-	drm_object_attach_property(&connector->base, private->connector_id_prop, 0);
 
-	for (i = 0; i < dp->ports; i++) {
-		port = dp->port[i];
-
-		port->event_nb.notifier_call = cdn_dp_pd_event;
-		ret = devm_extcon_register_notifier(dp->dev, port->extcon,
-						    EXTCON_DISP_DP,
-						    &port->event_nb);
-		if (ret) {
-			DRM_DEV_ERROR(dev,
-				      "register EXTCON_DISP_DP notifier err\n");
-			goto err_free_connector;
-		}
-	}
+	dp->sub_dev.connector = &dp->connector;
+	dp->sub_dev.of_node = dev->of_node;
+	dp->sub_dev.oob_hotplug_event = cdn_dp_oob_hotplug_event;
+	rockchip_drm_register_sub_dev(&dp->sub_dev);
 
 	pm_runtime_enable(dev);
 
-	schedule_work(&dp->event_work);
+	schedule_delayed_work(&dp->event_work, 0);
 
 	return 0;
 
@@ -1304,7 +1088,7 @@ static void cdn_dp_unbind(struct device *dev, struct device *master, void *data)
 	struct drm_encoder *encoder = &dp->encoder;
 	struct drm_connector *connector = &dp->connector;
 
-	cancel_work_sync(&dp->event_work);
+	cancel_delayed_work_sync(&dp->event_work);
 	cdn_dp_encoder_disable(encoder);
 	encoder->funcs->destroy(encoder);
 	connector->funcs->destroy(connector);
@@ -1335,14 +1119,14 @@ static int cdn_dp_suspend(struct device *dev)
 	return ret;
 }
 
-static int cdn_dp_resume(struct device *dev)
+static __maybe_unused int cdn_dp_resume(struct device *dev)
 {
 	struct cdn_dp_device *dp = dev_get_drvdata(dev);
 
 	mutex_lock(&dp->lock);
 	dp->suspended = false;
 	if (dp->fw_loaded)
-		schedule_work(&dp->event_work);
+		schedule_delayed_work(&dp->event_work, 0);
 	mutex_unlock(&dp->lock);
 
 	return 0;
@@ -1355,39 +1139,30 @@ static int cdn_dp_probe(struct platform_device *pdev)
 	struct cdn_dp_data *dp_data;
 	struct cdn_dp_port *port;
 	struct cdn_dp_device *dp;
-	struct extcon_dev *extcon;
 	struct phy *phy;
-	int i, id;
+	int i;
 
 	dp = devm_kzalloc(dev, sizeof(*dp), GFP_KERNEL);
 	if (!dp)
 		return -ENOMEM;
-	id = of_alias_get_id(dev->of_node, "dp");
-	if (id < 0)
-		id = 0;
-
-	dp->id = id;
 	dp->dev = dev;
 
 	match = of_match_node(cdn_dp_dt_ids, pdev->dev.of_node);
 	dp_data = (struct cdn_dp_data *)match->data;
 
 	for (i = 0; i < dp_data->max_phy; i++) {
-		extcon = extcon_get_edev_by_phandle(dev, i);
 		phy = devm_of_phy_get_by_index(dev, dev->of_node, i);
 
-		if (PTR_ERR(extcon) == -EPROBE_DEFER ||
-		    PTR_ERR(phy) == -EPROBE_DEFER)
+		if (PTR_ERR(phy) == -EPROBE_DEFER)
 			return -EPROBE_DEFER;
 
-		if (IS_ERR(extcon) || IS_ERR(phy))
+		if (IS_ERR(phy))
 			continue;
 
 		port = devm_kzalloc(dev, sizeof(*port), GFP_KERNEL);
 		if (!port)
 			return -ENOMEM;
 
-		port->extcon = extcon;
 		port->phy = phy;
 		port->dp = dp;
 		port->id = i;
@@ -1395,7 +1170,7 @@ static int cdn_dp_probe(struct platform_device *pdev)
 	}
 
 	if (!dp->ports) {
-		DRM_DEV_ERROR(dev, "missing extcon or phy\n");
+		DRM_DEV_ERROR(dev, "missing phy\n");
 		return -EINVAL;
 	}
 

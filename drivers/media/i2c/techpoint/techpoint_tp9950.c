@@ -2,7 +2,7 @@
 /*
  * techpoint lib
  *
- * Copyright (C) 2022 Rockchip Electronics Co., Ltd.
+ * Copyright (C) 2023 Rockchip Electronics Co., Ltd.
  */
 
 #include "techpoint_tp9950.h"

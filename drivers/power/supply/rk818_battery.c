@@ -170,7 +170,7 @@ struct rk818_battery {
 	struct wake_lock		wake_lock;
 	struct notifier_block           fb_nb;
 	struct timer_list		caltimer;
-	time_t				rtc_base;
+	time64_t			rtc_base;
 	int				bat_res;
 	int				chrg_status;
 	bool				is_initialized;
@@ -262,9 +262,9 @@ struct rk818_battery {
 
 static u64 get_boot_sec(void)
 {
-	struct timespec ts;
+	struct timespec64 ts;
 
-	get_monotonic_boottime(&ts);
+	ktime_get_boottime_ts64(&ts);
 
 	return ts.tv_sec;
 }
@@ -286,6 +286,9 @@ static u32 interpolate(int value, u32 *table, int size)
 {
 	u8 i;
 	u16 d;
+
+	if (size < 2)
+		return 0;
 
 	for (i = 0; i < size; i++) {
 		if (value < table[i])
@@ -1206,13 +1209,13 @@ static int rk818_bat_fb_notifier(struct notifier_block *nb,
 	struct rk818_battery *di;
 	struct fb_event *evdata = data;
 
-	if (event != FB_EARLY_EVENT_BLANK && event != FB_EVENT_BLANK)
-		return NOTIFY_OK;
+	if (event != FB_EVENT_BLANK)
+		return NOTIFY_DONE;
 
 	di = container_of(nb, struct rk818_battery, fb_nb);
 	di->fb_blank = *(int *)evdata->data;
 
-	return 0;
+	return NOTIFY_OK;
 }
 
 static int rk818_bat_register_fb_notify(struct rk818_battery *di)
@@ -1740,7 +1743,7 @@ static void rk818_bat_calc_zero_linek(struct rk818_battery *di)
 				di->zero_linek = 1200;
 			else
 				di->zero_linek = 800;
-				DBG("ZERO-new: zero_linek adjust step6...\n");
+			DBG("ZERO-new: zero_linek adjust step6...\n");
 		}
 	} else {
 		/* xsoc < 0 */
@@ -2101,6 +2104,8 @@ static void rk818_bat_finish_algorithm(struct rk818_battery *di)
 					FINISH_CHRG_CUR2 : FINISH_CHRG_CUR1;
 		finish_sec = base2sec(di->finish_base);
 		soc_sec = di->fcc * 3600 / 100 / DIV(finish_current);
+		if (soc_sec == 0)
+			soc_sec = 1;
 		plus_soc = finish_sec / DIV(soc_sec);
 		if (finish_sec > soc_sec) {
 			rest = finish_sec % soc_sec;
@@ -3127,13 +3132,11 @@ static void rk818_bat_init_info(struct rk818_battery *di)
 		       SAMPLE_RES_DIV1 : SAMPLE_RES_DIV2;
 }
 
-static time_t rk818_get_rtc_sec(void)
+static time64_t rk818_get_rtc_sec(void)
 {
 	int err;
 	struct rtc_time tm;
-	struct timespec tv = { .tv_nsec = NSEC_PER_SEC >> 1, };
 	struct rtc_device *rtc = rtc_class_open(CONFIG_RTC_HCTOSYS_DEVICE);
-	time_t sec;
 
 	err = rtc_read_time(rtc, &tm);
 	if (err) {
@@ -3147,10 +3150,7 @@ static time_t rk818_get_rtc_sec(void)
 		return 0;
 	}
 
-	rtc_tm_to_time(&tm, &tv.tv_sec);
-	sec = tv.tv_sec;
-
-	return sec;
+	return rtc_tm_to_time64(&tm);
 }
 
 static int rk818_bat_rtc_sleep_sec(struct rk818_battery *di)
@@ -3245,7 +3245,7 @@ static int rk818_bat_parse_dt(struct rk818_battery *di)
 	}
 
 	pdata->ocv_size = length / sizeof(u32);
-	if (pdata->ocv_size <= 0) {
+	if (pdata->ocv_size < 2) {
 		dev_err(dev, "invalid ocv table\n");
 		return -EINVAL;
 	}

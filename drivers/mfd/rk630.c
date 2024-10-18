@@ -41,7 +41,7 @@ static int rk630_macphy_enable(struct rk630 *rk630, unsigned long rate)
 		dev_err(rk630->dev, "Could not write to CRU: %d\n", ret);
 		return ret;
 	}
-	usleep_range(20, 30);
+	udelay(20);
 
 	val = BIT(12 + 16);
 	ret = regmap_write(rk630->cru, CRU_REG(0x50), val);
@@ -49,7 +49,7 @@ static int rk630_macphy_enable(struct rk630 *rk630, unsigned long rate)
 		dev_err(rk630->dev, "Could not write to CRU: %d\n", ret);
 		return ret;
 	}
-	usleep_range(20, 30);
+	udelay(20);
 
 	/* power up && led*/
 	val = BIT(1 + 16) | BIT(1) | BIT(2 + 16);
@@ -113,14 +113,6 @@ static int rk630_macphy_disable(struct rk630 *rk630)
 
 static const struct mfd_cell rk630_devs[] = {
 	{
-		.name = "rk630-efuse",
-		.of_compatible = "rockchip,rk630-efuse",
-	},
-	{
-		.name = "rk630-pinctrl",
-		.of_compatible = "rockchip,rk630-pinctrl",
-	},
-	{
 		.name = "rk630-tve",
 		.of_compatible = "rockchip,rk630-tve",
 	},
@@ -131,10 +123,6 @@ static const struct mfd_cell rk630_devs[] = {
 	{
 		.name = "rk630-macphy",
 		.of_compatible = "rockchip,rk630-macphy",
-	},
-	{
-		.name = "rk630-codec",
-		.of_compatible = "rockchip,rk630-codec",
 	},
 };
 
@@ -170,27 +158,6 @@ const struct regmap_config rk630_grf_regmap_config = {
 };
 EXPORT_SYMBOL_GPL(rk630_grf_regmap_config);
 
-static const struct regmap_range rk630_pinctrl_readable_ranges[] = {
-	regmap_reg_range(GPIO0_BASE, GPIO0_BASE + GPIO_VER_ID),
-	regmap_reg_range(GPIO1_BASE, GPIO1_BASE + GPIO_VER_ID),
-};
-
-static const struct regmap_access_table rk630_pinctrl_readable_table = {
-	.yes_ranges = rk630_pinctrl_readable_ranges,
-	.n_yes_ranges = ARRAY_SIZE(rk630_pinctrl_readable_ranges),
-};
-
-const struct regmap_config rk630_pinctrl_regmap_config = {
-	.name = "pinctrl",
-	.reg_bits = 32,
-	.val_bits = 32,
-	.reg_stride = 4,
-	.max_register = GPIO_MAX_REGISTER,
-	.reg_format_endian = REGMAP_ENDIAN_NATIVE,
-	.val_format_endian = REGMAP_ENDIAN_NATIVE,
-	.rd_table = &rk630_pinctrl_readable_table,
-};
-
 static const struct regmap_range rk630_cru_readable_ranges[] = {
 	regmap_reg_range(CRU_SPLL_CON0, CRU_SPLL_CON2),
 	regmap_reg_range(CRU_MODE_CON, CRU_MODE_CON),
@@ -214,6 +181,7 @@ const struct regmap_config rk630_cru_regmap_config = {
 	.val_format_endian = REGMAP_ENDIAN_NATIVE,
 	.rd_table = &rk630_cru_readable_table,
 };
+EXPORT_SYMBOL_GPL(rk630_cru_regmap_config);
 
 static const struct regmap_range rk630_rtc_readable_ranges[] = {
 	regmap_reg_range(RTC_SET_SECONDS, RTC_CNT_3),
@@ -234,29 +202,36 @@ const struct regmap_config rk630_rtc_regmap_config = {
 	.val_format_endian = REGMAP_ENDIAN_NATIVE,
 	.rd_table = &rk630_rtc_readable_table,
 };
+EXPORT_SYMBOL_GPL(rk630_rtc_regmap_config);
 
 int rk630_core_probe(struct rk630 *rk630)
 {
 	bool macphy_enabled = false;
+	struct clk *ref_clk;
 	struct device_node *np;
 	unsigned long rate;
 	int ret;
 
-	rk630->ref_clk = devm_clk_get(rk630->dev, "ref");
-	if (IS_ERR(rk630->ref_clk)) {
-		dev_err(rk630->dev, "failed to get ref clk source\n");
-		return PTR_ERR(rk630->ref_clk);
+	if (!rk630->irq) {
+		dev_err(rk630->dev, "No interrupt support, no core IRQ\n");
+		return -EINVAL;
 	}
 
-	ret = clk_prepare_enable(rk630->ref_clk);
+	ref_clk = devm_clk_get(rk630->dev, "ref");
+	if (IS_ERR(ref_clk)) {
+		dev_err(rk630->dev, "failed to get ref clk source\n");
+		return PTR_ERR(ref_clk);
+	}
+
+	ret = clk_prepare_enable(ref_clk);
 	if (ret < 0) {
 		dev_err(rk630->dev, "failed to enable ref clk - %d\n", ret);
 		return ret;
 	}
-	rate = clk_get_rate(rk630->ref_clk);
+	rate = clk_get_rate(ref_clk);
 
 	ret = devm_add_action_or_reset(rk630->dev, (void (*) (void *))clk_disable_unprepare,
-				       rk630->ref_clk);
+				       ref_clk);
 	if (ret)
 		return ret;
 
@@ -273,11 +248,10 @@ int rk630_core_probe(struct rk630 *rk630)
 	usleep_range(50000, 60000);
 	gpiod_direction_output(rk630->reset_gpio, 0);
 
-	if (!rk630->irq) {
-		dev_err(rk630->dev, "No interrupt support, no core IRQ\n");
-		return -EINVAL;
-	}
-
+	/**
+	 * If rtc output clamp is enabled, rtc regs can't be accessed,
+	 * RK630 irq add will failed.
+	 */
 	regmap_update_bits(rk630->grf, PLUMAGE_GRF_SOC_CON0,
 			   RTC_CLAMP_EN_MASK, RTC_CLAMP_EN(1));
 

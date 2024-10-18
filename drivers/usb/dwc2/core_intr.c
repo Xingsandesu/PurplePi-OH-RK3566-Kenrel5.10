@@ -288,14 +288,9 @@ static void dwc2_handle_conn_id_status_change_intr(struct dwc2_hsotg *hsotg)
 
 	/*
 	 * Need to schedule a work, as there are possible DELAY function calls.
-	 * Release lock before scheduling workq as it holds spinlock during
-	 * scheduling.
 	 */
-	if (hsotg->wq_otg) {
-		spin_unlock(&hsotg->lock);
+	if (hsotg->wq_otg)
 		queue_work(hsotg->wq_otg, &hsotg->wf_otg);
-		spin_lock(&hsotg->lock);
-	}
 }
 
 /**
@@ -404,7 +399,6 @@ static void dwc2_wakeup_from_lpm_l1(struct dwc2_hsotg *hsotg)
 static void dwc2_handle_wakeup_detected_intr(struct dwc2_hsotg *hsotg)
 {
 	int ret;
-	struct device_node *np = hsotg->dev->of_node;
 
 	/* Clear interrupt */
 	dwc2_writel(hsotg, GINTSTS_WKUPINT, GINTSTS);
@@ -449,15 +443,15 @@ static void dwc2_handle_wakeup_detected_intr(struct dwc2_hsotg *hsotg)
 			dwc2_writel(hsotg, pcgcctl, PCGCTL);
 
 			/*
-			 * It is a quirk in Rockchip RK3288, causing by
-			 * a hardware bug. This will propagate out and
-			 * eventually we'll re-enumerate the device.
-			 * Not great but the best we can do.
+			 * If we've got this quirk then the PHY is stuck upon
+			 * wakeup.  Assert reset.  This will propagate out and
+			 * eventually we'll re-enumerate the device.  Not great
+			 * but the best we can do.  We can't call phy_reset()
+			 * at interrupt time but there's no hurry, so we'll
+			 * schedule it for later.
 			 */
-			if (of_device_is_compatible(np, "rockchip,rk3288-usb")) {
-				/* FIXME: wkp_timer might run early than phy_rst_work */
-				schedule_work(&hsotg->phy_rst_work);
-			}
+			if (hsotg->reset_phy_on_wake)
+				dwc2_host_schedule_phy_reset(hsotg);
 
 			mod_timer(&hsotg->wkp_timer,
 				  jiffies + msecs_to_jiffies(71));

@@ -8,7 +8,6 @@
 
 #include <linux/types.h>
 #include <linux/version.h>
-#include "cryptodev.h"
 
 #ifndef __KERNEL__
 #define __user

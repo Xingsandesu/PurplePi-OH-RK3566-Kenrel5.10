@@ -106,11 +106,12 @@ static u32 rockchip_clock_pvtm_get_value(struct rockchip_clock_pvtm *pvtm,
 	rockchip_clock_pvtm_delay(time_us);
 
 	check_cnt = 100;
-	while (check_cnt--) {
+	while (check_cnt) {
 		regmap_read(pvtm->grf, info->sta, &sta);
 		if (sta & 0x1)
 			break;
 		udelay(4);
+		check_cnt--;
 	}
 
 	if (check_cnt) {
@@ -207,7 +208,6 @@ static const struct rockchip_clock_pvtm_info rk3368_pvtm_data = {
 	.get_value = rockchip_clock_pvtm_get_value,
 	.init_freq = rockchip_clock_pvtm_init_freq,
 };
-MODULE_DEVICE_TABLE(of, rockchip_clock_pvtm_match);
 
 static const struct of_device_id rockchip_clock_pvtm_match[] = {
 	{
@@ -216,6 +216,7 @@ static const struct of_device_id rockchip_clock_pvtm_match[] = {
 	},
 	{}
 };
+MODULE_DEVICE_TABLE(of, rockchip_clock_pvtm_match);
 
 static int rockchip_clock_pvtm_probe(struct platform_device *pdev)
 {

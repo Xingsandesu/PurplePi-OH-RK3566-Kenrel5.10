@@ -540,12 +540,11 @@ static int gsl_server_list_open(struct inode *inode,struct file *file)
 {
     return single_open(file,gsl_config_read_proc,NULL);
 }
-static const struct file_operations gsl_seq_fops = {
-    .open = gsl_server_list_open,
-    .read = seq_read,
-    .release = single_release,
-    .write = gsl_config_write_proc,
-    .owner = THIS_MODULE,
+static const struct proc_ops gsl_seq_fops = {
+    .proc_open = gsl_server_list_open,
+    .proc_read = seq_read,
+    .proc_release = single_release,
+    .proc_write = gsl_config_write_proc,
 };
 #endif
 
@@ -1043,15 +1042,15 @@ static int  gsl_ts_probe(struct i2c_client *client,
     ts->wake_pin=of_get_named_gpio_flags(np, "reset-gpio", 0, &wake_flags);
 
     ret = of_property_read_u32(np, "chip_id", &gsl_chip_id);
-    if(ret)
+    if (ret)
        gsl_chip_id = GSL680;
 
-       dev_info(&ts->client->dev, "[tp-gsl] gsl_chip_id =[%d] \n",gsl_chip_id);
-       for(i=0; i<ARRAY_SIZE(gsl_chip_info); i++) {
-           if (gsl_chip_info[i].chip_id == gsl_chip_id) {
-               ts->gsl_chip_info =  &gsl_chip_info[i];
-               break;
-           }
+    dev_info(&ts->client->dev, "[tp-gsl] gsl_chip_id =[%d] \n",gsl_chip_id);
+    for (i=0; i<ARRAY_SIZE(gsl_chip_info); i++) {
+        if (gsl_chip_info[i].chip_id == gsl_chip_id) {
+            ts->gsl_chip_info =  &gsl_chip_info[i];
+            break;
+        }
     }
 
     if (gpio_is_valid(ts->wake_pin)) {

@@ -4,7 +4,7 @@
 #ifndef _RKISP_ISP_STATS_V2X_H
 #define _RKISP_ISP_STATS_V2X_H
 
-#include <linux/rkisp1-config.h>
+#include <linux/rk-isp1-config.h>
 #include <linux/interrupt.h>
 #include <linux/kfifo.h>
 #include "common.h"
@@ -16,38 +16,38 @@ struct rkisp_isp_stats_vdev;
 struct rkisp_stats_v2x_ops {
 	void (*get_siawb_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
 			       struct rkisp_isp2x_stat_buffer *pbuf);
-	int (*get_rawawb_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
-			       struct rkisp_isp2x_stat_buffer *pbuf);
+	void (*get_rawawb_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
+				struct rkisp_isp2x_stat_buffer *pbuf);
 
 	void (*get_siaf_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
 			      struct rkisp_isp2x_stat_buffer *pbuf);
-	int (*get_rawaf_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
-			      struct rkisp_isp2x_stat_buffer *pbuf);
+	void (*get_rawaf_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
+			       struct rkisp_isp2x_stat_buffer *pbuf);
 
-	int (*get_yuvae_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
-			      struct rkisp_isp2x_stat_buffer *pbuf);
+	void (*get_yuvae_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
+			       struct rkisp_isp2x_stat_buffer *pbuf);
 	void (*get_sihst_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
 			       struct rkisp_isp2x_stat_buffer *pbuf);
 
-	int (*get_rawae0_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
-			       struct rkisp_isp2x_stat_buffer *pbuf);
-	int (*get_rawhst0_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
+	void (*get_rawae0_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
 				struct rkisp_isp2x_stat_buffer *pbuf);
+	void (*get_rawhst0_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
+				 struct rkisp_isp2x_stat_buffer *pbuf);
 
-	int (*get_rawae1_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
-			       struct rkisp_isp2x_stat_buffer *pbuf);
-	int (*get_rawhst1_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
+	void (*get_rawae1_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
 				struct rkisp_isp2x_stat_buffer *pbuf);
+	void (*get_rawhst1_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
+				 struct rkisp_isp2x_stat_buffer *pbuf);
 
-	int (*get_rawae2_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
-			       struct rkisp_isp2x_stat_buffer *pbuf);
-	int (*get_rawhst2_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
+	void (*get_rawae2_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
 				struct rkisp_isp2x_stat_buffer *pbuf);
+	void (*get_rawhst2_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
+				 struct rkisp_isp2x_stat_buffer *pbuf);
 
-	int (*get_rawae3_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
-			       struct rkisp_isp2x_stat_buffer *pbuf);
-	int (*get_rawhst3_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
+	void (*get_rawae3_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
 				struct rkisp_isp2x_stat_buffer *pbuf);
+	void (*get_rawhst3_meas)(struct rkisp_isp_stats_vdev *stats_vdev,
+				 struct rkisp_isp2x_stat_buffer *pbuf);
 
 	void (*get_bls_stats)(struct rkisp_isp_stats_vdev *stats_vdev,
 			      struct rkisp_isp2x_stat_buffer *pbuf);

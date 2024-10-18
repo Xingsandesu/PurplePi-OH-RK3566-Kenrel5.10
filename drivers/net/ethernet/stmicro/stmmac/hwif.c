@@ -23,6 +23,18 @@ static u32 stmmac_get_id(struct stmmac_priv *priv, u32 id_reg)
 	return reg & GENMASK(7, 0);
 }
 
+static u32 stmmac_get_dev_id(struct stmmac_priv *priv, u32 id_reg)
+{
+	u32 reg = readl(priv->ioaddr + id_reg);
+
+	if (!reg) {
+		dev_info(priv->device, "Version ID not available\n");
+		return 0x0;
+	}
+
+	return (reg & GENMASK(15, 8)) >> 8;
+}
+
 #ifdef CONFIG_STMMAC_FULL
 static void stmmac_dwmac_mode_quirk(struct stmmac_priv *priv)
 {
@@ -69,6 +81,12 @@ static int stmmac_dwmac4_quirks(struct stmmac_priv *priv)
 	stmmac_dwmac_mode_quirk(priv);
 	return 0;
 }
+
+static int stmmac_dwxlgmac_quirks(struct stmmac_priv *priv)
+{
+	priv->hw->xlgmac = true;
+	return 0;
+}
 #endif
 
 static const struct stmmac_hwif_entry {
@@ -76,15 +94,15 @@ static const struct stmmac_hwif_entry {
 	bool gmac4;
 	bool xgmac;
 	u32 min_id;
+	u32 dev_id;
 	const struct stmmac_regs_off regs;
 	const void *desc;
 	const void *dma;
 	const void *mac;
-#ifdef CONFIG_STMMAC_PTP
 	const void *hwtimestamp;
-#endif
 	const void *mode;
 	const void *tc;
+	const void *mmc;
 	int (*setup)(struct stmmac_priv *priv);
 	int (*quirks)(struct stmmac_priv *priv);
 } stmmac_hw[] = {
@@ -102,11 +120,10 @@ static const struct stmmac_hwif_entry {
 		.desc = NULL,
 		.dma = &dwmac100_dma_ops,
 		.mac = &dwmac100_ops,
-#ifdef CONFIG_STMMAC_PTP
 		.hwtimestamp = &stmmac_ptp,
-#endif
 		.mode = NULL,
 		.tc = NULL,
+		.mmc = &dwmac_mmc_ops,
 		.setup = dwmac100_setup,
 		.quirks = stmmac_dwmac1_quirks,
 	}, {
@@ -121,11 +138,10 @@ static const struct stmmac_hwif_entry {
 		.desc = NULL,
 		.dma = &dwmac1000_dma_ops,
 		.mac = &dwmac1000_ops,
-#ifdef CONFIG_STMMAC_PTP
 		.hwtimestamp = &stmmac_ptp,
-#endif
 		.mode = NULL,
 		.tc = NULL,
+		.mmc = &dwmac_mmc_ops,
 		.setup = dwmac1000_setup,
 		.quirks = stmmac_dwmac1_quirks,
 	}, {
@@ -140,11 +156,10 @@ static const struct stmmac_hwif_entry {
 		.desc = &dwmac4_desc_ops,
 		.dma = &dwmac4_dma_ops,
 		.mac = &dwmac4_ops,
-#ifdef CONFIG_STMMAC_PTP
 		.hwtimestamp = &stmmac_ptp,
-#endif
 		.mode = NULL,
-		.tc = NULL,
+		.tc = &dwmac510_tc_ops,
+		.mmc = &dwmac_mmc_ops,
 		.setup = dwmac4_setup,
 		.quirks = stmmac_dwmac4_quirks,
 	}, {
@@ -159,11 +174,10 @@ static const struct stmmac_hwif_entry {
 		.desc = &dwmac4_desc_ops,
 		.dma = &dwmac4_dma_ops,
 		.mac = &dwmac410_ops,
-#ifdef CONFIG_STMMAC_PTP
 		.hwtimestamp = &stmmac_ptp,
-#endif
 		.mode = &dwmac4_ring_mode_ops,
-		.tc = NULL,
+		.tc = &dwmac510_tc_ops,
+		.mmc = &dwmac_mmc_ops,
 		.setup = dwmac4_setup,
 		.quirks = NULL,
 	},
@@ -180,11 +194,12 @@ static const struct stmmac_hwif_entry {
 		.desc = &dwmac4_desc_ops,
 		.dma = &dwmac410_dma_ops,
 		.mac = &dwmac410_ops,
-#ifdef CONFIG_STMMAC_PTP
 		.hwtimestamp = &stmmac_ptp,
-#endif
 		.mode = &dwmac4_ring_mode_ops,
-		.tc = NULL,
+#ifdef CONFIG_STMMAC_FULL
+		.tc = &dwmac510_tc_ops,
+#endif
+		.mmc = &dwmac_mmc_ops,
 		.setup = dwmac4_setup,
 		.quirks = NULL,
 	},
@@ -201,11 +216,10 @@ static const struct stmmac_hwif_entry {
 		.desc = &dwmac4_desc_ops,
 		.dma = &dwmac410_dma_ops,
 		.mac = &dwmac510_ops,
-#ifdef CONFIG_STMMAC_PTP
 		.hwtimestamp = &stmmac_ptp,
-#endif
 		.mode = &dwmac4_ring_mode_ops,
 		.tc = &dwmac510_tc_ops,
+		.mmc = &dwmac_mmc_ops,
 		.setup = dwmac4_setup,
 		.quirks = NULL,
 	}, {
@@ -213,20 +227,39 @@ static const struct stmmac_hwif_entry {
 		.gmac4 = false,
 		.xgmac = true,
 		.min_id = DWXGMAC_CORE_2_10,
+		.dev_id = DWXGMAC_ID,
 		.regs = {
 			.ptp_off = PTP_XGMAC_OFFSET,
-			.mmc_off = 0,
+			.mmc_off = MMC_XGMAC_OFFSET,
 		},
 		.desc = &dwxgmac210_desc_ops,
 		.dma = &dwxgmac210_dma_ops,
 		.mac = &dwxgmac210_ops,
-#ifdef CONFIG_STMMAC_PTP
 		.hwtimestamp = &stmmac_ptp,
-#endif
 		.mode = NULL,
-		.tc = NULL,
+		.tc = &dwmac510_tc_ops,
+		.mmc = &dwxgmac_mmc_ops,
 		.setup = dwxgmac2_setup,
 		.quirks = NULL,
+	}, {
+		.gmac = false,
+		.gmac4 = false,
+		.xgmac = true,
+		.min_id = DWXLGMAC_CORE_2_00,
+		.dev_id = DWXLGMAC_ID,
+		.regs = {
+			.ptp_off = PTP_XGMAC_OFFSET,
+			.mmc_off = MMC_XGMAC_OFFSET,
+		},
+		.desc = &dwxgmac210_desc_ops,
+		.dma = &dwxgmac210_dma_ops,
+		.mac = &dwxlgmac2_ops,
+		.hwtimestamp = &stmmac_ptp,
+		.mode = NULL,
+		.tc = &dwmac510_tc_ops,
+		.mmc = &dwxgmac_mmc_ops,
+		.setup = dwxlgmac2_setup,
+		.quirks = stmmac_dwxlgmac_quirks,
 	},
 #endif
 };
@@ -239,13 +272,15 @@ int stmmac_hwif_init(struct stmmac_priv *priv)
 	const struct stmmac_hwif_entry *entry;
 	struct mac_device_info *mac;
 	bool needs_setup = true;
+	u32 id, dev_id = 0;
 	int i, ret;
-	u32 id;
 
 	if (needs_gmac) {
 		id = stmmac_get_id(priv, GMAC_VERSION);
 	} else if (needs_gmac4 || needs_xgmac) {
 		id = stmmac_get_id(priv, GMAC4_VERSION);
+		if (needs_xgmac)
+			dev_id = stmmac_get_dev_id(priv, GMAC4_VERSION);
 	} else {
 		id = 0;
 	}
@@ -283,16 +318,17 @@ int stmmac_hwif_init(struct stmmac_priv *priv)
 		/* Use synopsys_id var because some setups can override this */
 		if (priv->synopsys_id < entry->min_id)
 			continue;
+		if (needs_xgmac && (dev_id ^ entry->dev_id))
+			continue;
 
 		/* Only use generic HW helpers if needed */
 		mac->desc = mac->desc ? : entry->desc;
 		mac->dma = mac->dma ? : entry->dma;
 		mac->mac = mac->mac ? : entry->mac;
-#ifdef CONFIG_STMMAC_PTP
 		mac->ptp = mac->ptp ? : entry->hwtimestamp;
-#endif
 		mac->mode = mac->mode ? : entry->mode;
 		mac->tc = mac->tc ? : entry->tc;
+		mac->mmc = mac->mmc ? : entry->mmc;
 
 		priv->hw = mac;
 		priv->ptpaddr = priv->ioaddr + entry->regs.ptp_off;

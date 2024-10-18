@@ -224,7 +224,8 @@
 &ebc {
 	/* clock rate 1000M/n, (n=1~32) */
 	assigned-clocks = <&cru CPLL_333M>, <&cru DCLK_EBC>;
-	assigned-clock-rates = <34000000>, <34000000>;
+	//assigned-clock-rates = <340000000>, <340000000>;
+	assigned-clock-rates = <250000000>, <250000000>;
 	status = "okay";
 };
 
@@ -260,7 +261,7 @@
 	panel,height = <1404>;
 	panel,vir_width = <1872>;
 	panel,vir_height = <1404>;
-	panel,sdck = <34000000>;
+	panel,sdck = <33300000>;
 	panel,lsl = <18>;
 	panel,lbl = <17>;
 	panel,ldl = <234>;
@@ -365,7 +366,7 @@
 	status = "okay";
 
 	vdd_cpu: tcs4525@1c {
-		compatible = "tcs,tcs452x";
+		compatible = "tcs,tcs4525";
 		reg = <0x1c>;
 		vin-supply = <&vccsys>;
 		regulator-compatible = "fan53555-reg";
@@ -652,7 +653,7 @@
 			max_input_current = <1500>;
 			max_chrg_current = <2000>;
 			max_chrg_voltage = <4300>;
-			chrg_term_mode = <1>;
+			chrg_term_mode = <0>;
 			chrg_finish_cur = <300>;
 			virtual_power = <0>;
 			dc_det_adc = <0>;
@@ -681,7 +682,6 @@
 
 &i2c1 {
 	status = "okay";
-	clock-frequency = <400000>;
 
 	wacom: wacom@9 {
 		compatible = "wacom,w9013";
@@ -894,12 +894,12 @@
 
 		soc_slppin_gpio: soc_slppin_gpio {
 			rockchip,pins =
-				<0 RK_PA2 RK_FUNC_GPIO &pcfg_output_low_pull_down>;
+				<0 RK_PA2 RK_FUNC_GPIO &pcfg_output_low>;
 		};
 
 		soc_slppin_slp: soc_slppin_slp {
 			rockchip,pins =
-				<0 RK_PA2 1 &pcfg_pull_up>;
+				<0 RK_PA2 1 &pcfg_pull_none>;
 		};
 
 		soc_slppin_rst: soc_slppin_rst {
@@ -1038,7 +1038,8 @@
 
 &sdhci {
 	bus-width = <8>;
-	supports-emmc;
+	no-sdio;
+	no-sd;
 	non-removable;
 	keep-power-in-suspend;
 	max-frequency = <200000000>;
@@ -1047,7 +1048,8 @@
 
 &sdmmc1 {
 	max-frequency = <150000000>;
-	supports-sdio;
+	no-sd;
+	no-mmc;
 	bus-width = <4>;
 	disable-wp;
 	cap-sd-highspeed;

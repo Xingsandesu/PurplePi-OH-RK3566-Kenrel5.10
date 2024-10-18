@@ -5,11 +5,6 @@
 #ifndef __RK_CRYPTO_CORE_H__
 #define __RK_CRYPTO_CORE_H__
 
-/* adapts to branch 4.19 */
-#ifndef CRYPTO_TFM_REQ_FORBID_WEAK_KEYS
-#define CRYPTO_TFM_REQ_FORBID_WEAK_KEYS CRYPTO_TFM_REQ_WEAK_KEY
-#endif
-
 #include <crypto/aes.h>
 #include <crypto/des.h>
 #include <crypto/algapi.h>

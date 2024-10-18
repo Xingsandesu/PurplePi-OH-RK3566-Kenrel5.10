@@ -23,34 +23,13 @@
 #define DLOG(x...)
 #endif
 
-struct vendor_item {
-	u16  id;
-	u16  offset;
-	u16  size;
-	u16  flag;
-};
-
 #define FLASH_VENDOR_PART_START		8
-#define FLASH_VENDOR_PART_SIZE		8
 #define FLASH_VENDOR_PART_NUM		4
-#define FLASH_VENDOR_TAG		0x524B5644
-
-struct tag_vendor_info {
-	u32	tag;
-	u32	version;
-	u16	next_index;
-	u16	item_num;
-	u16	free_offset;
-	u16	free_size;
-	struct vendor_item item[62]; /* 62 * 8 */
-	u8	data[FLASH_VENDOR_PART_SIZE * 512 - 512 - 8];
-	u32	hash;
-	u32	version2;
-};
+#define FLASH_VENDOR_TAG		VENDOR_HEAD_TAG
 
 static int (*_flash_read)(u32 sec, u32 n_sec, void *p_data);
 static int (*_flash_write)(u32 sec, u32 n_sec, void *p_data);
-static struct tag_vendor_info *g_vendor;
+static struct flash_vendor_info *g_vendor;
 
 int flash_vendor_dev_ops_register(int (*read)(u32 sec,
 					      u32 n_sec,
@@ -174,7 +153,8 @@ static int flash_vendor_write(u32 id, void *pbuf, u32 size)
 				item->size = size;
 				memcpy(&p_data[item->offset], pbuf, size);
 				g_vendor->free_offset = offset + align_size;
-				g_vendor->free_size = sizeof(g_vendor->data) - g_vendor->free_offset;
+				g_vendor->free_size -= (align_size -
+							alloc_size);
 			} else {
 				memcpy(&p_data[item->offset],
 				       pbuf,
@@ -359,3 +339,4 @@ static __exit void vendor_storage_deinit(void)
 
 device_initcall_sync(vendor_storage_init);
 module_exit(vendor_storage_deinit);
+MODULE_LICENSE("GPL");

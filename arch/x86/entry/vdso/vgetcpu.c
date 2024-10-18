@@ -1,6 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright 2006 Andi Kleen, SUSE Labs.
- * Subject to the GNU Public License, v.2
  *
  * Fast user context implementation of getcpu()
  */
@@ -14,6 +14,7 @@ notrace long
 __vdso_getcpu(unsigned *cpu, unsigned *node, struct getcpu_cache *unused)
 {
 	vdso_read_cpunode(cpu, node);
+
 	return 0;
 }
 

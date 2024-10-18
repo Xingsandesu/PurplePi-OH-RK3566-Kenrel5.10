@@ -1,12 +1,9 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Register definition file for Analogix DP core driver
  *
  * Copyright (C) 2012 Samsung Electronics Co., Ltd.
  * Author: Jingoo Han <jg1.han@samsung.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #ifndef _ANALOGIX_DP_REG_H
@@ -48,8 +45,7 @@
 #define ANALOGIX_DP_PLL_REG_4			0x9ec
 #define ANALOGIX_DP_PLL_REG_5			0xa00
 
-#define ANALOGIX_DP_SSC_REG			0x104
-#define ANALOGIX_DP_AUX				0x120
+#define ANALOIGX_DP_SSC_REG			0x104
 #define ANALOGIX_DP_BIAS			0x124
 #define ANALOGIX_DP_PD				0x12c
 
@@ -67,6 +63,8 @@
 #define ANALOGIX_DP_PSR_FRAME_UPDATE_CTRL	0x318
 #define ANALOGIX_DP_VSC_SHADOW_DB0		0x31C
 #define ANALOGIX_DP_VSC_SHADOW_DB1		0x320
+#define ANALOGIX_DP_VSC_SHADOW_PB0		0x33C
+#define ANALOGIX_DP_VSC_SHADOW_PB1		0x340
 
 #define ANALOGIX_DP_LANE_MAP			0x35C
 
@@ -140,18 +138,12 @@
 #define ANALOGIX_DP_BUF_DATA_0			0x7C0
 
 #define ANALOGIX_DP_SOC_GENERAL_CTL		0x800
+#define ANALOGIX_DP_TEST_80B_PATTERN0		0x81C
+#define ANALOGIX_DP_TEST_80B_PATTERN1		0x820
+#define ANALOGIX_DP_TEST_80B_PATTERN2		0x824
+#define ANALOGIX_DP_TEST_HBR2_PATTERN		0x828
 #define ANALOGIX_DP_AUD_CHANNEL_CTL		0x834
 #define ANALOGIX_DP_CRC_CON			0x890
-#define ANALOGIX_DP_ANALOG_CTL_36		0x990
-#define ANALOGIX_DP_ANALOG_CTL_37		0x994
-#define ANALOGIX_DP_ANALOG_CTL_39		0x99C
-#define ANALOGIX_DP_ANALOG_CTL_40		0x9A0
-#define ANALOGIX_DP_ANALOG_CTL_42		0x9A8
-#define ANALOGIX_DP_ANALOG_CTL_43		0x9AC
-#define ANALOGIX_DP_ANALOG_CTL_44		0x9B0
-#define ANALOGIX_DP_ANALOG_CTL_46		0x9B8
-#define ANALOGIX_DP_ANALOG_CTL_47		0x9BC
-#define ANALOGIX_DP_ANALOG_CTL_49		0x9C4
 #define ANALOGIX_DP_I2S_CTRL			0x9C8
 
 /* ANALOGIX_DP_TX_SW_RESET */
@@ -412,7 +404,9 @@
 #define HW_LINK_TRAINING_PATTERN		(0x1 << 8)
 #define SCRAMBLING_DISABLE			(0x1 << 5)
 #define SCRAMBLING_ENABLE			(0x0 << 5)
-#define LINK_QUAL_PATTERN_SET_MASK		(0x3 << 2)
+#define LINK_QUAL_PATTERN_SET_MASK		(0x7 << 2)
+#define LINK_QUAL_PATTERN_SET_HBR2		(0x5 << 2)
+#define LINK_QUAL_PATTERN_SET_80BIT		(0x4 << 2)
 #define LINK_QUAL_PATTERN_SET_PRBS7		(0x3 << 2)
 #define LINK_QUAL_PATTERN_SET_D10_2		(0x1 << 2)
 #define LINK_QUAL_PATTERN_SET_DISABLE		(0x0 << 2)
@@ -517,18 +511,6 @@
 /* ANALOGIX_DP_CRC_CON */
 #define PSR_VID_CRC_FLUSH			(0x1 << 2)
 #define PSR_VID_CRC_ENABLE			(0x1 << 0)
-
-/* ANALOGIX_DP_ANALOG_CTL_42 */
-#define R_FORCE_CH1_AMP				(0x1 << 5)
-#define R_FORCE_CH1_EMP				(0x1 << 4)
-#define R_FORCE_CH0_AMP				(0x1 << 2)
-#define R_FORCE_CH0_EMP				(0x1 << 1)
-
-/* ANALOGIX_DP_ANALOG_CTL_49 */
-#define R_FORCE_CH3_AMP				(0x1 << 5)
-#define R_FORCE_CH3_EMP				(0x1 << 4)
-#define R_FORCE_CH2_AMP				(0x1 << 2)
-#define R_FORCE_CH2_EMP				(0x1 << 1)
 
 /* ANALOGIX_DP_I2S_CTRL */
 #define I2S_EN					(0x1 << 4)

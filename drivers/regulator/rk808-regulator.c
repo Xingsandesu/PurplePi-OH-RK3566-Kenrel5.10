@@ -1,5 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * Regulator driver for Rockchip RK808/RK818
+ * Regulator driver for Rockchip RK805/RK808/RK818
  *
  * Copyright (c) 2014, Fuzhou Rockchip Electronics Co., Ltd
  *
@@ -9,15 +10,6 @@
  * Copyright (C) 2016 PHYTEC Messtechnik GmbH
  *
  * Author: Wadim Egorov <w.egorov@phytec.de>
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
  */
 
 #include <linux/delay.h>
@@ -36,16 +28,16 @@
 #define RK808_BUCK4_VSEL_MASK	0xf
 #define RK808_LDO_VSEL_MASK	0x1f
 
-#define RK809_BUCK5_VSEL_MASK           0x7
+#define RK809_BUCK5_VSEL_MASK		0x7
+
+#define RK817_LDO_VSEL_MASK		0x7f
+#define RK817_BOOST_VSEL_MASK		0x7
+#define RK817_BUCK_VSEL_MASK		0x7f
 
 #define RK816_DCDC_SLP_EN_REG_OFFSET	2
 #define RK816_SWITCH_SLP_EN_REG_OFFSET	1
 #define RK816_LDO1_4_SLP_EN_REG_OFFSET	1
 #define RK816_LDO5_6_SLP_EN_REG_OFFSET	2
-
-#define RK817_LDO_VSEL_MASK		0x7f
-#define RK817_BOOST_VSEL_MASK		0x7
-#define RK817_BUCK_VSEL_MASK		0x7f
 
 #define RK818_BUCK_VSEL_MASK		0x3f
 #define RK818_BUCK4_VSEL_MASK		0x1f
@@ -183,36 +175,36 @@ static const int rk808_buck_config_regs[] = {
 	RK808_BUCK4_CONFIG_REG,
 };
 
-static const struct regulator_linear_range rk805_buck_1_2_voltage_ranges[] = {
+static const struct linear_range rk805_buck_1_2_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(712500, 0, 59, 12500),	/* 0.7125v - 1.45v */
 	REGULATOR_LINEAR_RANGE(1800000, 60, 62, 200000),/* 1.8v - 2.2v */
 	REGULATOR_LINEAR_RANGE(2300000, 63, 63, 0),	/* 2.3v - 2.3v */
 };
 
-static const struct regulator_linear_range rk805_buck4_voltage_ranges[] = {
+static const struct linear_range rk805_buck4_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(800000, 0, 26, 100000),	/* 0.8v - 3.4v */
 	REGULATOR_LINEAR_RANGE(3500000, 27, 31, 0),	/* 3.5v */
 };
 
-static const struct regulator_linear_range rk808_ldo3_voltage_ranges[] = {
+static const struct linear_range rk808_ldo3_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(800000, 0, 13, 100000),
 	REGULATOR_LINEAR_RANGE(2500000, 15, 15, 0),
 };
 
-static const struct regulator_linear_range rk816_buck_voltage_ranges[] = {
+static const struct linear_range rk816_buck_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(712500, 0, 59, 12500),	/* 0.7125v - 1.45v */
 	REGULATOR_LINEAR_RANGE(1800000, 60, 62, 200000),/* 1.8v - 2.2v */
 	REGULATOR_LINEAR_RANGE(2300000, 63, 63, 0),	/* 2.3v - 2.3v */
 };
 
-static const struct regulator_linear_range rk816_buck4_voltage_ranges[] = {
+static const struct linear_range rk816_buck4_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(800000, 0, 26, 100000),	/* 0.8v - 3.4 */
 	REGULATOR_LINEAR_RANGE(3500000, 27, 31, 0),	/* 3.5v */
 };
 
 #define RK809_BUCK5_SEL_CNT		(8)
 
-static const struct regulator_linear_range rk809_buck5_voltage_ranges[] = {
+static const struct linear_range rk809_buck5_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(1500000, 0, 0, 0),
 	REGULATOR_LINEAR_RANGE(1800000, 1, 3, 200000),
 	REGULATOR_LINEAR_RANGE(2800000, 4, 5, 200000),
@@ -241,14 +233,14 @@ static const struct regulator_linear_range rk809_buck5_voltage_ranges[] = {
 #define RK817_BUCK1_SEL_CNT (RK817_BUCK1_SEL0 + RK817_BUCK1_SEL1 + 1)
 #define RK817_BUCK3_SEL_CNT (RK817_BUCK1_SEL0 + RK817_BUCK3_SEL1 + 1)
 
-static const struct regulator_linear_range rk817_buck1_voltage_ranges[] = {
+static const struct linear_range rk817_buck1_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(RK817_BUCK1_MIN0, 0,
 			       RK817_BUCK1_SEL0, RK817_BUCK1_STP0),
 	REGULATOR_LINEAR_RANGE(RK817_BUCK1_MIN1, RK817_BUCK1_SEL0 + 1,
 			       RK817_BUCK1_SEL_CNT, RK817_BUCK1_STP1),
 };
 
-static const struct regulator_linear_range rk817_buck3_voltage_ranges[] = {
+static const struct linear_range rk817_buck3_voltage_ranges[] = {
 	REGULATOR_LINEAR_RANGE(RK817_BUCK1_MIN0, 0,
 			       RK817_BUCK1_SEL0, RK817_BUCK1_STP0),
 	REGULATOR_LINEAR_RANGE(RK817_BUCK1_MIN1, RK817_BUCK1_SEL0 + 1,
@@ -327,7 +319,7 @@ static int rk808_buck1_2_i2c_set_voltage_sel(struct regulator_dev *rdev,
 	return ret;
 }
 
-#ifdef CONFIG_CPU_RK312X
+#ifdef CONFIG_CLK_RK312X
 extern void rkclk_cpuclk_div_setting(int div);
 #else
 static inline void rkclk_cpuclk_div_setting(int div) {}
@@ -517,7 +509,7 @@ static int rk817_set_ramp_delay(struct regulator_dev *rdev, int ramp_delay)
 		break;
 	default:
 		dev_warn(&rdev->dev,
-			 "%s ramp_delay: %d not supported, setting 10000\n",
+			 "%s ramp_delay: %d not supported, setting 25000\n",
 			 rdev->desc->name, ramp_delay);
 	}
 
@@ -530,21 +522,6 @@ static int rk808_set_suspend_voltage(struct regulator_dev *rdev, int uv)
 	unsigned int reg;
 	int sel = regulator_map_voltage_linear(rdev, uv, uv);
 
-	if (sel < 0)
-		return -EINVAL;
-
-	reg = rdev->desc->vsel_reg + RK808_SLP_REG_OFFSET;
-
-	return regmap_update_bits(rdev->regmap, reg,
-				  rdev->desc->vsel_mask,
-				  sel);
-}
-
-static int rk817_set_suspend_voltage(struct regulator_dev *rdev, int uv)
-{
-	unsigned int reg;
-	int sel = regulator_map_voltage_linear(rdev, uv, uv);
-	/* only ldo1~ldo9 */
 	if (sel < 0)
 		return -EINVAL;
 
@@ -811,7 +788,7 @@ static unsigned int rk8xx_regulator_of_map_mode(unsigned int mode)
 	case 2:
 		return REGULATOR_MODE_NORMAL;
 	default:
-		return -EINVAL;
+		return REGULATOR_MODE_INVALID;
 	}
 }
 
@@ -891,7 +868,7 @@ static const struct regulator_ops rk808_switch_ops = {
 	.set_suspend_disable	= rk808_set_suspend_disable,
 };
 
-static struct regulator_ops rk809_buck5_ops_range = {
+static const struct regulator_ops rk809_buck5_ops_range = {
 	.list_voltage		= regulator_list_voltage_linear_range,
 	.map_voltage		= regulator_map_voltage_linear_range,
 	.get_voltage_sel	= regulator_get_voltage_sel_regmap,
@@ -905,7 +882,7 @@ static struct regulator_ops rk809_buck5_ops_range = {
 	.set_suspend_disable	= rk817_set_suspend_disable,
 };
 
-static struct regulator_ops rk817_reg_ops = {
+static const struct regulator_ops rk817_reg_ops = {
 	.list_voltage		= regulator_list_voltage_linear,
 	.map_voltage		= regulator_map_voltage_linear,
 	.get_voltage_sel	= regulator_get_voltage_sel_regmap,
@@ -913,12 +890,12 @@ static struct regulator_ops rk817_reg_ops = {
 	.enable			= rk8xx_enabled_wmsk_regmap,
 	.disable		= rk8xx_disabled_wmsk_regmap,
 	.is_enabled		= rk8xx_is_enabled_wmsk_regmap,
-	.set_suspend_voltage	= rk817_set_suspend_voltage,
+	.set_suspend_voltage	= rk808_set_suspend_voltage,
 	.set_suspend_enable	= rk817_set_suspend_enable,
 	.set_suspend_disable	= rk817_set_suspend_disable,
 };
 
-static struct regulator_ops rk817_boost_ops = {
+static const struct regulator_ops rk817_boost_ops = {
 	.list_voltage		= regulator_list_voltage_linear,
 	.map_voltage		= regulator_map_voltage_linear,
 	.get_voltage_sel	= regulator_get_voltage_sel_regmap,
@@ -930,7 +907,7 @@ static struct regulator_ops rk817_boost_ops = {
 	.set_suspend_disable	= rk817_set_suspend_disable,
 };
 
-static struct regulator_ops rk817_buck_ops_range = {
+static const struct regulator_ops rk817_buck_ops_range = {
 	.list_voltage		= regulator_list_voltage_linear_range,
 	.map_voltage		= regulator_map_voltage_linear_range,
 	.get_voltage_sel	= regulator_get_voltage_sel_regmap,
@@ -948,7 +925,7 @@ static struct regulator_ops rk817_buck_ops_range = {
 	.set_suspend_disable	= rk817_set_suspend_disable,
 };
 
-static struct regulator_ops rk817_switch_ops = {
+static const struct regulator_ops rk817_switch_ops = {
 	.enable			= rk8xx_enabled_wmsk_regmap,
 	.disable		= rk8xx_disabled_wmsk_regmap,
 	.is_enabled		= rk8xx_is_enabled_wmsk_regmap,
@@ -1135,7 +1112,6 @@ static const struct regulator_desc rk808_reg[] = {
 	RK8XX_DESC_SWITCH(RK808_ID_SWITCH2, "SWITCH_REG2", "vcc12",
 		RK808_DCDC_EN_REG, BIT(6)),
 };
-
 
 static const struct regulator_desc rk816_reg[] = {
 	{
@@ -1730,7 +1706,7 @@ module_exit(rk808_regulator_driver_exit);
 module_platform_driver(rk808_regulator_driver);
 #endif
 
-MODULE_DESCRIPTION("regulator driver for the RK805/RK808/RK809/RK817/RK818 series PMICs");
+MODULE_DESCRIPTION("regulator driver for the RK805/RK808/RK816/RK818 series PMICs");
 MODULE_AUTHOR("Tony xie <tony.xie@rock-chips.com>");
 MODULE_AUTHOR("Chris Zhong <zyw@rock-chips.com>");
 MODULE_AUTHOR("Zhang Qing <zhangqing@rock-chips.com>");

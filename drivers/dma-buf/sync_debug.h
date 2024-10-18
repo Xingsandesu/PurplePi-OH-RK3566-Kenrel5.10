@@ -62,22 +62,18 @@ struct sync_pt {
 	struct rb_node node;
 };
 
-#ifdef CONFIG_DEBUG_FS
 extern const struct file_operations sw_sync_debugfs_fops;
 
+#ifdef CONFIG_SW_SYNC_DEBUG
 void sync_timeline_debug_add(struct sync_timeline *obj);
 void sync_timeline_debug_remove(struct sync_timeline *obj);
 void sync_file_debug_add(struct sync_file *fence);
 void sync_file_debug_remove(struct sync_file *fence);
-void sync_dump(void);
 #else
 static inline void sync_timeline_debug_add(struct sync_timeline *obj) {}
 static inline void sync_timeline_debug_remove(struct sync_timeline *obj) {}
 static inline void sync_file_debug_add(struct sync_file *fence) {}
 static inline void sync_file_debug_remove(struct sync_file *fence) {}
-static inline void sync_dump(void) {}
 #endif
-
-void sync_timeline_signal(struct sync_timeline *obj, unsigned int inc);
 
 #endif /* _LINUX_SYNC_H */

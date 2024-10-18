@@ -9,6 +9,7 @@
 
 #include <crypto/algapi.h>
 #include <crypto/internal/chacha.h>
+#include <crypto/internal/simd.h>
 #include <crypto/internal/skcipher.h>
 #include <linux/jump_label.h>
 #include <linux/kernel.h>
@@ -33,7 +34,7 @@ static __ro_after_init DEFINE_STATIC_KEY_FALSE(use_neon);
 
 static inline bool neon_usable(void)
 {
-	return static_branch_likely(&use_neon) && may_use_simd();
+	return static_branch_likely(&use_neon) && crypto_simd_usable();
 }
 
 static void chacha_doneon(u32 *state, u8 *dst, const u8 *src,
@@ -295,7 +296,7 @@ static int __init chacha_simd_mod_init(void)
 {
 	int err = 0;
 
-	if (IS_REACHABLE(CONFIG_CRYPTO_BLKCIPHER)) {
+	if (IS_REACHABLE(CONFIG_CRYPTO_SKCIPHER)) {
 		err = crypto_register_skciphers(arm_algs, ARRAY_SIZE(arm_algs));
 		if (err)
 			return err;
@@ -319,7 +320,7 @@ static int __init chacha_simd_mod_init(void)
 			static_branch_enable(&use_neon);
 		}
 
-		if (IS_REACHABLE(CONFIG_CRYPTO_BLKCIPHER)) {
+		if (IS_REACHABLE(CONFIG_CRYPTO_SKCIPHER)) {
 			err = crypto_register_skciphers(neon_algs, ARRAY_SIZE(neon_algs));
 			if (err)
 				crypto_unregister_skciphers(arm_algs, ARRAY_SIZE(arm_algs));
@@ -330,7 +331,7 @@ static int __init chacha_simd_mod_init(void)
 
 static void __exit chacha_simd_mod_fini(void)
 {
-	if (IS_REACHABLE(CONFIG_CRYPTO_BLKCIPHER)) {
+	if (IS_REACHABLE(CONFIG_CRYPTO_SKCIPHER)) {
 		crypto_unregister_skciphers(arm_algs, ARRAY_SIZE(arm_algs));
 		if (IS_ENABLED(CONFIG_KERNEL_MODE_NEON) && (elf_hwcap & HWCAP_NEON))
 			crypto_unregister_skciphers(neon_algs, ARRAY_SIZE(neon_algs));

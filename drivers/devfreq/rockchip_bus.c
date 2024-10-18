@@ -73,7 +73,9 @@ static int rockchip_bus_smc_config(struct rockchip_bus *bus)
 	struct device_node *np = dev->of_node;
 	struct device_node *child;
 	unsigned int enable_msk, bus_id, cfg;
-	int ret;
+	char *prp_name = "rockchip,soc-bus-table";
+	u32 *table = NULL;
+	int ret = 0, config_cnt, i;
 
 	for_each_available_child_of_node(np, child) {
 		ret = of_property_read_u32_index(child, "bus-id", 0,
@@ -108,7 +110,49 @@ static int rockchip_bus_smc_config(struct rockchip_bus *bus)
 		}
 	}
 
-	return 0;
+	config_cnt = of_property_count_u32_elems(np, prp_name);
+	if (config_cnt <= 0) {
+		return 0;
+	} else if (config_cnt % 3) {
+		dev_err(dev, "Invalid count of %s\n", prp_name);
+		return -EINVAL;
+	}
+
+	table = kmalloc_array(config_cnt, sizeof(u32), GFP_KERNEL);
+	if (!table)
+		return -ENOMEM;
+
+	ret = of_property_read_u32_array(np, prp_name, table, config_cnt);
+	if (ret) {
+		dev_err(dev, "get %s error\n", prp_name);
+		goto free_table;
+	}
+
+	/* table[3n]: bus_id
+	 * table[3n + 1]: config
+	 * table[3n + 2]: enable_mask
+	 */
+	for (i = 0; i < config_cnt; i += 3) {
+		bus_id = table[i];
+		cfg = table[i + 1];
+		enable_msk = table[i + 2];
+
+		if (!cfg) {
+			dev_info(dev, "cfg-val invalid in %s-%d\n", prp_name, bus_id);
+			continue;
+		}
+
+		ret = rockchip_sip_bus_smc_config(bus_id, cfg, enable_msk);
+		if (ret) {
+			dev_err(dev, "bus smc config error: %x!\n", ret);
+			goto free_table;
+		}
+	}
+
+free_table:
+	kfree(table);
+
+	return ret;
 }
 
 static int rockchip_bus_set_freq_table(struct rockchip_bus *bus)
@@ -348,7 +392,7 @@ static int rockchip_bus_cpufreq_notifier(struct notifier_block *nb,
 {
 	struct rockchip_bus *bus = to_rockchip_bus_cpufreq_nb(nb);
 	struct cpufreq_freqs *freqs = data;
-	int id = topology_physical_package_id(freqs->cpu);
+	int id = topology_physical_package_id(freqs->policy->cpu);
 
 	if (id < 0 || id >= MAX_CLUSTERS)
 		return NOTIFY_DONE;
@@ -364,7 +408,7 @@ static int rockchip_bus_cpufreq_notifier(struct notifier_block *nb,
 		     bus->cpu_freq[CLUSTER1] > bus->cpu_high_freq) &&
 		     bus->cur_rate != bus->high_rate) {
 			dev_dbg(bus->dev, "cpu%d freq=%d %d, up cci rate to %lu\n",
-				freqs->cpu,
+				freqs->policy->cpu,
 				bus->cpu_freq[CLUSTER0],
 				bus->cpu_freq[CLUSTER1],
 				bus->high_rate);
@@ -377,7 +421,7 @@ static int rockchip_bus_cpufreq_notifier(struct notifier_block *nb,
 		    bus->cpu_freq[CLUSTER1] <= bus->cpu_high_freq &&
 		    bus->cur_rate != bus->low_rate) {
 			dev_dbg(bus->dev, "cpu%d freq=%d %d, down cci rate to %lu\n",
-				freqs->cpu,
+				freqs->policy->cpu,
 				bus->cpu_freq[CLUSTER0],
 				bus->cpu_freq[CLUSTER1],
 				bus->low_rate);
@@ -447,7 +491,10 @@ static const struct of_device_id rockchip_busfreq_of_match[] = {
 	{ .compatible = "rockchip,rk3288-bus", },
 	{ .compatible = "rockchip,rk3368-bus", },
 	{ .compatible = "rockchip,rk3399-bus", },
+	{ .compatible = "rockchip,rk3528-bus", },
+	{ .compatible = "rockchip,rk3562-bus", },
 	{ .compatible = "rockchip,rk3568-bus", },
+	{ .compatible = "rockchip,rk3588-bus", },
 	{ .compatible = "rockchip,rv1126-bus", },
 	{ },
 };

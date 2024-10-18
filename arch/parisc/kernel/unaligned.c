@@ -1,23 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  *    Unaligned memory access handler
  *
  *    Copyright (C) 2001 Randolph Chung <tausq@debian.org>
  *    Significantly tweaked by LaMont Jones <lamont@debian.org>
- *
- *    This program is free software; you can redistribute it and/or modify
- *    it under the terms of the GNU General Public License as published by
- *    the Free Software Foundation; either version 2, or (at your option)
- *    any later version.
- *
- *    This program is distributed in the hope that it will be useful,
- *    but WITHOUT ANY WARRANTY; without even the implied warranty of
- *    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *    GNU General Public License for more details.
- *
- *    You should have received a copy of the GNU General Public License
- *    along with this program; if not, write to the Free Software
- *    Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
- *
  */
 
 #include <linux/jiffies.h>
@@ -121,7 +107,7 @@
 #define R1(i) (((i)>>21)&0x1f)
 #define R2(i) (((i)>>16)&0x1f)
 #define R3(i) ((i)&0x1f)
-#define FR3(i) ((((i)<<1)&0x1f)|(((i)>>6)&1))
+#define FR3(i) ((((i)&0x1f)<<1)|(((i)>>6)&1))
 #define IM(i,n) (((i)>>1&((1<<(n-1))-1))|((i)&1?((0-1L)<<(n-1)):0))
 #define IM5_2(i) IM((i)>>16,5)
 #define IM5_3(i) IM((i),5)
@@ -690,14 +676,14 @@ void handle_unaligned(struct pt_regs *regs)
 		if (ret == ERR_PAGEFAULT)
 		{
 			force_sig_fault(SIGSEGV, SEGV_MAPERR,
-					(void __user *)regs->ior, current);
+					(void __user *)regs->ior);
 		}
 		else
 		{
 force_sigbus:
 			/* couldn't handle it ... */
 			force_sig_fault(SIGBUS, BUS_ADRALN,
-					(void __user *)regs->ior, current);
+					(void __user *)regs->ior);
 		}
 		
 		return;

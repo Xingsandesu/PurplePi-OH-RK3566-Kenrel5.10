@@ -3584,7 +3584,7 @@ static u32 MXL_Ceiling(u32 value, u32 resolution)
 	return value / resolution + (value % resolution > 0 ? 1 : 0);
 }
 
-/* Retrieve the Initialzation Registers */
+/* Retrieve the Initialization Registers */
 static u16 MXL_GetInitRegister(struct dvb_frontend *fe, u8 *RegNum,
 	u8 *RegVal, int *count)
 {
@@ -4114,7 +4114,7 @@ struct dvb_frontend *mxl5005s_attach(struct dvb_frontend *fe,
 	fe->tuner_priv = state;
 	return fe;
 }
-EXPORT_SYMBOL(mxl5005s_attach);
+EXPORT_SYMBOL_GPL(mxl5005s_attach);
 
 MODULE_DESCRIPTION("MaxLinear MXL5005S silicon tuner driver");
 MODULE_AUTHOR("Steven Toth");

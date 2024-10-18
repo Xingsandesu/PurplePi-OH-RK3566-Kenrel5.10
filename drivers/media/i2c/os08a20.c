@@ -43,7 +43,7 @@
 #endif
 
 /* pixel rate = link frequency * 2 * lanes / BITS_PER_SAMPLE */
-#define MIPI_FREQ	360000000U
+#define MIPI_FREQ	480000000U
 #define OS08A20_PIXEL_RATE		(MIPI_FREQ * 2LL * 4LL / 10)
 #define OS08A20_XVCLK_FREQ		24000000
 
@@ -684,9 +684,7 @@ static int os08a20_g_frame_interval(struct v4l2_subdev *sd,
 	struct os08a20 *os08a20 = to_os08a20(sd);
 	const struct os08a20_mode *mode = os08a20->cur_mode;
 
-	mutex_lock(&os08a20->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&os08a20->mutex);
 
 	return 0;
 }
@@ -1107,9 +1105,7 @@ static int os08a20_enum_frame_interval(struct v4l2_subdev *sd,
 	if (fie->index >= os08a20->cfg_num)
 		return -EINVAL;
 
-	if (fie->code != OS08A20_MEDIA_BUS_FMT)
-		return -EINVAL;
-
+	fie->code = OS08A20_MEDIA_BUS_FMT;
 	fie->width = supported_modes[fie->index].width;
 	fie->height = supported_modes[fie->index].height;
 	fie->interval = supported_modes[fie->index].max_fps;
@@ -1118,6 +1114,7 @@ static int os08a20_enum_frame_interval(struct v4l2_subdev *sd,
 }
 
 static int os08a20_g_mbus_config(struct v4l2_subdev *sd,
+				unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
 	u32 val = 0;
@@ -1125,7 +1122,7 @@ static int os08a20_g_mbus_config(struct v4l2_subdev *sd,
 	val = 1 << (OS08A20_LANES - 1) |
 	      V4L2_MBUS_CSI2_CHANNEL_0 |
 	      V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
-	config->type = V4L2_MBUS_CSI2;
+	config->type = V4L2_MBUS_CSI2_DPHY;
 	config->flags = val;
 
 	return 0;
@@ -1153,7 +1150,6 @@ static const struct v4l2_subdev_core_ops os08a20_core_ops = {
 static const struct v4l2_subdev_video_ops os08a20_video_ops = {
 	.s_stream = os08a20_s_stream,
 	.g_frame_interval = os08a20_g_frame_interval,
-	.g_mbus_config = os08a20_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops os08a20_pad_ops = {
@@ -1162,6 +1158,7 @@ static const struct v4l2_subdev_pad_ops os08a20_pad_ops = {
 	.enum_frame_interval = os08a20_enum_frame_interval,
 	.get_fmt = os08a20_get_fmt,
 	.set_fmt = os08a20_set_fmt,
+	.get_mbus_config = os08a20_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops os08a20_subdev_ops = {
@@ -1606,4 +1603,4 @@ device_initcall_sync(sensor_mod_init);
 module_exit(sensor_mod_exit);
 
 MODULE_DESCRIPTION("OmniVision os08a20 sensor driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

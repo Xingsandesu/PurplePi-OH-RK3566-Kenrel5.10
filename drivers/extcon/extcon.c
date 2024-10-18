@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * drivers/extcon/extcon.c - External Connector (extcon) framework.
  *
@@ -11,15 +12,6 @@
  * based on android/drivers/switch/switch_class.c
  * Copyright (C) 2008 Google, Inc.
  * Author: Mike Lockwood <lockwood@android.com>
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/module.h>
@@ -33,9 +25,6 @@
 #include <linux/sysfs.h>
 
 #include "extcon.h"
-#ifdef CONFIG_ARCH_ROCKCHIP
-#include "../base/base.h"
-#endif
 
 #define SUPPORTED_CABLE_MAX	32
 
@@ -183,6 +172,16 @@ static const struct __extcon_info {
 		.id = EXTCON_DISP_HMD,
 		.name = "HMD",
 	},
+	[EXTCON_DISP_CVBS] = {
+		.type = EXTCON_TYPE_DISP,
+		.id = EXTCON_DISP_CVBS,
+		.name = "CVBS",
+	},
+	[EXTCON_DISP_EDP] = {
+		.type = EXTCON_TYPE_DISP,
+		.id = EXTCON_DISP_EDP,
+		.name = "EDP",
+	},
 
 	/* Miscellaneous external connector */
 	[EXTCON_DOCK] = {
@@ -212,6 +211,14 @@ static const struct __extcon_info {
  * @attr_name:		"name" sysfs entry
  * @attr_state:		"state" sysfs entry
  * @attrs:		the array pointing to attr_name and attr_state for attr_g
+ * @usb_propval:	the array of USB connector properties
+ * @chg_propval:	the array of charger connector properties
+ * @jack_propval:	the array of jack connector properties
+ * @disp_propval:	the array of display connector properties
+ * @usb_bits:		the bit array of the USB connector property capabilities
+ * @chg_bits:		the bit array of the charger connector property capabilities
+ * @jack_bits:		the bit array of the jack connector property capabilities
+ * @disp_bits:		the bit array of the display connector property capabilities
  */
 struct extcon_cable {
 	struct extcon_dev *edev;
@@ -495,21 +502,6 @@ int extcon_sync(struct extcon_dev *edev, unsigned int id)
 }
 EXPORT_SYMBOL_GPL(extcon_sync);
 
-int extcon_blocking_sync(struct extcon_dev *edev, unsigned int id, bool val)
-{
-	int index;
-
-	if (!edev)
-		return -EINVAL;
-
-	index = find_cable_index_by_id(edev, id);
-	if (index < 0)
-		return index;
-
-	return blocking_notifier_call_chain(&edev->bnh[index], val, edev);
-}
-EXPORT_SYMBOL(extcon_blocking_sync);
-
 /**
  * extcon_get_state() - Get the state of an external connector.
  * @edev:	the extcon device
@@ -651,7 +643,7 @@ int extcon_get_property(struct extcon_dev *edev, unsigned int id,
 	unsigned long flags;
 	int index, ret = 0;
 
-	*prop_val = (union extcon_property_value)(0);
+	*prop_val = (union extcon_property_value){0};
 
 	if (!edev)
 		return -EINVAL;
@@ -931,7 +923,7 @@ int extcon_register_notifier(struct extcon_dev *edev, unsigned int id,
 			     struct notifier_block *nb)
 {
 	unsigned long flags;
-	int ret, idx = -EINVAL;
+	int ret, idx;
 
 	if (!edev || !nb)
 		return -EINVAL;
@@ -947,38 +939,6 @@ int extcon_register_notifier(struct extcon_dev *edev, unsigned int id,
 	return ret;
 }
 EXPORT_SYMBOL_GPL(extcon_register_notifier);
-
-int extcon_register_blocking_notifier(struct extcon_dev *edev, unsigned int id,
-			struct notifier_block *nb)
-{
-	int idx = -EINVAL;
-
-	if (!edev || !nb)
-		return -EINVAL;
-
-	idx = find_cable_index_by_id(edev, id);
-	if (idx < 0)
-		return idx;
-
-	return blocking_notifier_chain_register(&edev->bnh[idx], nb);
-}
-EXPORT_SYMBOL(extcon_register_blocking_notifier);
-
-int extcon_unregister_blocking_notifier(struct extcon_dev *edev,
-			unsigned int id, struct notifier_block *nb)
-{
-	int idx;
-
-	if (!edev || !nb)
-		return -EINVAL;
-
-	idx = find_cable_index_by_id(edev, id);
-	if (idx < 0)
-		return idx;
-
-	return blocking_notifier_chain_unregister(&edev->bnh[idx], nb);
-}
-EXPORT_SYMBOL(extcon_unregister_blocking_notifier);
 
 /**
  * extcon_unregister_notifier() - Unregister a notifier block from the extcon.
@@ -1128,19 +1088,6 @@ void extcon_dev_free(struct extcon_dev *edev)
 }
 EXPORT_SYMBOL_GPL(extcon_dev_free);
 
-#ifdef CONFIG_ARCH_ROCKCHIP
-static const char *extcon_get_link_name(struct extcon_dev *edev)
-{
-	const char *dot = strchr(edev->name, '.');
-	const char *name = dot + 1;
-
-	if (!dot || !name || !(*name))
-		name = edev->name;
-
-	return name;
-}
-#endif
-
 /**
  * extcon_dev_register() - Register an new extcon device
  * @edev:	the extcon device to be registered
@@ -1191,7 +1138,6 @@ int extcon_dev_register(struct extcon_dev *edev)
 			(unsigned long)atomic_inc_return(&edev_no));
 
 	if (edev->max_supported) {
-		char buf[10];
 		char *str;
 		struct extcon_cable *cable;
 
@@ -1205,9 +1151,7 @@ int extcon_dev_register(struct extcon_dev *edev)
 		for (index = 0; index < edev->max_supported; index++) {
 			cable = &edev->cables[index];
 
-			snprintf(buf, 10, "cable.%d", index);
-			str = kzalloc(strlen(buf) + 1,
-				      GFP_KERNEL);
+			str = kasprintf(GFP_KERNEL, "cable.%d", index);
 			if (!str) {
 				for (index--; index >= 0; index--) {
 					cable = &edev->cables[index];
@@ -1217,7 +1161,6 @@ int extcon_dev_register(struct extcon_dev *edev)
 
 				goto err_alloc_cables;
 			}
-			strcpy(str, buf);
 
 			cable->edev = edev;
 			cable->cable_index = index;
@@ -1240,7 +1183,6 @@ int extcon_dev_register(struct extcon_dev *edev)
 	}
 
 	if (edev->max_supported && edev->mutually_exclusive) {
-		char buf[80];
 		char *name;
 
 		/* Count the size of mutually_exclusive array */
@@ -1265,9 +1207,8 @@ int extcon_dev_register(struct extcon_dev *edev)
 		}
 
 		for (index = 0; edev->mutually_exclusive[index]; index++) {
-			sprintf(buf, "0x%x", edev->mutually_exclusive[index]);
-			name = kzalloc(strlen(buf) + 1,
-				       GFP_KERNEL);
+			name = kasprintf(GFP_KERNEL, "0x%x",
+					 edev->mutually_exclusive[index]);
 			if (!name) {
 				for (index--; index >= 0; index--) {
 					kfree(edev->d_attrs_muex[index].attr.
@@ -1278,7 +1219,6 @@ int extcon_dev_register(struct extcon_dev *edev)
 				ret = -ENOMEM;
 				goto err_muex;
 			}
-			strcpy(name, buf);
 			sysfs_attr_init(&edev->d_attrs_muex[index].attr);
 			edev->d_attrs_muex[index].attr.name = name;
 			edev->d_attrs_muex[index].attr.mode = 0000;
@@ -1313,26 +1253,14 @@ int extcon_dev_register(struct extcon_dev *edev)
 		edev->dev.type = &edev->extcon_dev_type;
 	}
 
-	ret = device_register(&edev->dev);
-	if (ret) {
-		put_device(&edev->dev);
-		goto err_dev;
-	}
-
 	spin_lock_init(&edev->lock);
-	edev->nh = devm_kcalloc(&edev->dev, edev->max_supported,
-				sizeof(*edev->nh), GFP_KERNEL);
-	if (!edev->nh) {
-		ret = -ENOMEM;
-		device_unregister(&edev->dev);
-		goto err_dev;
-	}
-
-	edev->bnh = devm_kzalloc(&edev->dev,
-			sizeof(*edev->bnh) * edev->max_supported, GFP_KERNEL);
-	if (!edev->bnh) {
-		ret = -ENOMEM;
-		goto err_dev;
+	if (edev->max_supported) {
+		edev->nh = kcalloc(edev->max_supported, sizeof(*edev->nh),
+				GFP_KERNEL);
+		if (!edev->nh) {
+			ret = -ENOMEM;
+			goto err_alloc_nh;
+		}
 	}
 
 	for (index = 0; index < edev->max_supported; index++)
@@ -1343,25 +1271,22 @@ int extcon_dev_register(struct extcon_dev *edev)
 	dev_set_drvdata(&edev->dev, edev);
 	edev->state = 0;
 
+	ret = device_register(&edev->dev);
+	if (ret) {
+		put_device(&edev->dev);
+		goto err_dev;
+	}
+
 	mutex_lock(&extcon_dev_list_lock);
 	list_add(&edev->entry, &extcon_dev_list);
 	mutex_unlock(&extcon_dev_list_lock);
 
-#ifdef CONFIG_ARCH_ROCKCHIP
-	{
-		const char *name = extcon_get_link_name(edev);
-
-		ret = sysfs_create_link_nowarn(&edev->dev.class->p->subsys.kobj,
-					       &edev->dev.kobj, name);
-		if (ret)
-			dev_err(&edev->dev,
-				"failed to create extcon %s link\n", name);
-	}
-#endif
-
 	return 0;
 
 err_dev:
+	if (edev->max_supported)
+		kfree(edev->nh);
+err_alloc_nh:
 	if (edev->max_supported)
 		kfree(edev->extcon_dev_type.groups);
 err_alloc_groups:
@@ -1406,11 +1331,6 @@ void extcon_dev_unregister(struct extcon_dev *edev)
 		return;
 	}
 
-#ifdef CONFIG_ARCH_ROCKCHIP
-	sysfs_delete_link(&edev->dev.class->p->subsys.kobj,
-			  &edev->dev.kobj, extcon_get_link_name(edev));
-#endif
-
 	device_unregister(&edev->dev);
 
 	if (edev->mutually_exclusive && edev->max_supported) {
@@ -1427,6 +1347,7 @@ void extcon_dev_unregister(struct extcon_dev *edev)
 	if (edev->max_supported) {
 		kfree(edev->extcon_dev_type.groups);
 		kfree(edev->cables);
+		kfree(edev->nh);
 	}
 
 	put_device(&edev->dev);

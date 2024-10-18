@@ -20,26 +20,25 @@
 /* ===============================================
  * APP -> DRV
  * =============================================== */
-typedef struct _video_input_init{
+typedef struct _video_input_init {
 	unsigned char ch;
 	unsigned char format;
 	unsigned char dist;
 	unsigned char input;
 	unsigned char val;
 	unsigned char interface;
-}video_input_init;
+} video_input_init;
 
-typedef struct _video_init_all{
+typedef struct _video_init_all {
 	video_input_init ch_param[4];
 	NVP6158_DVP_MODE mode;
-}video_init_all;
+} video_init_all;
 
 /********************************************************************
  *  define and enum
  ********************************************************************/
 
-typedef enum _nvp6158_outmode_sel
-{
+typedef enum _nvp6158_outmode_sel {
 	NVP6158_OUTMODE_1MUX_SD = 0,
 	NVP6158_OUTMODE_1MUX_HD,
 	NVP6158_OUTMODE_1MUX_FHD,
@@ -62,17 +61,16 @@ typedef enum _nvp6158_outmode_sel
 	NVP6158_OUTMODE_4MUX_BT1120S_720P,
 	NVP6158_OUTMODE_4MUX_BT1120S_1080P,
 	NVP6158_OUTMODE_BUTT
-}NVP6158_OUTMODE_SEL;
+} NVP6158_OUTMODE_SEL;
 
-typedef enum _nvp6158_det_sel
-{
+typedef enum _nvp6158_det_sel {
 	NVP6158_DET_MODE_AUTO = 0,
 	NVP6158_DET_MODE_AHD,
 	NVP6158_DET_MODE_CVI,
 	NVP6158_DET_MODE_TVI,
 	NVP6158_DET_MODE_OTHER,
 	NVP6158_DET_MODE_BUTT
-}NVP6158_DET_SEL;
+} NVP6158_DET_SEL;
 
 /********************************************************************
  *  structure
@@ -82,16 +80,18 @@ typedef enum _nvp6158_det_sel
  *  external api
  ********************************************************************/
 void nvp6158_common_init(unsigned char chip);
-int nvp6158_set_portmode(const unsigned char chip, const unsigned char portsel, const unsigned char portmode, const unsigned char chid);
+int nvp6158_set_portmode(const unsigned char chip, const unsigned char portsel,
+			const unsigned char portmode, const unsigned char chid);
 int nvp6158_set_chnmode(const unsigned char ch, const unsigned char chnmode);
 int nvp6168_set_chnmode(const unsigned char ch, const unsigned char chnmode);
-void nvp6158_set_portcontrol(unsigned char chip, unsigned char portsel, unsigned char enclk, unsigned char endata);
-///////新增加通道模式函数
+void nvp6158_set_portcontrol(unsigned char chip, unsigned char portsel,
+				unsigned char enclk, unsigned char endata);
 void nvp6158_set_chn_commonvalue(const unsigned char ch, const unsigned char chnmode);
 
 unsigned int nvp6158_video_fmt_det(const unsigned char ch, NVP6158_INFORMATION_S *ps_nvp6158_vfmts);
 unsigned int nvp6168_video_fmt_det(const unsigned char ch, NVP6158_INFORMATION_S *ps_nvp6158_vfmts);
-unsigned char nvp6158_video_fmt_debounce(unsigned char ch, unsigned char keep_fmt, unsigned int keep_sync_width);
+unsigned char nvp6158_video_fmt_debounce(unsigned char ch,
+		unsigned char keep_fmt, unsigned int keep_sync_width);
 unsigned int nvp6158_getvideoloss(void);
 
 void nvp6158_video_set_contrast(unsigned char ch, unsigned int value, unsigned int v_format);

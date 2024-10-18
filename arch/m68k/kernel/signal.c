@@ -47,7 +47,6 @@
 
 #include <asm/setup.h>
 #include <linux/uaccess.h>
-#include <asm/pgtable.h>
 #include <asm/traps.h>
 #include <asm/ucontext.h>
 #include <asm/cacheflush.h>
@@ -62,25 +61,25 @@
 #define	FMT4SIZE	0
 #else
 #define	FORMAT		0
-#define	FMT4SIZE	sizeof(((struct frame *)0)->un.fmt4)
+#define	FMT4SIZE	sizeof_field(struct frame, un.fmt4)
 #endif
 
 static const int frame_size_change[16] = {
-  [1]	= -1, /* sizeof(((struct frame *)0)->un.fmt1), */
-  [2]	= sizeof(((struct frame *)0)->un.fmt2),
-  [3]	= sizeof(((struct frame *)0)->un.fmt3),
+  [1]	= -1, /* sizeof_field(struct frame, un.fmt1), */
+  [2]	= sizeof_field(struct frame, un.fmt2),
+  [3]	= sizeof_field(struct frame, un.fmt3),
   [4]	= FMT4SIZE,
-  [5]	= -1, /* sizeof(((struct frame *)0)->un.fmt5), */
-  [6]	= -1, /* sizeof(((struct frame *)0)->un.fmt6), */
-  [7]	= sizeof(((struct frame *)0)->un.fmt7),
-  [8]	= -1, /* sizeof(((struct frame *)0)->un.fmt8), */
-  [9]	= sizeof(((struct frame *)0)->un.fmt9),
-  [10]	= sizeof(((struct frame *)0)->un.fmta),
-  [11]	= sizeof(((struct frame *)0)->un.fmtb),
-  [12]	= -1, /* sizeof(((struct frame *)0)->un.fmtc), */
-  [13]	= -1, /* sizeof(((struct frame *)0)->un.fmtd), */
-  [14]	= -1, /* sizeof(((struct frame *)0)->un.fmte), */
-  [15]	= -1, /* sizeof(((struct frame *)0)->un.fmtf), */
+  [5]	= -1, /* sizeof_field(struct frame, un.fmt5), */
+  [6]	= -1, /* sizeof_field(struct frame, un.fmt6), */
+  [7]	= sizeof_field(struct frame, un.fmt7),
+  [8]	= -1, /* sizeof_field(struct frame, un.fmt8), */
+  [9]	= sizeof_field(struct frame, un.fmt9),
+  [10]	= sizeof_field(struct frame, un.fmta),
+  [11]	= sizeof_field(struct frame, un.fmtb),
+  [12]	= -1, /* sizeof_field(struct frame, un.fmtc), */
+  [13]	= -1, /* sizeof_field(struct frame, un.fmtd), */
+  [14]	= -1, /* sizeof_field(struct frame, un.fmte), */
+  [15]	= -1, /* sizeof_field(struct frame, un.fmtf), */
 };
 
 static inline int frame_extra_sizes(int f)
@@ -651,7 +650,8 @@ static int mangle_kernel_stack(struct pt_regs *regs, int formatvec,
 		regs->vector = formatvec & 0xfff;
 	} else {
 		struct switch_stack *sw = (struct switch_stack *)regs - 1;
-		unsigned long buf[fsize / 2]; /* yes, twice as much */
+		/* yes, twice as much as max(sizeof(frame.un.fmt<x>)) */
+		unsigned long buf[sizeof_field(struct frame, un) / 2];
 
 		/* that'll make sure that expansion won't crap over data */
 		if (copy_from_user(buf + fsize / 4, fp, fsize))
@@ -787,7 +787,7 @@ asmlinkage int do_sigreturn(struct pt_regs *regs, struct switch_stack *sw)
 	struct sigframe __user *frame = (struct sigframe __user *)(usp - 4);
 	sigset_t set;
 
-	if (!access_ok(VERIFY_READ, frame, sizeof(*frame)))
+	if (!access_ok(frame, sizeof(*frame)))
 		goto badframe;
 	if (__get_user(set.sig[0], &frame->sc.sc_mask) ||
 	    (_NSIG_WORDS > 1 &&
@@ -802,7 +802,7 @@ asmlinkage int do_sigreturn(struct pt_regs *regs, struct switch_stack *sw)
 	return regs->d0;
 
 badframe:
-	force_sig(SIGSEGV, current);
+	force_sig(SIGSEGV);
 	return 0;
 }
 
@@ -812,7 +812,7 @@ asmlinkage int do_rt_sigreturn(struct pt_regs *regs, struct switch_stack *sw)
 	struct rt_sigframe __user *frame = (struct rt_sigframe __user *)(usp - 4);
 	sigset_t set;
 
-	if (!access_ok(VERIFY_READ, frame, sizeof(*frame)))
+	if (!access_ok(frame, sizeof(*frame)))
 		goto badframe;
 	if (__copy_from_user(&set, &frame->uc.uc_sigmask, sizeof(set)))
 		goto badframe;
@@ -824,7 +824,7 @@ asmlinkage int do_rt_sigreturn(struct pt_regs *regs, struct switch_stack *sw)
 	return regs->d0;
 
 badframe:
-	force_sig(SIGSEGV, current);
+	force_sig(SIGSEGV);
 	return 0;
 }
 
@@ -882,11 +882,17 @@ static inline int rt_setup_ucontext(struct ucontext __user *uc, struct pt_regs *
 }
 
 static inline void __user *
-get_sigframe(struct ksignal *ksig, size_t frame_size)
+get_sigframe(struct ksignal *ksig, struct pt_regs *tregs, size_t frame_size)
 {
 	unsigned long usp = sigsp(rdusp(), ksig);
+	unsigned long gap = 0;
 
-	return (void __user *)((usp - frame_size) & -8UL);
+	if (CPU_IS_020_OR_030 && tregs->format == 0xb) {
+		/* USP is unreliable so use worst-case value */
+		gap = 256;
+	}
+
+	return (void __user *)((usp - gap - frame_size) & -8UL);
 }
 
 static int setup_frame(struct ksignal *ksig, sigset_t *set,
@@ -904,7 +910,7 @@ static int setup_frame(struct ksignal *ksig, sigset_t *set,
 		return -EFAULT;
 	}
 
-	frame = get_sigframe(ksig, sizeof(*frame) + fsize);
+	frame = get_sigframe(ksig, tregs, sizeof(*frame) + fsize);
 
 	if (fsize)
 		err |= copy_to_user (frame + 1, regs + 1, fsize);
@@ -928,7 +934,8 @@ static int setup_frame(struct ksignal *ksig, sigset_t *set,
 	err |= __put_user(0x70004e40 + (__NR_sigreturn << 16),
 			  (long __user *)(frame->retcode));
 #else
-	err |= __put_user((void *) ret_from_user_signal, &frame->pretcode);
+	err |= __put_user((long) ret_from_user_signal,
+			  (long __user *) &frame->pretcode);
 #endif
 
 	if (err)
@@ -975,7 +982,7 @@ static int setup_rt_frame(struct ksignal *ksig, sigset_t *set,
 		return -EFAULT;
 	}
 
-	frame = get_sigframe(ksig, sizeof(*frame));
+	frame = get_sigframe(ksig, tregs, sizeof(*frame));
 
 	if (fsize)
 		err |= copy_to_user (&frame->uc.uc_extra, regs + 1, fsize);
@@ -1007,7 +1014,8 @@ static int setup_rt_frame(struct ksignal *ksig, sigset_t *set,
 	err |= __put_user(0x4e40, (short __user *)(frame->retcode + 4));
 #endif
 #else
-	err |= __put_user((void *) ret_from_user_rt_signal, &frame->pretcode);
+	err |= __put_user((long) ret_from_user_rt_signal,
+			  (long __user *) &frame->pretcode);
 #endif /* CONFIG_MMU */
 
 	if (err)
@@ -1063,7 +1071,7 @@ handle_restart(struct pt_regs *regs, struct k_sigaction *ka, int has_handler)
 			regs->d0 = -EINTR;
 			break;
 		}
-	/* fallthrough */
+		fallthrough;
 	case -ERESTARTNOINTR:
 	do_restart:
 		regs->d0 = regs->orig_d0;
@@ -1127,9 +1135,10 @@ static void do_signal(struct pt_regs *regs)
 
 void do_notify_resume(struct pt_regs *regs)
 {
-	if (test_thread_flag(TIF_SIGPENDING))
+	if (test_thread_flag(TIF_NOTIFY_SIGNAL) ||
+	    test_thread_flag(TIF_SIGPENDING))
 		do_signal(regs);
 
-	if (test_and_clear_thread_flag(TIF_NOTIFY_RESUME))
+	if (test_thread_flag(TIF_NOTIFY_RESUME))
 		tracehook_notify_resume(regs);
 }

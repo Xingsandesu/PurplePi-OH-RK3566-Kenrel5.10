@@ -86,3 +86,8 @@ extern struct kbase_platform_funcs_conf platform_funcs;
  */
 #define SECURE_CALLBACKS (NULL)
 
+#define CLK_RATE_TRACE_OPS (&clk_rate_trace_ops)
+extern struct kbase_clk_rate_trace_op_conf clk_rate_trace_ops;
+
+int kbase_platform_rk_init_opp_table(struct kbase_device *kbdev);
+int kbase_platform_rk_enable_regulator(struct kbase_device *kbdev);

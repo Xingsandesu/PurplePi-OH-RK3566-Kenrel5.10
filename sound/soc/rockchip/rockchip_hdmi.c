@@ -57,7 +57,7 @@ static int rk_hdmi_fill_widget_info(struct device *dev,
 
 static int rk_dailink_init(struct snd_soc_pcm_runtime *rtd)
 {
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
+	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
 	struct snd_soc_card *card = rtd->card;
 	struct rk_hdmi_data *rk_data = snd_soc_card_get_drvdata(rtd->card);
 	struct device *dev = rtd->card->dev;
@@ -104,9 +104,9 @@ static int rk_dailink_init(struct snd_soc_pcm_runtime *rtd)
 static int rk_hdmi_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *params)
 {
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *codec_dai = rtd->codec_dai;
-	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
+	struct snd_soc_pcm_runtime *rtd = asoc_substream_to_rtd(substream);
+	struct snd_soc_dai *codec_dai = asoc_rtd_to_codec(rtd, 0);
+	struct snd_soc_dai *cpu_dai = asoc_rtd_to_cpu(rtd, 0);
 	struct rk_hdmi_data *rk_data = snd_soc_card_get_drvdata(rtd->card);
 	unsigned int mclk;
 	int ret;
@@ -133,7 +133,7 @@ static int rk_hdmi_hw_params(struct snd_pcm_substream *substream,
 
 }
 
-static struct snd_soc_ops rk_ops = {
+static const struct snd_soc_ops rk_ops = {
 	.hw_params = rk_hdmi_hw_params,
 };
 
@@ -172,6 +172,8 @@ static int rk_hdmi_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
 	struct snd_soc_dai_link_component *codecs;
+	struct snd_soc_dai_link_component *platforms;
+	struct snd_soc_dai_link_component *cpus;
 	struct of_phandle_args args;
 	struct device_node *cpu_np;
 	struct rk_hdmi_data *rk_data;
@@ -183,9 +185,21 @@ static int rk_hdmi_probe(struct platform_device *pdev)
 	if (!rk_data)
 		return -ENOMEM;
 
+	cpus = devm_kzalloc(&pdev->dev, sizeof(*cpus), GFP_KERNEL);
+	if (!cpus)
+		return -ENOMEM;
+
+	platforms = devm_kzalloc(&pdev->dev, sizeof(*platforms), GFP_KERNEL);
+	if (!platforms)
+		return -ENOMEM;
+
 	rk_data->card.dev = &pdev->dev;
 	rk_data->dai.init = &rk_dailink_init;
 	rk_data->dai.ops = &rk_ops;
+	rk_data->dai.cpus = cpus;
+	rk_data->dai.platforms = platforms;
+	rk_data->dai.num_cpus = 1;
+	rk_data->dai.num_platforms = 1;
 	/* Parse the card name from DT */
 	ret = snd_soc_of_parse_card_name(&rk_data->card, "rockchip,card-name");
 	if (ret < 0)
@@ -213,6 +227,9 @@ static int rk_hdmi_probe(struct platform_device *pdev)
 
 	codecs = devm_kcalloc(&pdev->dev, idx,
 			      sizeof(*codecs), GFP_KERNEL);
+	if (!codecs)
+		return -ENOMEM;
+
 	rk_data->dai.codecs = codecs;
 	rk_data->dai.num_codecs = idx;
 	idx = 0;
@@ -245,8 +262,8 @@ static int rk_hdmi_probe(struct platform_device *pdev)
 	rk_data->jack_det =
 		of_property_read_bool(np, "rockchip,jack-det");
 
-	rk_data->dai.cpu_of_node = cpu_np;
-	rk_data->dai.platform_of_node = cpu_np;
+	rk_data->dai.cpus->of_node = cpu_np;
+	rk_data->dai.platforms->of_node = cpu_np;
 	of_node_put(cpu_np);
 
 	rk_data->hdmi_jack_pin.pin = rk_data->card.name;

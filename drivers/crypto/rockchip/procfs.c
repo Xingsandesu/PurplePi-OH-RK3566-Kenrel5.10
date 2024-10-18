@@ -133,12 +133,11 @@ static int crypto_open(struct inode *inode, struct file *file)
 	return single_open(file, crypto_show_all, data);
 }
 
-static const struct file_operations ops = {
-	.owner   = THIS_MODULE,
-	.open    = crypto_open,
-	.read    = seq_read,
-	.llseek  = seq_lseek,
-	.release = single_release,
+static const struct proc_ops ops = {
+	.proc_open    = crypto_open,
+	.proc_read    = seq_read,
+	.proc_lseek   = seq_lseek,
+	.proc_release = single_release,
 };
 
 int rkcrypto_proc_init(struct rk_crypto_dev *rk_dev)

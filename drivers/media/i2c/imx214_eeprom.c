@@ -374,4 +374,4 @@ static struct i2c_driver imx214_eeprom_i2c_driver = {
 module_i2c_driver(imx214_eeprom_i2c_driver);
 
 MODULE_DESCRIPTION("IMX214 OTP driver");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");

@@ -244,10 +244,10 @@ static const struct snd_soc_dapm_widget es8311_dapm_widgets[] = {
 	SND_SOC_DAPM_MUX("SDP OUT MUX", SND_SOC_NOPM, 0, 0,
 			 &es8311_adc_sdp_mux_controls),
 	/* Digital Interface */
-	SND_SOC_DAPM_AIF_OUT("I2S OUT", "Capture",  1,
+	SND_SOC_DAPM_AIF_OUT("I2S OUT", "I2S1 Capture",  1,
 			     SND_SOC_NOPM, 0, 0),
 	/* Render path	*/
-	SND_SOC_DAPM_AIF_IN("I2S IN", "Playback", 0,
+	SND_SOC_DAPM_AIF_IN("I2S IN", "I2S1 Playback", 0,
 			    SND_SOC_NOPM, 0, 0),
 	/*DACs SDP DATA SRC MUX */
 	SND_SOC_DAPM_MUX("DAC SDP SRC MUX", SND_SOC_NOPM, 0, 0,
@@ -281,9 +281,9 @@ static int es8311_set_dai_fmt(struct snd_soc_dai *codec_dai, unsigned int fmt)
 	u8 adciface = 0;
 	u8 daciface = 0;
 
-	iface    = snd_soc_component_read32(component, ES8311_RESET_REG00);
-	adciface = snd_soc_component_read32(component, ES8311_SDPOUT_REG0A);
-	daciface = snd_soc_component_read32(component, ES8311_SDPIN_REG09);
+	iface    = snd_soc_component_read(component, ES8311_RESET_REG00);
+	adciface = snd_soc_component_read(component, ES8311_SDPOUT_REG0A);
+	daciface = snd_soc_component_read(component, ES8311_SDPIN_REG09);
 
 	/* set master/slave audio interface */
 	switch (fmt & SND_SOC_DAIFMT_MASTER_MASK) {
@@ -327,7 +327,7 @@ static int es8311_set_dai_fmt(struct snd_soc_dai *codec_dai, unsigned int fmt)
 		return -EINVAL;
 	}
 
-	iface = snd_soc_component_read32(component, ES8311_CLK_MANAGER_REG06);
+	iface = snd_soc_component_read(component, ES8311_CLK_MANAGER_REG06);
 	/* clock inversion */
 	if (((fmt & SND_SOC_DAIFMT_FORMAT_MASK) == SND_SOC_DAIFMT_I2S) ||
 	    ((fmt & SND_SOC_DAIFMT_FORMAT_MASK) == SND_SOC_DAIFMT_LEFT_J)) {
@@ -393,7 +393,7 @@ static int es8311_pcm_hw_params(struct snd_pcm_substream *substream,
 	u16 iface;
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
-		iface = snd_soc_component_read32(component, ES8311_SDPIN_REG09) & 0xE3;
+		iface = snd_soc_component_read(component, ES8311_SDPIN_REG09) & 0xE3;
 		/* bit size */
 		switch (params_format(params)) {
 		case SNDRV_PCM_FORMAT_S16_LE:
@@ -411,7 +411,7 @@ static int es8311_pcm_hw_params(struct snd_pcm_substream *substream,
 		/* set iface */
 		snd_soc_component_write(component, ES8311_SDPIN_REG09, iface);
 	} else {
-		iface = snd_soc_component_read32(component, ES8311_SDPOUT_REG0A) & 0xE3;
+		iface = snd_soc_component_read(component, ES8311_SDPOUT_REG0A) & 0xE3;
 		/* bit size */
 		switch (params_format(params)) {
 		case SNDRV_PCM_FORMAT_S16_LE:
@@ -477,7 +477,7 @@ static int es8311_set_tristate(struct snd_soc_dai *dai, int tristate)
 	return 0;
 }
 
-static int es8311_mute(struct snd_soc_dai *dai, int mute)
+static int es8311_mute(struct snd_soc_dai *dai, int mute, int stream)
 {
 	struct snd_soc_component *component = dai->component;
 	struct es8311_priv *es8311 = snd_soc_component_get_drvdata(component);
@@ -508,8 +508,9 @@ static struct snd_soc_dai_ops es8311_ops = {
 	.shutdown = es8311_pcm_shutdown,
 	.hw_params = es8311_pcm_hw_params,
 	.set_fmt = es8311_set_dai_fmt,
-	.digital_mute = es8311_mute,
+	.mute_stream = es8311_mute,
 	.set_tristate = es8311_set_tristate,
+	.no_capture_mute = 1,
 };
 
 static struct snd_soc_dai_driver es8311_dai = {

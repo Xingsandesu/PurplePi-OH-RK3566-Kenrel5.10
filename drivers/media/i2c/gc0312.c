@@ -140,7 +140,7 @@ static const struct sensor_register gc0312_vga_regs[] = {
 	{0x0f, 0x02},
 	{0x10, 0x88},
 	{0x16, 0x00},
-	{0x17, 0x10},
+	{0x17, 0x17},
 	{0x18, 0x1a},
 	{0x19, 0x14},
 	{0x1b, 0x48},
@@ -790,11 +790,8 @@ static long gc0312_compat_ioctl32(struct v4l2_subdev *sd,
 		}
 
 		ret = gc0312_ioctl(sd, cmd, inf);
-		if (!ret) {
+		if (!ret)
 			ret = copy_to_user(up, inf, sizeof(*inf));
-			if (ret)
-				ret = -EFAULT;
-		}
 		kfree(inf);
 		break;
 	case RKMODULE_AWB_CFG:
@@ -807,16 +804,12 @@ static long gc0312_compat_ioctl32(struct v4l2_subdev *sd,
 		ret = copy_from_user(cfg, up, sizeof(*cfg));
 		if (!ret)
 			ret = gc0312_ioctl(sd, cmd, cfg);
-		else
-			ret = -EFAULT;
 		kfree(cfg);
 		break;
 	case RKMODULE_SET_QUICK_STREAM:
 		ret = copy_from_user(&stream, up, sizeof(u32));
 		if (!ret)
 			ret = gc0312_ioctl(sd, cmd, &stream);
-		else
-			ret = -EFAULT;
 		break;
 	default:
 		ret = -ENOIOCTLCMD;
@@ -934,9 +927,7 @@ static int gc0312_enum_frame_interval(struct v4l2_subdev *sd,
 	if (fie->index >= ARRAY_SIZE(gc0312_framesizes))
 		return -EINVAL;
 
-	if (fie->code != MEDIA_BUS_FMT_YUYV8_2X8)
-		return -EINVAL;
-
+	fie->code = MEDIA_BUS_FMT_YUYV8_2X8;
 	fie->width = gc0312_framesizes[fie->index].width;
 	fie->height = gc0312_framesizes[fie->index].height;
 	fie->interval = gc0312_framesizes[fie->index].max_fps;

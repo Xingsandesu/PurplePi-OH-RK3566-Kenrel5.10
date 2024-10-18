@@ -27,7 +27,7 @@ void nvp6158_I2CWriteByte8(unsigned char chip_addr, unsigned char reg_addr, unsi
     int ret;
     unsigned char buf[2];
     struct i2c_client* client = nvp6158_client;
-    
+
     nvp6158_client->addr = chip_addr;
 
     buf[0] = reg_addr;
@@ -60,8 +60,8 @@ unsigned char nvp6158_I2CReadByte8(unsigned char chip_addr, unsigned char reg_ad
 
 void nvp6158_I2CWriteByte8(unsigned char chip_addr, unsigned char reg_addr, unsigned char value)
 {
-	int ret;
-	unsigned char buf[2];
+    int ret;
+    unsigned char buf[2];
 	struct i2c_client* client = nvp6158_client;
 
 	client->addr = chip_addr>>1;

@@ -7,10 +7,20 @@
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/pinctrl/rockchip.h>
 #include <dt-bindings/clock/rk3066a-cru.h>
+#include <dt-bindings/power/rk3066-power.h>
 #include "rk3xxx.dtsi"
 
 / {
 	compatible = "rockchip,rk3066a";
+
+	aliases {
+		gpio0 = &gpio0;
+		gpio1 = &gpio1;
+		gpio2 = &gpio2;
+		gpio3 = &gpio3;
+		gpio4 = &gpio4;
+		gpio6 = &gpio6;
+	};
 
 	cpus {
 		#address-cells = <1>;
@@ -25,7 +35,7 @@
 			operating-points-v2 = <&cpu0_opp_table>;
 			clocks = <&cru ARMCLK>;
 		};
-		cpu@1 {
+		cpu1: cpu@1 {
 			device_type = "cpu";
 			compatible = "arm,cortex-a9";
 			next-level-cache = <&L2>;
@@ -62,6 +72,11 @@
 			clock-latency-ns = <40000>;
 			status = "disabled";
 		};
+	};
+
+	display-subsystem {
+		compatible = "rockchip,display-subsystem";
+		ports = <&vop0_out>, <&vop1_out>;
 	};
 
 	sram: sram@10080000 {
@@ -162,6 +177,7 @@
 			 <&cru DCLK_LCDC0>,
 			 <&cru HCLK_LCDC0>;
 		clock-names = "aclk_vop", "dclk_vop", "hclk_vop";
+		power-domains = <&power RK3066_PD_VIO>;
 		resets = <&cru SRST_LCDC0_AXI>,
 			 <&cru SRST_LCDC0_AHB>,
 			 <&cru SRST_LCDC0_DCLK>;
@@ -171,6 +187,7 @@
 		vop0_out: port {
 			#address-cells = <1>;
 			#size-cells = <0>;
+
 			vop0_out_hdmi: endpoint@0 {
 				reg = <0>;
 				remote-endpoint = <&hdmi_in_vop0>;
@@ -186,6 +203,7 @@
 			 <&cru DCLK_LCDC1>,
 			 <&cru HCLK_LCDC1>;
 		clock-names = "aclk_vop", "dclk_vop", "hclk_vop";
+		power-domains = <&power RK3066_PD_VIO>;
 		resets = <&cru SRST_LCDC1_AXI>,
 			 <&cru SRST_LCDC1_AHB>,
 			 <&cru SRST_LCDC1_DCLK>;
@@ -195,12 +213,12 @@
 		vop1_out: port {
 			#address-cells = <1>;
 			#size-cells = <0>;
-		};
-	};
 
-	display-subsystem {
-		compatible = "rockchip,display-subsystem";
-		ports = <&vop0_out>, <&vop1_out>;
+			vop1_out_hdmi: endpoint@0 {
+				reg = <0>;
+				remote-endpoint = <&hdmi_in_vop1>;
+			};
+		};
 	};
 
 	hdmi: hdmi@10116000 {
@@ -209,17 +227,34 @@
 		interrupts = <GIC_SPI 64 IRQ_TYPE_LEVEL_HIGH>;
 		clocks = <&cru HCLK_HDMI>;
 		clock-names = "hclk";
-		rockchip,grf = <&grf>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&hdmii2c_xfer>, <&hdmi_hpd>;
+		power-domains = <&power RK3066_PD_VIO>;
+		rockchip,grf = <&grf>;
 		status = "disabled";
 
-		hdmi_in: port {
+		ports {
 			#address-cells = <1>;
 			#size-cells = <0>;
-			hdmi_in_vop0: endpoint@0 {
+
+			hdmi_in: port@0 {
 				reg = <0>;
-				remote-endpoint = <&vop0_out_hdmi>;
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				hdmi_in_vop0: endpoint@0 {
+					reg = <0>;
+					remote-endpoint = <&vop0_out_hdmi>;
+				};
+
+				hdmi_in_vop1: endpoint@1 {
+					reg = <1>;
+					remote-endpoint = <&vop1_out_hdmi>;
+				};
+			};
+
+			hdmi_out: port@1 {
+				reg = <1>;
 			};
 		};
 	};
@@ -228,8 +263,6 @@
 		compatible = "rockchip,rk3066-i2s";
 		reg = <0x10118000 0x2000>;
 		interrupts = <GIC_SPI 31 IRQ_TYPE_LEVEL_HIGH>;
-		#address-cells = <1>;
-		#size-cells = <0>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&i2s0_bus>;
 		dmas = <&dmac1_s 4>, <&dmac1_s 5>;
@@ -240,6 +273,7 @@
 		reset-names = "reset-m";
 		rockchip,playback-channels = <8>;
 		rockchip,capture-channels = <2>;
+		#sound-dai-cells = <0>;
 		status = "disabled";
 	};
 
@@ -247,8 +281,6 @@
 		compatible = "rockchip,rk3066-i2s";
 		reg = <0x1011a000 0x2000>;
 		interrupts = <GIC_SPI 32 IRQ_TYPE_LEVEL_HIGH>;
-		#address-cells = <1>;
-		#size-cells = <0>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&i2s1_bus>;
 		dmas = <&dmac1_s 6>, <&dmac1_s 7>;
@@ -259,6 +291,7 @@
 		reset-names = "reset-m";
 		rockchip,playback-channels = <2>;
 		rockchip,capture-channels = <2>;
+		#sound-dai-cells = <0>;
 		status = "disabled";
 	};
 
@@ -266,8 +299,6 @@
 		compatible = "rockchip,rk3066-i2s";
 		reg = <0x1011c000 0x2000>;
 		interrupts = <GIC_SPI 20 IRQ_TYPE_LEVEL_HIGH>;
-		#address-cells = <1>;
-		#size-cells = <0>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&i2s2_bus>;
 		dmas = <&dmac1_s 9>, <&dmac1_s 10>;
@@ -278,6 +309,7 @@
 		reset-names = "reset-m";
 		rockchip,playback-channels = <2>;
 		rockchip,capture-channels = <2>;
+		#sound-dai-cells = <0>;
 		status = "disabled";
 	};
 
@@ -387,6 +419,7 @@
 			compatible = "rockchip,gpio-bank";
 			reg = <0x20034000 0x100>;
 			interrupts = <GIC_SPI 54 IRQ_TYPE_LEVEL_HIGH>;
+			clock-names = "bus";
 			clocks = <&cru PCLK_GPIO0>;
 
 			gpio-controller;
@@ -400,6 +433,7 @@
 			compatible = "rockchip,gpio-bank";
 			reg = <0x2003c000 0x100>;
 			interrupts = <GIC_SPI 55 IRQ_TYPE_LEVEL_HIGH>;
+			clock-names = "bus";
 			clocks = <&cru PCLK_GPIO1>;
 
 			gpio-controller;
@@ -413,6 +447,7 @@
 			compatible = "rockchip,gpio-bank";
 			reg = <0x2003e000 0x100>;
 			interrupts = <GIC_SPI 56 IRQ_TYPE_LEVEL_HIGH>;
+			clock-names = "bus";
 			clocks = <&cru PCLK_GPIO2>;
 
 			gpio-controller;
@@ -426,6 +461,7 @@
 			compatible = "rockchip,gpio-bank";
 			reg = <0x20080000 0x100>;
 			interrupts = <GIC_SPI 57 IRQ_TYPE_LEVEL_HIGH>;
+			clock-names = "bus";
 			clocks = <&cru PCLK_GPIO3>;
 
 			gpio-controller;
@@ -439,6 +475,7 @@
 			compatible = "rockchip,gpio-bank";
 			reg = <0x20084000 0x100>;
 			interrupts = <GIC_SPI 58 IRQ_TYPE_LEVEL_HIGH>;
+			clock-names = "bus";
 			clocks = <&cru PCLK_GPIO4>;
 
 			gpio-controller;
@@ -452,6 +489,7 @@
 			compatible = "rockchip,gpio-bank";
 			reg = <0x2000a000 0x100>;
 			interrupts = <GIC_SPI 60 IRQ_TYPE_LEVEL_HIGH>;
+			clock-names = "bus";
 			clocks = <&cru PCLK_GPIO6>;
 
 			gpio-controller;
@@ -463,10 +501,6 @@
 
 		pcfg_pull_default: pcfg_pull_default {
 			bias-pull-pin-default;
-		};
-
-		pcfg_pull_up: pcfg-pull-up {
-			bias-pull-up;
 		};
 
 		pcfg_pull_none: pcfg_pull_none {
@@ -510,6 +544,17 @@
 			 * been already set correctly by firmware, as
 			 * flash/emmc is the boot-device.
 			 */
+		};
+
+		hdmi {
+			hdmi_hpd: hdmi-hpd {
+				rockchip,pins = <0 RK_PA0 1 &pcfg_pull_default>;
+			};
+
+			hdmii2c_xfer: hdmii2c-xfer {
+				rockchip,pins = <0 RK_PA1 1 &pcfg_pull_none>,
+						<0 RK_PA2 1 &pcfg_pull_none>;
+			};
 		};
 
 		i2c0 {
@@ -609,8 +654,8 @@
 
 		uart0 {
 			uart0_xfer: uart0-xfer {
-				rockchip,pins = <1 RK_PA0 1 &pcfg_pull_up>,
-						<1 RK_PA1 1 &pcfg_pull_up>;
+				rockchip,pins = <1 RK_PA0 1 &pcfg_pull_default>,
+						<1 RK_PA1 1 &pcfg_pull_default>;
 			};
 
 			uart0_cts: uart0-cts {
@@ -624,8 +669,8 @@
 
 		uart1 {
 			uart1_xfer: uart1-xfer {
-				rockchip,pins = <1 RK_PA4 1 &pcfg_pull_up>,
-						<1 RK_PA5 1 &pcfg_pull_up>;
+				rockchip,pins = <1 RK_PA4 1 &pcfg_pull_default>,
+						<1 RK_PA5 1 &pcfg_pull_default>;
 			};
 
 			uart1_cts: uart1-cts {
@@ -639,16 +684,16 @@
 
 		uart2 {
 			uart2_xfer: uart2-xfer {
-				rockchip,pins = <1 RK_PB0 1 &pcfg_pull_up>,
-						<1 RK_PB1 1 &pcfg_pull_up>;
+				rockchip,pins = <1 RK_PB0 1 &pcfg_pull_default>,
+						<1 RK_PB1 1 &pcfg_pull_default>;
 			};
 			/* no rts / cts for uart2 */
 		};
 
 		uart3 {
 			uart3_xfer: uart3-xfer {
-				rockchip,pins = <3 RK_PD3 1 &pcfg_pull_up>,
-						<3 RK_PD4 1 &pcfg_pull_up>;
+				rockchip,pins = <3 RK_PD3 1 &pcfg_pull_default>,
+						<3 RK_PD4 1 &pcfg_pull_default>;
 			};
 
 			uart3_cts: uart3-cts {
@@ -753,16 +798,6 @@
 						<0 RK_PD5 1 &pcfg_pull_default>;
 			};
 		};
-
-		hdmi {
-			hdmi_hpd: hdmi-hpd {
-				rockchip,pins = <0 RK_PA0 1 &pcfg_pull_default>;
-			};
-			hdmii2c_xfer: hdmii2c-xfer {
-				rockchip,pins = <0 RK_PA1 1 &pcfg_pull_none>,
-						<0 RK_PA2 1 &pcfg_pull_none>;
-			};
-		};
 	};
 };
 
@@ -788,6 +823,7 @@
 			  "ppmmu2",
 			  "pp3",
 			  "ppmmu3";
+	power-domains = <&power RK3066_PD_GPU>;
 };
 
 &i2c0 {
@@ -834,6 +870,57 @@
 &emmc {
 	dmas = <&dmac2 4>;
 	dma-names = "rx-tx";
+};
+
+&pmu {
+	power: power-controller {
+		compatible = "rockchip,rk3066-power-controller";
+		#power-domain-cells = <1>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		power-domain@RK3066_PD_VIO {
+			reg = <RK3066_PD_VIO>;
+			clocks = <&cru ACLK_LCDC0>,
+				 <&cru ACLK_LCDC1>,
+				 <&cru DCLK_LCDC0>,
+				 <&cru DCLK_LCDC1>,
+				 <&cru HCLK_LCDC0>,
+				 <&cru HCLK_LCDC1>,
+				 <&cru SCLK_CIF1>,
+				 <&cru ACLK_CIF1>,
+				 <&cru HCLK_CIF1>,
+				 <&cru SCLK_CIF0>,
+				 <&cru ACLK_CIF0>,
+				 <&cru HCLK_CIF0>,
+				 <&cru HCLK_HDMI>,
+				 <&cru ACLK_IPP>,
+				 <&cru HCLK_IPP>,
+				 <&cru ACLK_RGA>,
+				 <&cru HCLK_RGA>;
+			pm_qos = <&qos_lcdc0>,
+				 <&qos_lcdc1>,
+				 <&qos_cif0>,
+				 <&qos_cif1>,
+				 <&qos_ipp>,
+				 <&qos_rga>;
+		};
+
+		power-domain@RK3066_PD_VIDEO {
+			reg = <RK3066_PD_VIDEO>;
+			clocks = <&cru ACLK_VDPU>,
+				 <&cru ACLK_VEPU>,
+				 <&cru HCLK_VDPU>,
+				 <&cru HCLK_VEPU>;
+			pm_qos = <&qos_vpu>;
+		};
+
+		power-domain@RK3066_PD_GPU {
+			reg = <RK3066_PD_GPU>;
+			clocks = <&cru ACLK_GPU>;
+			pm_qos = <&qos_gpu>;
+		};
+	};
 };
 
 &pwm0 {

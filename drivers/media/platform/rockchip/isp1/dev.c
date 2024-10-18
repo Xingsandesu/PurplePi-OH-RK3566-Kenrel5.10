@@ -45,7 +45,6 @@
 #include <linux/pinctrl/consumer.h>
 #include <linux/regmap.h>
 #include <media/videobuf2-dma-contig.h>
-#include <dt-bindings/soc/rockchip-system-status.h>
 #include <soc/rockchip/rockchip-system-status.h>
 #include "regs.h"
 #include "rkisp1.h"
@@ -543,14 +542,13 @@ static int isp_subdev_notifier(struct rkisp1_device *isp_dev)
 	struct device *dev = isp_dev->dev;
 	int ret;
 
+	v4l2_async_notifier_init(ntf);
+
 	ret = v4l2_async_notifier_parse_fwnode_endpoints(
 		dev, ntf, sizeof(struct rkisp1_async_subdev),
 		rkisp1_fwnode_parse);
 	if (ret < 0)
 		return ret;
-
-	if (!ntf->num_subdevs)
-		return -ENODEV;	/* no endpoint */
 
 	ntf->ops = &subdev_notifier_ops;
 
@@ -747,7 +745,7 @@ static const unsigned int rk3288_isp_clk_rate[] = {
 
 /* isp clock adjustment table (MHz) */
 static const unsigned int rk3326_isp_clk_rate[] = {
-	150, 300, 347, 400, 520, 600
+	300, 347, 400, 520, 600
 };
 
 /* isp clock adjustment table (MHz) */

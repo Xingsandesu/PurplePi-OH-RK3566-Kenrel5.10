@@ -1,15 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright(c) 2016, Analogix Semiconductor. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
  */
 
 #ifndef __ANX78xx_H
@@ -18,15 +9,8 @@
 #include "analogix-i2c-dptx.h"
 #include "analogix-i2c-txcommon.h"
 
-#define TX_P0				ANALOGIX_I2C_DPTX
-#define TX_P1				0x7a
-#define TX_P2				ANALOGIX_I2C_TXCOMMON
-
-#define RX_P0				0x7e
-#define RX_P1				0x80
-
 /***************************************************************/
-/* Register definition of device address 0x7e                  */
+/* Register definitions for RX_PO                              */
 /***************************************************************/
 
 /*
@@ -183,7 +167,7 @@
 #define SP_VSI_RCVD			BIT(1)
 
 /***************************************************************/
-/* Register definition of device address 0x80                  */
+/* Register definitions for RX_P1                              */
 /***************************************************************/
 
 /* HDCP BCAPS Shadow Register */
@@ -229,7 +213,7 @@
 #define SP_SET_AVMUTE			BIT(0)
 
 /***************************************************************/
-/* Register definition of device address 0x7a                  */
+/* Register definitions for TX_P1                              */
 /***************************************************************/
 
 /* DP TX Link Training Control Register */

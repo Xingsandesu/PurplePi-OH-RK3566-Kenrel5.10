@@ -2,7 +2,7 @@
 /*
  * techpoint tp9950 regs
  *
- * Copyright (C) 2022 Rockchip Electronics Co., Ltd.
+ * Copyright (C) 2023 Rockchip Electronics Co., Ltd.
  */
 
 #ifndef _TECHPOINT_TP9950_H

@@ -1,14 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  *      uvc_video.c  --  USB Video Class driver - Video handling
  *
  *      Copyright (C) 2005-2010
  *          Laurent Pinchart (laurent.pinchart@ideasonboard.com)
- *
- *      This program is free software; you can redistribute it and/or modify
- *      it under the terms of the GNU General Public License as published by
- *      the Free Software Foundation; either version 2 of the License, or
- *      (at your option) any later version.
- *
  */
 
 #include <linux/kernel.h>
@@ -25,6 +20,7 @@
 #include <media/v4l2-common.h>
 
 #include "uvcvideo.h"
+#include <soc/rockchip/rockchip-system-status.h>
 
 /* ------------------------------------------------------------------------
  * UVC Controls
@@ -659,7 +655,7 @@ static u16 uvc_video_clock_host_sof(const struct uvc_clock_sample *sample)
  * to avoid losing precision in the division. Similarly, the host timestamp is
  * computed with
  *
- * TS = ((TS2 - TS1) * PTS + TS1 * SOF2 - TS2 * SOF1) / (SOF2 - SOF1)	     (2)
+ * TS = ((TS2 - TS1) * SOF + TS1 * SOF2 - TS2 * SOF1) / (SOF2 - SOF1)	     (2)
  *
  * SOF values are coded on 11 bits by USB. We extend their precision with 16
  * decimal bits, leading to a 11.16 coding.
@@ -802,9 +798,9 @@ static void uvc_video_stats_decode(struct uvc_streaming *stream,
 	unsigned int header_size;
 	bool has_pts = false;
 	bool has_scr = false;
-	u16 uninitialized_var(scr_sof);
-	u32 uninitialized_var(scr_stc);
-	u32 uninitialized_var(pts);
+	u16 scr_sof;
+	u32 scr_stc;
+	u32 pts;
 
 	if (stream->stats.stream.nb_frames == 0 &&
 	    stream->stats.frame.nb_packets == 0)
@@ -1313,7 +1309,9 @@ static void uvc_video_decode_meta(struct uvc_streaming *stream,
 	if (has_scr)
 		memcpy(stream->clock.last_scr, scr, 6);
 
-	memcpy(&meta->length, mem, length);
+	meta->length = mem[0];
+	meta->flags  = mem[1];
+	memcpy(meta->buf, &mem[2], length - 2);
 	meta_buf->bytesused += length + sizeof(meta->ns) + sizeof(meta->sof);
 
 	uvc_trace(UVC_TRACE_FRAME,
@@ -1546,11 +1544,11 @@ static void uvc_video_complete(struct urb *urb)
 	default:
 		uvc_printk(KERN_WARNING, "Non-zero status (%d) in video "
 			"completion handler.\n", urb->status);
-		/* fall through */
+		fallthrough;
 	case -ENOENT:		/* usb_poison_urb() called. */
 		if (stream->frozen)
 			return;
-		/* fall through */
+		fallthrough;
 	case -ECONNRESET:	/* usb_unlink_urb() called. */
 	case -ESHUTDOWN:	/* The endpoint is being disabled. */
 		uvc_queue_cancel(queue, urb->status == -ESHUTDOWN);
@@ -1596,20 +1594,19 @@ static void uvc_video_complete(struct urb *urb)
  */
 static void uvc_free_urb_buffers(struct uvc_streaming *stream)
 {
-	unsigned int i;
+	struct uvc_urb *uvc_urb;
 
-	for (i = 0; i < UVC_URBS; ++i) {
-		struct uvc_urb *uvc_urb = &stream->uvc_urb[i];
+	for_each_uvc_urb(uvc_urb, stream) {
+		if (!uvc_urb->buffer)
+			continue;
 
-		if (uvc_urb->buffer) {
 #ifndef CONFIG_DMA_NONCOHERENT
-			usb_free_coherent(stream->dev->udev, stream->urb_size,
-					uvc_urb->buffer, uvc_urb->dma);
+		usb_free_coherent(stream->dev->udev, stream->urb_size,
+				  uvc_urb->buffer, uvc_urb->dma);
 #else
-			kfree(uvc_urb->buffer);
+		kfree(uvc_urb->buffer);
 #endif
-			uvc_urb->buffer = NULL;
-		}
+		uvc_urb->buffer = NULL;
 	}
 
 	stream->urb_size = 0;
@@ -1681,7 +1678,8 @@ static int uvc_alloc_urb_buffers(struct uvc_streaming *stream,
 /*
  * Uninitialize isochronous/bulk URBs and free transfer buffers.
  */
-static void uvc_uninit_video(struct uvc_streaming *stream, int free_buffers)
+static void uvc_video_stop_transfer(struct uvc_streaming *stream,
+				    int free_buffers)
 {
 	struct uvc_urb *uvc_urb;
 
@@ -1740,7 +1738,8 @@ static int uvc_init_video_isoc(struct uvc_streaming *stream,
 	struct usb_host_endpoint *ep, gfp_t gfp_flags)
 {
 	struct urb *urb;
-	unsigned int npackets, i, j;
+	struct uvc_urb *uvc_urb;
+	unsigned int npackets, i;
 	u16 psize;
 	u32 size;
 
@@ -1753,12 +1752,10 @@ static int uvc_init_video_isoc(struct uvc_streaming *stream,
 
 	size = npackets * psize;
 
-	for (i = 0; i < UVC_URBS; ++i) {
-		struct uvc_urb *uvc_urb = &stream->uvc_urb[i];
-
+	for_each_uvc_urb(uvc_urb, stream) {
 		urb = usb_alloc_urb(npackets, gfp_flags);
 		if (urb == NULL) {
-			uvc_uninit_video(stream, 1);
+			uvc_video_stop_transfer(stream, 1);
 			return -ENOMEM;
 		}
 
@@ -1778,9 +1775,9 @@ static int uvc_init_video_isoc(struct uvc_streaming *stream,
 		urb->number_of_packets = npackets;
 		urb->transfer_buffer_length = size;
 
-		for (j = 0; j < npackets; ++j) {
-			urb->iso_frame_desc[j].offset = j * psize;
-			urb->iso_frame_desc[j].length = psize;
+		for (i = 0; i < npackets; ++i) {
+			urb->iso_frame_desc[i].offset = i * psize;
+			urb->iso_frame_desc[i].length = psize;
 		}
 
 		uvc_urb->urb = urb;
@@ -1797,7 +1794,8 @@ static int uvc_init_video_bulk(struct uvc_streaming *stream,
 	struct usb_host_endpoint *ep, gfp_t gfp_flags)
 {
 	struct urb *urb;
-	unsigned int npackets, pipe, i;
+	struct uvc_urb *uvc_urb;
+	unsigned int npackets, pipe;
 	u16 psize;
 	u32 size;
 
@@ -1821,12 +1819,10 @@ static int uvc_init_video_bulk(struct uvc_streaming *stream,
 	if (stream->type == V4L2_BUF_TYPE_VIDEO_OUTPUT)
 		size = 0;
 
-	for (i = 0; i < UVC_URBS; ++i) {
-		struct uvc_urb *uvc_urb = &stream->uvc_urb[i];
-
+	for_each_uvc_urb(uvc_urb, stream) {
 		urb = usb_alloc_urb(0, gfp_flags);
 		if (urb == NULL) {
-			uvc_uninit_video(stream, 1);
+			uvc_video_stop_transfer(stream, 1);
 			return -ENOMEM;
 		}
 
@@ -1846,10 +1842,12 @@ static int uvc_init_video_bulk(struct uvc_streaming *stream,
 /*
  * Initialize isochronous/bulk URBs and allocate transfer buffers.
  */
-static int uvc_init_video(struct uvc_streaming *stream, gfp_t gfp_flags)
+static int uvc_video_start_transfer(struct uvc_streaming *stream,
+				    gfp_t gfp_flags)
 {
 	struct usb_interface *intf = stream->intf;
 	struct usb_host_endpoint *ep;
+	struct uvc_urb *uvc_urb;
 	unsigned int i;
 	int ret;
 
@@ -1865,7 +1863,7 @@ static int uvc_init_video(struct uvc_streaming *stream, gfp_t gfp_flags)
 		struct usb_host_endpoint *best_ep = NULL;
 		unsigned int best_psize = UINT_MAX;
 		unsigned int bandwidth;
-		unsigned int uninitialized_var(altsetting);
+		unsigned int altsetting;
 		int intfnum = stream->intfnum;
 
 		/* Isochronous endpoint, select the alternate setting. */
@@ -1908,6 +1906,17 @@ static int uvc_init_video(struct uvc_streaming *stream, gfp_t gfp_flags)
 		uvc_trace(UVC_TRACE_VIDEO, "Selecting alternate setting %u "
 			"(%u B/frame bandwidth).\n", altsetting, best_psize);
 
+		/*
+		 * Some devices, namely the Logitech C910 and B910, are unable
+		 * to recover from a USB autosuspend, unless the alternate
+		 * setting of the streaming interface is toggled.
+		 */
+		if (stream->dev->quirks & UVC_QUIRK_WAKE_AUTOSUSPEND) {
+			usb_set_interface(stream->dev->udev, intfnum,
+					  altsetting);
+			usb_set_interface(stream->dev->udev, intfnum, 0);
+		}
+
 		ret = usb_set_interface(stream->dev->udev, intfnum, altsetting);
 		if (ret < 0)
 			return ret;
@@ -1931,14 +1940,12 @@ static int uvc_init_video(struct uvc_streaming *stream, gfp_t gfp_flags)
 		return ret;
 
 	/* Submit the URBs. */
-	for (i = 0; i < UVC_URBS; ++i) {
-		struct uvc_urb *uvc_urb = &stream->uvc_urb[i];
-
+	for_each_uvc_urb(uvc_urb, stream) {
 		ret = usb_submit_urb(uvc_urb->urb, gfp_flags);
 		if (ret < 0) {
-			uvc_printk(KERN_ERR, "Failed to submit URB %u "
-					"(%d).\n", i, ret);
-			uvc_uninit_video(stream, 1);
+			uvc_printk(KERN_ERR, "Failed to submit URB %u (%d).\n",
+				   uvc_urb_index(uvc_urb), ret);
+			uvc_video_stop_transfer(stream, 1);
 			return ret;
 		}
 	}
@@ -1969,7 +1976,7 @@ int uvc_video_suspend(struct uvc_streaming *stream)
 		return 0;
 
 	stream->frozen = 1;
-	uvc_uninit_video(stream, 0);
+	uvc_video_stop_transfer(stream, 0);
 	usb_set_interface(stream->dev->udev, stream->intfnum, 0);
 	return 0;
 }
@@ -2005,7 +2012,7 @@ int uvc_video_resume(struct uvc_streaming *stream, int reset)
 	if (ret < 0)
 		return ret;
 
-	return uvc_init_video(stream, GFP_NOIO);
+	return uvc_video_start_transfer(stream, GFP_NOIO);
 }
 
 /* ------------------------------------------------------------------------
@@ -2046,7 +2053,7 @@ int uvc_video_init(struct uvc_streaming *stream)
 	usb_set_interface(stream->dev->udev, stream->intfnum, 0);
 
 	/* Set the streaming probe control with default streaming parameters
-	 * retrieved from the device. Webcams that don't suport GET_DEF
+	 * retrieved from the device. Webcams that don't support GET_DEF
 	 * requests on the probe control will just keep their current streaming
 	 * parameters.
 	 */
@@ -2120,37 +2127,9 @@ int uvc_video_init(struct uvc_streaming *stream)
 	return 0;
 }
 
-/*
- * Enable or disable the video stream.
- */
-int uvc_video_enable(struct uvc_streaming *stream, int enable)
+int uvc_video_start_streaming(struct uvc_streaming *stream)
 {
 	int ret;
-
-	if (!enable) {
-		uvc_uninit_video(stream, 1);
-		if (stream->intf->num_altsetting > 1) {
-			usb_set_interface(stream->dev->udev,
-					  stream->intfnum, 0);
-		} else {
-			/* UVC doesn't specify how to inform a bulk-based device
-			 * when the video stream is stopped. Windows sends a
-			 * CLEAR_FEATURE(HALT) request to the video streaming
-			 * bulk endpoint, mimic the same behaviour.
-			 */
-			unsigned int epnum = stream->header.bEndpointAddress
-					   & USB_ENDPOINT_NUMBER_MASK;
-			unsigned int dir = stream->header.bEndpointAddress
-					 & USB_ENDPOINT_DIR_MASK;
-			unsigned int pipe;
-
-			pipe = usb_sndbulkpipe(stream->dev->udev, epnum) | dir;
-			usb_clear_halt(stream->dev->udev, pipe);
-		}
-
-		uvc_video_clock_cleanup(stream);
-		return 0;
-	}
 
 	ret = uvc_video_clock_init(stream);
 	if (ret < 0)
@@ -2161,16 +2140,45 @@ int uvc_video_enable(struct uvc_streaming *stream, int enable)
 	if (ret < 0)
 		goto error_commit;
 
-	ret = uvc_init_video(stream, GFP_KERNEL);
+	rockchip_set_system_status(SYS_STATUS_PERFORMANCE);
+
+	ret = uvc_video_start_transfer(stream, GFP_KERNEL);
 	if (ret < 0)
 		goto error_video;
 
 	return 0;
 
 error_video:
+	rockchip_clear_system_status(SYS_STATUS_PERFORMANCE);
 	usb_set_interface(stream->dev->udev, stream->intfnum, 0);
 error_commit:
 	uvc_video_clock_cleanup(stream);
 
 	return ret;
+}
+
+void uvc_video_stop_streaming(struct uvc_streaming *stream)
+{
+	uvc_video_stop_transfer(stream, 1);
+
+	if (stream->intf->num_altsetting > 1) {
+		usb_set_interface(stream->dev->udev, stream->intfnum, 0);
+	} else {
+		/* UVC doesn't specify how to inform a bulk-based device
+		 * when the video stream is stopped. Windows sends a
+		 * CLEAR_FEATURE(HALT) request to the video streaming
+		 * bulk endpoint, mimic the same behaviour.
+		 */
+		unsigned int epnum = stream->header.bEndpointAddress
+				   & USB_ENDPOINT_NUMBER_MASK;
+		unsigned int dir = stream->header.bEndpointAddress
+				 & USB_ENDPOINT_DIR_MASK;
+		unsigned int pipe;
+
+		pipe = usb_sndbulkpipe(stream->dev->udev, epnum) | dir;
+		usb_clear_halt(stream->dev->udev, pipe);
+	}
+
+	uvc_video_clock_cleanup(stream);
+	rockchip_clear_system_status(SYS_STATUS_PERFORMANCE);
 }

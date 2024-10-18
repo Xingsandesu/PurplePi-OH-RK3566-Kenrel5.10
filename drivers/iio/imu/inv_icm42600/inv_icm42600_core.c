@@ -67,11 +67,6 @@ static const struct inv_icm42600_conf inv_icm42600_default_conf = {
 };
 
 static const struct inv_icm42600_hw inv_icm42600_hw[INV_CHIP_NB] = {
-	[INV_CHIP_ICM40608] = {
-		.whoami = INV_ICM42600_WHOAMI_ICM40608,
-		.name = "icm40608",
-		.conf = &inv_icm42600_default_conf,
-	},
 	[INV_CHIP_ICM42600] = {
 		.whoami = INV_ICM42600_WHOAMI_ICM42600,
 		.name = "icm42600",
@@ -95,10 +90,10 @@ static const struct inv_icm42600_hw inv_icm42600_hw[INV_CHIP_NB] = {
 };
 
 const struct iio_mount_matrix *
-inv_icm42600_get_mount_matrix(struct iio_dev *indio_dev,
+inv_icm42600_get_mount_matrix(const struct iio_dev *indio_dev,
 			      const struct iio_chan_spec *chan)
 {
-	struct inv_icm42600_state *st = iio_device_get_drvdata(indio_dev);
+	const struct inv_icm42600_state *st = iio_device_get_drvdata(indio_dev);
 
 	return &st->orientation;
 }
@@ -570,7 +565,7 @@ int inv_icm42600_core_probe(struct regmap *regmap, int chip, int irq,
 	bool open_drain;
 	int ret;
 
-	if (chip < 0 || chip >= INV_CHIP_NB) {
+	if (chip <= INV_CHIP_INVALID || chip >= INV_CHIP_NB) {
 		dev_err(dev, "invalid chip = %d\n", chip);
 		return -ENODEV;
 	}
@@ -597,7 +592,7 @@ int inv_icm42600_core_probe(struct regmap *regmap, int chip, int irq,
 	st->chip = chip;
 	st->map = regmap;
 
-	ret = of_iio_read_mount_matrix(dev, "mount-matrix", &st->orientation);
+	ret = iio_read_mount_matrix(dev, "mount-matrix", &st->orientation);
 	if (ret) {
 		dev_err(dev, "failed to retrieve mounting matrix %d\n", ret);
 		return ret;

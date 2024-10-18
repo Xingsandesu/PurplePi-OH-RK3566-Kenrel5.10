@@ -160,7 +160,7 @@ static int rk_rsa_calc(struct akcipher_request *req, bool encypt)
 		goto exit;
 
 	out = rk_bn_alloc(key_byte_size);
-	if (!in)
+	if (!out)
 		goto exit;
 
 	tmp_buf = kzalloc(key_byte_size, GFP_KERNEL);
@@ -303,8 +303,6 @@ struct rk_crypto_algt rk_v2_asym_rsa = {
 	.alg.asym = {
 		.encrypt = rk_rsa_enc,
 		.decrypt = rk_rsa_dec,
-		.sign = rk_rsa_dec,
-		.verify = rk_rsa_enc,
 		.set_pub_key = rk_rsa_setpubkey,
 		.set_priv_key = rk_rsa_setprivkey,
 		.max_size = rk_rsa_max_size,

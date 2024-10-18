@@ -94,14 +94,6 @@
 
 #define OV2775_NAME			"ov2775"
 
-enum ov2775_max_pad {
-	PAD0, /* link to isp */
-	PAD1, /* link to csi wr0 | hdr x2:L x3:M */
-	PAD2, /* link to csi wr1 | hdr      x3:L */
-	PAD3, /* link to csi wr2 | hdr x2:M x3:S */
-	PAD_MAX,
-};
-
 struct ov2775_gpio {
 	int pltfrm_gpio;
 	const char *label;
@@ -4111,9 +4103,7 @@ static int ov2775_g_frame_interval(struct v4l2_subdev *sd,
 	struct ov2775 *ov2775 = to_ov2775(sd);
 	const struct ov2775_mode *mode = ov2775->cur_mode;
 
-	mutex_lock(&ov2775->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&ov2775->mutex);
 
 	return 0;
 }
@@ -4873,7 +4863,7 @@ static int ov2775_set_ctrl(struct v4l2_ctrl *ctrl)
 	switch (ctrl->id) {
 	case V4L2_CID_EXPOSURE:
 		if (ov2775->cur_mode->hdr_mode != NO_HDR)
-			return 0;
+			goto ctrl_end;
 		ret = ov2775_write_reg(ov2775->client,
 				       OV2775_REG_EXPOSURE_H,
 				       OV2775_REG_VALUE_08BIT,
@@ -4888,7 +4878,7 @@ static int ov2775_set_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	case V4L2_CID_ANALOGUE_GAIN:
 		if (ov2775->cur_mode->hdr_mode != NO_HDR)
-			return 0;
+			goto ctrl_end;
 		ov2775_get_linear_reg(ctrl->val, &gain_a, &gain_d);
 		ret = ov2775_write_reg(ov2775->client,
 				       OV2775_REG_GAIN,
@@ -4945,6 +4935,7 @@ static int ov2775_set_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	}
 
+ctrl_end:
 	pm_runtime_put(&client->dev);
 
 	return ret;

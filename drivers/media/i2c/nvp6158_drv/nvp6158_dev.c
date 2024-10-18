@@ -83,7 +83,7 @@ static int nvp6158_freeze(struct himedia_device* pdev)
 }
 
 static int nvp6158_restore(struct himedia_device* pdev)
-{  
+{
     printk(KERN_ALERT "%s  %d\n", __FUNCTION__, __LINE__);
     return 0;
 }
@@ -91,7 +91,7 @@ static int nvp6158_restore(struct himedia_device* pdev)
 
 static const struct file_operations nvp6158_fops = {
 	.owner      = THIS_MODULE,
-    .unlocked_ioctl	= nvp6158_native_ioctl,
+    	.unlocked_ioctl	= nvp6158_native_ioctl,
 	.open       = nvp6158_open,
 	.release    = nvp6158_close,
 };
@@ -122,25 +122,21 @@ static int nvp6158_kernel_thread(void *data)
 	unsigned char ch = 0;
 
 	memset(&s_nvp6158_vfmts, 0, sizeof(NVP6158_INFORMATION_S));
-	
-	while(!kthread_should_stop())
-	{
+
+	while(!kthread_should_stop()) {
 		#if 1  //standard rutine of a process
 		down(&nvp6158_lock);
 		ch = ch % (nvp6158_cnt*4);
 		nvp6158_getvideoloss();
-		if(nvp6158_chip_id[0]==NVP6158C_R0_ID || nvp6158_chip_id[0]==NVP6158_R0_ID)
-		{
+		if(nvp6158_chip_id[0]==NVP6158C_R0_ID || nvp6158_chip_id[0]==NVP6158_R0_ID) {
 			nvp6158_video_fmt_det(ch, &s_nvp6158_vfmts);
 			curfmt = s_nvp6158_vfmts.curvideofmt[ch];
 			prefmt = s_nvp6158_vfmts.prevideofmt[ch];
 			chvloss = s_nvp6158_vfmts.curvideoloss[ch];
 			//printk(">>>>>>%s CH[%d] chvloss = %d curfmt = %x prefmt = %x\n", __func__, ch, chvloss, curfmt, prefmt);
 
-			if(chvloss == 0x00)
-			{	
-				if(nvp6158_ch_mode_status[ch] != prefmt)
-				{
+			if(chvloss == 0x00) {	
+				if(nvp6158_ch_mode_status[ch] != prefmt) {
 					nvp6158_set_chnmode(ch, curfmt);
 					nvp6158_set_portmode(0, ch%4, NVP6158_OUTMODE_1MUX_FHD, ch%4);
 					s_eq_info.Ch = ch%4;
@@ -148,32 +144,26 @@ static int nvp6158_kernel_thread(void *data)
 					s_eq_info.FmtDef = curfmt;
 					nvp6158_get_eq_dist(&s_eq_info);
 					s_nvp6158_vfmts.prevideofmt[ch] = curfmt;
-					printk(">>>>>>%s CH[%d] s_eq_info.distance = %d\n", __func__, ch, s_eq_info.distance);
+					printk(">>>>>>%s CH[%d] s_eq_info.distance = %d\n",
+						__func__, ch, s_eq_info.distance);
 					nvp6158_set_equalizer(&s_eq_info);
 					
 				}
-			}
-			else
-			{	
-				if(nvp6158_ch_mode_status[ch] != NC_VIVO_CH_FORMATDEF_UNKNOWN)
-				{
+			} else {	
+				if(nvp6158_ch_mode_status[ch] != NC_VIVO_CH_FORMATDEF_UNKNOWN) {
 					nvp6158_set_chnmode(ch, NC_VIVO_CH_FORMATDEF_UNKNOWN);
 					nvp6158_set_portmode(0, ch%4, NVP6158_OUTMODE_1MUX_FHD, ch%4);
 				}
-			}	
-		}
-		else
-		{
+			}
+		} else {
 			nvp6168_video_fmt_det(ch, &s_nvp6158_vfmts);
 			curfmt = s_nvp6158_vfmts.curvideofmt[ch];
 			prefmt = s_nvp6158_vfmts.prevideofmt[ch];
 			chvloss = s_nvp6158_vfmts.curvideoloss[ch];
 			//printk(">>>>>>%s CH[%d] chvloss = %d curfmt = %x prefmt = %x nvp6158_ch_mode_status[%d]=%x\n", __func__, ch, chvloss, curfmt, prefmt, ch, nvp6158_ch_mode_status[ch]);
-			
-			if(chvloss == 0x00)
-			{	
-				if(nvp6158_ch_mode_status[ch] != prefmt)
-				{
+
+			if(chvloss == 0x00) {
+				if(nvp6158_ch_mode_status[ch] != prefmt) {
 					nvp6168_set_chnmode(ch, curfmt);
 					nvp6158_set_portmode(0, ch%4, NVP6158_OUTMODE_1MUX_FHD, ch%4);
 					s_eq_info.Ch = ch%4;
@@ -184,16 +174,13 @@ static int nvp6158_kernel_thread(void *data)
 					printk(">>>>>>%s CH[%d] s_eq_info.distance = %d\n", __func__, ch, s_eq_info.distance);
 					nvp6168_set_equalizer(&s_eq_info);
 				}
-			}
-			else
-			{	
-				if(nvp6158_ch_mode_status[ch] != NC_VIVO_CH_FORMATDEF_UNKNOWN)
-				{
+			} else {
+				if(nvp6158_ch_mode_status[ch] != NC_VIVO_CH_FORMATDEF_UNKNOWN) {
 					nvp6168_set_chnmode(ch, NC_VIVO_CH_FORMATDEF_UNKNOWN);
 					nvp6158_set_portmode(0, ch%4, NVP6158_OUTMODE_1MUX_FHD, ch%4);
 				}
-			}	
-		}	
+			}
+		}
 		ch ++;
 		up(&nvp6158_lock);
 		#endif
@@ -234,23 +221,21 @@ static int __init nvp6158_module_init(void)
 	int ret = 0;
 	//char entry[20];
 #ifdef CONFIG_HISI_SNAPSHOT_BOOT
-    snprintf(s_stNvp6158Device.devfs_name, sizeof(s_stNvp6158Device.devfs_name), DEV_NAME);
-    s_stNvp6158Device.minor  = HIMEDIA_DYNAMIC_MINOR;
-    s_stNvp6158Device.fops   = &nvp6158_fops;
-    s_stNvp6158Device.drvops = &stNvp6158DrvOps;
-    s_stNvp6158Device.owner  = THIS_MODULE;
+	snprintf(s_stNvp6158Device.devfs_name, sizeof(s_stNvp6158Device.devfs_name), DEV_NAME);
+	s_stNvp6158Device.minor  = HIMEDIA_DYNAMIC_MINOR;
+	s_stNvp6158Device.fops   = &nvp6158_fops;
+	s_stNvp6158Device.drvops = &stNvp6158DrvOps;
+	s_stNvp6158Device.owner  = THIS_MODULE;
 
-    ret = himedia_register(&s_stNvp6158Device);
-    if (ret)
-    {
-        printk(0, "could not register nvp6158_dev device");
-        return -1;
-    }
+	ret = himedia_register(&s_stNvp6158Device);
+	if (ret) {
+		printk(0, "could not register nvp6158_dev device");
+		return -1;
+ 	}
 #else
 	ret = misc_register(&nvp6158_dev);
-   	if (ret)
-	{
-		printk("ERROR: could not register nvp6158_dev devices:%#x \n",ret);		
+   	if (ret) {
+		printk("ERROR: could not register nvp6158_dev devices:%#x \n",ret);
         	return -1;
 	}
 #endif
@@ -258,8 +243,7 @@ static int __init nvp6158_module_init(void)
 #ifdef STREAM_ON_DEFLAULT
 	//printk("NVP6158/68(C) ex Driver %s COMPILE TIME[%s %s]\n", NVP6158_DRIVER_VER, __DATE__,__TIME__);
 	nvp6158_init(I2C_1);
-	if (ret)
-	{
+	if (ret) {
 		printk(KERN_ERR "ERROR: jaguar1 init failed\n");
 		return -1;
 	}
@@ -267,18 +251,17 @@ static int __init nvp6158_module_init(void)
 	nvp6158_video_decoder_init();
 	/* initialize Audio
 	 * recmaster, pbmaster, ch_num, samplerate, bits */
-	if(nvp6158_chip_id[0]==NVP6158C_R0_ID || nvp6158_chip_id[0]==NVP6158_R0_ID)
-		nvp6158_audio_init(1,0,16,0,0);
+	if(nvp6158_chip_id[0] == NVP6158C_R0_ID || nvp6158_chip_id[0] == NVP6158_R0_ID)
+		nvp6158_audio_init(1, 0, 16, 0, 0);
 	else
-		nvp6168_audio_init(1,0,16,0,0);
+		nvp6168_audio_init(1, 0, 16, 0, 0);
 	//VDO_1/2 enable, VCLK_x ebable
 	gpio_i2c_write(0x60, 0xFF, 0x01);
 	gpio_i2c_write(0x60, 0xCA, 0x66);
 	up(&nvp6158_lock);
 
 	/* create kernel thread for EQ, But Now not used. */
-	if(nvp6158_kthread == 1)
-	{
+	if(nvp6158_kthread == 1) {
 		nvp6158_kt = kthread_create(nvp6158_kernel_thread, NULL, "nvp6158_kt");
 	    	if(!IS_ERR(nvp6158_kt))
 	       		wake_up_process(nvp6158_kt);
@@ -309,7 +292,7 @@ static void __exit nvp6158_module_exit(void)
 	himedia_unregister(&s_stNvp6158Device);
 #else
 	misc_deregister(&nvp6158_dev);
-#endif	
+#endif
 	nvp6158_i2c_client_exit();
 	//printk("NVP6158(C) ex Driver %s COMPILE TIME[%s %s] removed\n", NVP6158_DRIVER_VER, __DATE__,__TIME__);
 }

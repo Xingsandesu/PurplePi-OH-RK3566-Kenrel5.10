@@ -5,7 +5,7 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * date: 2021-06-16
+ * date: 2021-07-16
  */
 	.file	"rk_ftl_arm_v8.S"
 	.text
@@ -23576,9 +23576,9 @@ rk_ftl_vendor_storage_ioctl:
 	.section	.rodata
 	.align	3
 	.set	.LANCHOR3,. + 0
-	.type	__func__.21189, %object
-	.size	__func__.21189, 11
-__func__.21189:
+	.type	__func__.27063, %object
+	.size	__func__.27063, 11
+__func__.27063:
 	.string	"FtlMemInit"
 	.zero	5
 	.type	samsung_14nm_slc_rr, %object
@@ -23718,33 +23718,33 @@ samsung_14nm_mlc_rr:
 	.byte	18
 	.byte	9
 	.byte	8
-	.type	__func__.21968, %object
-	.size	__func__.21968, 17
-__func__.21968:
+	.type	__func__.27842, %object
+	.size	__func__.27842, 17
+__func__.27842:
 	.string	"FtlDumpBlockInfo"
 	.zero	7
-	.type	__func__.21987, %object
-	.size	__func__.21987, 16
-__func__.21987:
+	.type	__func__.27861, %object
+	.size	__func__.27861, 16
+__func__.27861:
 	.string	"FtlScanAllBlock"
-	.type	__func__.22255, %object
-	.size	__func__.22255, 17
-__func__.22255:
+	.type	__func__.28129, %object
+	.size	__func__.28129, 17
+__func__.28129:
 	.string	"ftl_scan_all_ppa"
 	.zero	7
-	.type	__func__.21936, %object
-	.size	__func__.21936, 12
-__func__.21936:
+	.type	__func__.27810, %object
+	.size	__func__.27810, 12
+__func__.27810:
 	.string	"FtlCheckVpc"
 	.zero	4
-	.type	__func__.22235, %object
-	.size	__func__.22235, 21
-__func__.22235:
+	.type	__func__.28109, %object
+	.size	__func__.28109, 21
+__func__.28109:
 	.string	"FtlVpcCheckAndModify"
 	.zero	3
-	.type	__func__.21262, %object
-	.size	__func__.21262, 8
-__func__.21262:
+	.type	__func__.27136, %object
+	.size	__func__.27136, 8
+__func__.27136:
 	.string	"FtlInit"
 	.data
 	.align	3

@@ -12,6 +12,7 @@
 #include <crypto/algapi.h>
 #include <crypto/internal/hash.h>
 #include <crypto/internal/poly1305.h>
+#include <crypto/internal/simd.h>
 #include <linux/cpufeature.h>
 #include <linux/crypto.h>
 #include <linux/jump_label.h>
@@ -24,7 +25,7 @@ asmlinkage void poly1305_emit(void *state, u8 *digest, const u32 *nonce);
 
 static __ro_after_init DEFINE_STATIC_KEY_FALSE(have_neon);
 
-void poly1305_init_arch(struct poly1305_desc_ctx *dctx, const u8 *key)
+void poly1305_init_arch(struct poly1305_desc_ctx *dctx, const u8 key[POLY1305_KEY_SIZE])
 {
 	poly1305_init_arm64(&dctx->h, key);
 	dctx->s[0] = get_unaligned_le32(key + 16);
@@ -51,7 +52,7 @@ static void neon_poly1305_blocks(struct poly1305_desc_ctx *dctx, const u8 *src,
 {
 	if (unlikely(!dctx->sset)) {
 		if (!dctx->rset) {
-			poly1305_init_arch(dctx, src);
+			poly1305_init_arm64(&dctx->h, src);
 			src += POLY1305_BLOCK_SIZE;
 			len -= POLY1305_BLOCK_SIZE;
 			dctx->rset = 1;
@@ -110,7 +111,7 @@ static void neon_poly1305_do_update(struct poly1305_desc_ctx *dctx,
 static int neon_poly1305_update(struct shash_desc *desc,
 				const u8 *src, unsigned int srclen)
 {
-	bool do_neon = may_use_simd() && srclen > 128;
+	bool do_neon = crypto_simd_usable() && srclen > 128;
 	struct poly1305_desc_ctx *dctx = shash_desc_ctx(desc);
 
 	if (static_branch_likely(&have_neon) && do_neon)
@@ -141,7 +142,7 @@ void poly1305_update_arch(struct poly1305_desc_ctx *dctx, const u8 *src,
 	if (likely(nbytes >= POLY1305_BLOCK_SIZE)) {
 		unsigned int len = round_down(nbytes, POLY1305_BLOCK_SIZE);
 
-		if (static_branch_likely(&have_neon) && may_use_simd()) {
+		if (static_branch_likely(&have_neon) && crypto_simd_usable()) {
 			do {
 				unsigned int todo = min_t(unsigned int, len, SZ_4K);
 
@@ -207,7 +208,7 @@ static struct shash_alg neon_poly1305_alg = {
 
 static int __init neon_poly1305_mod_init(void)
 {
-	if (!(elf_hwcap & HWCAP_ASIMD))
+	if (!cpu_have_named_feature(ASIMD))
 		return 0;
 
 	static_branch_enable(&have_neon);
@@ -218,7 +219,7 @@ static int __init neon_poly1305_mod_init(void)
 
 static void __exit neon_poly1305_mod_exit(void)
 {
-	if (IS_REACHABLE(CONFIG_CRYPTO_HASH) && (elf_hwcap & HWCAP_ASIMD))
+	if (IS_REACHABLE(CONFIG_CRYPTO_HASH) && cpu_have_named_feature(ASIMD))
 		crypto_unregister_shash(&neon_poly1305_alg);
 }
 

@@ -24,6 +24,8 @@
 #include "rk_codec_digital.h"
 
 #define RK3568_GRF_SOC_CON2 (0x0508)
+#define RK3588_GRF_SOC_CON6 (0x0318)
+#define RV1106_GRF_SOC_CON1 (0x0004)
 #define RV1126_GRF_SOC_CON2 (0x0008)
 
 struct rk_codec_digital_soc_data {
@@ -80,8 +82,8 @@ static int rk_codec_digital_adc_vol_get(struct snd_kcontrol *kcontrol,
 	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
-	unsigned int val = snd_soc_component_read32(component, mc->reg);
-	unsigned int sign = snd_soc_component_read32(component, ADCVOGP);
+	unsigned int val = snd_soc_component_read(component, mc->reg);
+	unsigned int sign = snd_soc_component_read(component, ADCVOGP);
 	unsigned int mask = (1 << fls(mc->max)) - 1;
 	unsigned int shift = mc->shift;
 	int mid = mc->max / 2;
@@ -162,8 +164,8 @@ static int rk_codec_digital_dac_vol_get(struct snd_kcontrol *kcontrol,
 	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
 	struct soc_mixer_control *mc =
 		(struct soc_mixer_control *)kcontrol->private_value;
-	unsigned int val = snd_soc_component_read32(component, mc->reg);
-	unsigned int sign = snd_soc_component_read32(component, DACVOGP);
+	unsigned int val = snd_soc_component_read(component, mc->reg);
+	unsigned int sign = snd_soc_component_read(component, DACVOGP);
 	unsigned int mask = (1 << fls(mc->max)) - 1;
 	unsigned int shift = mc->shift;
 	int mid = mc->max / 2;
@@ -221,7 +223,7 @@ static int rk_codec_digital_dac_pa_get(struct snd_kcontrol *kcontrol,
 	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
 	struct rk_codec_digital_priv *rcd = snd_soc_component_get_drvdata(component);
 
-	if (!rcd || !rcd->pa_ctl)
+	if (!rcd->pa_ctl)
 		return -EINVAL;
 
 	ucontrol->value.enumerated.item[0] = gpiod_get_value(rcd->pa_ctl);
@@ -235,7 +237,7 @@ static int rk_codec_digital_dac_pa_put(struct snd_kcontrol *kcontrol,
 	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
 	struct rk_codec_digital_priv *rcd = snd_soc_component_get_drvdata(component);
 
-	if (!rcd || !rcd->pa_ctl)
+	if (!rcd->pa_ctl)
 		return -EINVAL;
 
 	gpiod_set_value(rcd->pa_ctl, ucontrol->value.enumerated.item[0]);
@@ -405,13 +407,13 @@ static int rk_codec_digital_set_clk_sync(struct rk_codec_digital_priv *rcd,
 			   ACDCDIG_DACSCLKRXINT_DIV_SCKRXDIV(div_bclk));
 	regmap_update_bits(rcd->regmap, I2S_CKR0,
 			   ACDCDIG_I2S_CKR0_RSD_MASK,
-			   ACDCDIG_I2S_CKR0_RSD(64));
+			   ACDCDIG_I2S_CKR0_RSD_64);
 	regmap_update_bits(rcd->regmap, ADCSCLKTXINT_DIV,
 			   ACDCDIG_ADCSCLKTXINT_DIV_SCKTXDIV_MASK,
 			   ACDCDIG_ADCSCLKTXINT_DIV_SCKTXDIV(div_bclk));
 	regmap_update_bits(rcd->regmap, I2S_CKR0,
 			   ACDCDIG_I2S_CKR0_TSD_MASK,
-			   ACDCDIG_I2S_CKR0_TSD(64));
+			   ACDCDIG_I2S_CKR0_TSD_64);
 
 	return 0;
 }
@@ -448,7 +450,7 @@ static int rk_codec_digital_set_clk(struct rk_codec_digital_priv *rcd,
 				   ACDCDIG_DACSCLKRXINT_DIV_SCKRXDIV(div_bclk));
 		regmap_update_bits(rcd->regmap, I2S_CKR0,
 				   ACDCDIG_I2S_CKR0_RSD_MASK,
-				   ACDCDIG_I2S_CKR0_RSD(64));
+				   ACDCDIG_I2S_CKR0_RSD_64);
 	} else {
 		clk_set_rate(rcd->clk_adc, mclk);
 
@@ -462,7 +464,7 @@ static int rk_codec_digital_set_clk(struct rk_codec_digital_priv *rcd,
 				   ACDCDIG_ADCSCLKTXINT_DIV_SCKTXDIV(div_bclk));
 		regmap_update_bits(rcd->regmap, I2S_CKR0,
 				   ACDCDIG_I2S_CKR0_TSD_MASK,
-				   ACDCDIG_I2S_CKR0_TSD(64));
+				   ACDCDIG_I2S_CKR0_TSD_64);
 	}
 
 	return 0;
@@ -746,7 +748,7 @@ static int rk_codec_digital_pcm_startup(struct snd_pcm_substream *substream,
 	struct rk_codec_digital_priv *rcd =
 		snd_soc_component_get_drvdata(dai->component);
 
-	if (rcd && rcd->pa_ctl) {
+	if (rcd->pa_ctl) {
 		gpiod_set_value_cansleep(rcd->pa_ctl, 1);
 		if (rcd->pa_ctl_delay_ms)
 			msleep(rcd->pa_ctl_delay_ms);
@@ -761,11 +763,11 @@ static void rk_codec_digital_pcm_shutdown(struct snd_pcm_substream *substream,
 	struct rk_codec_digital_priv *rcd =
 		snd_soc_component_get_drvdata(dai->component);
 
-	if (rcd && rcd->pa_ctl)
+	if (rcd->pa_ctl)
 		gpiod_set_value_cansleep(rcd->pa_ctl, 0);
 
 	if (rcd->sync) {
-		if (!snd_soc_component_is_active(dai->component)) {
+		if (!snd_soc_component_active(dai->component)) {
 			rk_codec_digital_disable_sync(rcd);
 			rk_codec_digital_reset(rcd);
 		}
@@ -882,6 +884,60 @@ static const struct rk_codec_digital_soc_data rk3568_data = {
 	.deinit = rk3568_soc_deinit,
 };
 
+static int rk3588_soc_init(struct device *dev)
+{
+	struct rk_codec_digital_priv *rcd = dev_get_drvdata(dev);
+
+	if (IS_ERR(rcd->grf))
+		return PTR_ERR(rcd->grf);
+
+	/* enable internal codec to i2s3 */
+	return regmap_write(rcd->grf, RK3588_GRF_SOC_CON6,
+			    (BIT(11) << 16 | BIT(11)));
+}
+
+static void rk3588_soc_deinit(struct device *dev)
+{
+	struct rk_codec_digital_priv *rcd = dev_get_drvdata(dev);
+
+	if (IS_ERR(rcd->grf))
+		return;
+
+	regmap_write(rcd->grf, RK3588_GRF_SOC_CON6, (BIT(11) << 16));
+}
+
+static const struct rk_codec_digital_soc_data rk3588_data = {
+	.init = rk3588_soc_init,
+	.deinit = rk3588_soc_deinit,
+};
+
+static int rv1106_soc_init(struct device *dev)
+{
+	struct rk_codec_digital_priv *rcd = dev_get_drvdata(dev);
+
+	if (IS_ERR(rcd->grf))
+		return PTR_ERR(rcd->grf);
+
+	/* enable internal codec to i2s0 */
+	return regmap_write(rcd->grf, RV1106_GRF_SOC_CON1,
+			    (BIT(8) << 16 | BIT(8)));
+}
+
+static void rv1106_soc_deinit(struct device *dev)
+{
+	struct rk_codec_digital_priv *rcd = dev_get_drvdata(dev);
+
+	if (IS_ERR(rcd->grf))
+		return;
+
+	regmap_write(rcd->grf, RV1106_GRF_SOC_CON1, (BIT(8) << 16));
+}
+
+static const struct rk_codec_digital_soc_data rv1106_data = {
+	.init = rv1106_soc_init,
+	.deinit = rv1106_soc_deinit,
+};
+
 static int rv1126_soc_init(struct device *dev)
 {
 	struct rk_codec_digital_priv *rcd = dev_get_drvdata(dev);
@@ -912,8 +968,18 @@ static const struct rk_codec_digital_soc_data rv1126_data = {
 #ifdef CONFIG_OF
 static const struct of_device_id rcd_of_match[] = {
 	{ .compatible = "rockchip,codec-digital-v1", },
+#ifdef CONFIG_CPU_RK3568
 	{ .compatible = "rockchip,rk3568-codec-digital", .data = &rk3568_data },
+#endif
+#ifdef CONFIG_CPU_RK3588
+	{ .compatible = "rockchip,rk3588-codec-digital", .data = &rk3588_data },
+#endif
+#ifdef CONFIG_CPU_RV1106
+	{ .compatible = "rockchip,rv1106-codec-digital", .data = &rv1106_data },
+#endif
+#ifdef CONFIG_CPU_RV1126
 	{ .compatible = "rockchip,rv1126-codec-digital", .data = &rv1126_data },
+#endif
 	{},
 };
 MODULE_DEVICE_TABLE(of, rcd_of_match);
@@ -995,7 +1061,8 @@ static int rk_codec_digital_platform_probe(struct platform_device *pdev)
 
 	rcd->rc = devm_reset_control_get(&pdev->dev, "reset");
 
-	rcd->clk_adc = devm_clk_get(&pdev->dev, "adc");
+	/* optional on some platform */
+	rcd->clk_adc = devm_clk_get_optional(&pdev->dev, "adc");
 	if (IS_ERR(rcd->clk_adc))
 		return PTR_ERR(rcd->clk_adc);
 

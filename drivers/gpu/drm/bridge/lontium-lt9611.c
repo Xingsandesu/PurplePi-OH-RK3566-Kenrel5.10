@@ -11,13 +11,14 @@
 #include <linux/platform_device.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
-#include <drm/drm_crtc_helper.h>
+
 #include <sound/hdmi-codec.h>
 
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_print.h>
+#include <drm/drm_probe_helper.h>
 
 #define EDID_SEG_SIZE	256
 #define EDID_LEN	32
@@ -46,6 +47,7 @@ struct lt9611 {
 	struct gpio_desc *enable_gpio;
 
 	bool power_on;
+	bool sleep;
 
 	struct regulator_bulk_data supplies[2];
 
@@ -183,12 +185,14 @@ static void lt9611_mipi_video_setup(struct lt9611 *lt9611,
 
 	regmap_write(lt9611->regmap, 0x8319, (u8)(hfront_porch % 256));
 
-	regmap_write(lt9611->regmap, 0x831a, (u8)(hsync_porch / 256));
+	regmap_write(lt9611->regmap, 0x831a, (u8)(hsync_porch / 256) |
+						((hfront_porch / 256) << 4));
 	regmap_write(lt9611->regmap, 0x831b, (u8)(hsync_porch % 256));
 }
 
-static void lt9611_pcr_setup(struct lt9611 *lt9611, const struct drm_display_mode *mode)
+static void lt9611_pcr_setup(struct lt9611 *lt9611, const struct drm_display_mode *mode, unsigned int postdiv)
 {
+	unsigned int pcr_m = mode->clock * 5 * postdiv / 27000;
 	const struct reg_sequence reg_cfg[] = {
 		{ 0x830b, 0x01 },
 		{ 0x830c, 0x10 },
@@ -203,7 +207,6 @@ static void lt9611_pcr_setup(struct lt9611 *lt9611, const struct drm_display_mod
 
 		/* stage 2 */
 		{ 0x834a, 0x40 },
-		{ 0x831d, 0x10 },
 
 		/* MK limit */
 		{ 0x832d, 0x38 },
@@ -218,30 +221,28 @@ static void lt9611_pcr_setup(struct lt9611 *lt9611, const struct drm_display_mod
 		{ 0x8325, 0x00 },
 		{ 0x832a, 0x01 },
 		{ 0x834a, 0x10 },
-		{ 0x831d, 0x10 },
-		{ 0x8326, 0x37 },
 	};
+	u8 pol = 0x10;
 
-	regmap_multi_reg_write(lt9611->regmap, reg_cfg, ARRAY_SIZE(reg_cfg));
+	if (mode->flags & DRM_MODE_FLAG_NHSYNC)
+		pol |= 0x2;
+	if (mode->flags & DRM_MODE_FLAG_NVSYNC)
+		pol |= 0x1;
+	regmap_write(lt9611->regmap, 0x831d, pol);
 
-	switch (mode->hdisplay) {
-	case 640:
-		regmap_write(lt9611->regmap, 0x8326, 0x14);
-		break;
-	case 1920:
-		regmap_write(lt9611->regmap, 0x8326, 0x37);
-		break;
-	case 3840:
+	if (mode->hdisplay == 3840)
 		regmap_multi_reg_write(lt9611->regmap, reg_cfg2, ARRAY_SIZE(reg_cfg2));
-		break;
-	}
+	else
+		regmap_multi_reg_write(lt9611->regmap, reg_cfg, ARRAY_SIZE(reg_cfg));
+
+	regmap_write(lt9611->regmap, 0x8326, pcr_m);
 
 	/* pcr rst */
 	regmap_write(lt9611->regmap, 0x8011, 0x5a);
 	regmap_write(lt9611->regmap, 0x8011, 0xfa);
 }
 
-static int lt9611_pll_setup(struct lt9611 *lt9611, const struct drm_display_mode *mode)
+static int lt9611_pll_setup(struct lt9611 *lt9611, const struct drm_display_mode *mode, unsigned int *postdiv)
 {
 	unsigned int pclk = mode->clock;
 	const struct reg_sequence reg_cfg[] = {
@@ -255,16 +256,21 @@ static int lt9611_pll_setup(struct lt9611 *lt9611, const struct drm_display_mode
 		{ 0x8126, 0x55 },
 		{ 0x8127, 0x66 },
 		{ 0x8128, 0x88 },
+		{ 0x812a, 0x20 },
 	};
 
 	regmap_multi_reg_write(lt9611->regmap, reg_cfg, ARRAY_SIZE(reg_cfg));
 
-	if (pclk > 150000)
+	if (pclk > 150000) {
 		regmap_write(lt9611->regmap, 0x812d, 0x88);
-	else if (pclk > 70000)
+		*postdiv = 1;
+	} else if (pclk > 70000) {
 		regmap_write(lt9611->regmap, 0x812d, 0x99);
-	else
+		*postdiv = 2;
+	} else {
 		regmap_write(lt9611->regmap, 0x812d, 0xaa);
+		*postdiv = 4;
+	}
 
 	/*
 	 * first divide pclk by 2 first
@@ -435,6 +441,25 @@ static void lt9611_enable_hpd_interrupts(struct lt9611 *lt9611)
 	regmap_write(lt9611->regmap, 0x8203, val);
 	regmap_write(lt9611->regmap, 0x8207, 0xff); /* clear */
 	regmap_write(lt9611->regmap, 0x8207, 0x3f);
+}
+
+static void lt9611_sleep_setup(struct lt9611 *lt9611)
+{
+	const struct reg_sequence sleep_setup[] = {
+		{ 0x8024, 0x76 },
+		{ 0x8023, 0x01 },
+		{ 0x8157, 0x03 }, /* set addr pin as output */
+		{ 0x8149, 0x0b },
+
+		{ 0x8102, 0x48 }, /* MIPI Rx power down */
+		{ 0x8123, 0x80 },
+		{ 0x8130, 0x00 },
+		{ 0x8011, 0x0a },
+	};
+
+	regmap_multi_reg_write(lt9611->regmap,
+			       sleep_setup, ARRAY_SIZE(sleep_setup));
+	lt9611->sleep = true;
 }
 
 static int lt9611_power_on(struct lt9611 *lt9611)
@@ -735,7 +760,7 @@ static const struct drm_connector_funcs lt9611_bridge_connector_funcs = {
 static struct mipi_dsi_device *lt9611_attach_dsi(struct lt9611 *lt9611,
 						 struct device_node *dsi_node)
 {
-	const struct mipi_dsi_device_info info = { "lt9611", 0, NULL };
+	const struct mipi_dsi_device_info info = { "lt9611", 0, lt9611->dev->of_node};
 	struct mipi_dsi_device *dsi;
 	struct mipi_dsi_host *host;
 	int ret;
@@ -754,7 +779,8 @@ static struct mipi_dsi_device *lt9611_attach_dsi(struct lt9611 *lt9611,
 
 	dsi->lanes = 4;
 	dsi->format = MIPI_DSI_FMT_RGB888;
-	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_BURST;
+	dsi->mode_flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE |
+			  MIPI_DSI_MODE_VIDEO_HSE;
 
 	ret = mipi_dsi_attach(dsi);
 	if (ret < 0) {
@@ -793,20 +819,28 @@ static int lt9611_connector_init(struct drm_bridge *bridge, struct lt9611 *lt961
 
 	drm_connector_helper_add(&lt9611->connector,
 				 &lt9611_bridge_connector_helper_funcs);
-	drm_connector_attach_encoder(&lt9611->connector, bridge->encoder);
 
 	if (!bridge->encoder) {
 		DRM_ERROR("Parent encoder object not found");
 		return -ENODEV;
 	}
 
+	drm_connector_attach_encoder(&lt9611->connector, bridge->encoder);
+
 	return 0;
 }
 
-static int lt9611_bridge_attach(struct drm_bridge *bridge)
+static int lt9611_bridge_attach(struct drm_bridge *bridge,
+				enum drm_bridge_attach_flags flags)
 {
 	struct lt9611 *lt9611 = bridge_to_lt9611(bridge);
 	int ret;
+
+	if (!(flags & DRM_BRIDGE_ATTACH_NO_CONNECTOR)) {
+		ret = lt9611_connector_init(bridge, lt9611);
+		if (ret < 0)
+			return ret;
+	}
 
 	/* Attach primary DSI */
 	lt9611->dsi0 = lt9611_attach_dsi(lt9611, lt9611->dsi0_node);
@@ -822,9 +856,7 @@ static int lt9611_bridge_attach(struct drm_bridge *bridge)
 		}
 	}
 
-	ret = lt9611_connector_init(bridge, lt9611);
-
-	return ret;
+	return 0;
 
 err_unregister_dsi0:
 	lt9611_bridge_detach(bridge);
@@ -835,45 +867,98 @@ err_unregister_dsi0:
 }
 
 static enum drm_mode_status lt9611_bridge_mode_valid(struct drm_bridge *bridge,
+						     const struct drm_display_info *info,
 						     const struct drm_display_mode *mode)
 {
 	struct lt9611_mode *lt9611_mode = lt9611_find_mode(mode);
+	struct lt9611 *lt9611 = bridge_to_lt9611(bridge);
 
-	return lt9611_mode ? MODE_OK : MODE_BAD;
+	if (!lt9611_mode)
+		return MODE_BAD;
+	else if (lt9611_mode->intfs > 1 && !lt9611->dsi1)
+		return MODE_PANEL;
+	else
+		return MODE_OK;
 }
 
 static void lt9611_bridge_pre_enable(struct drm_bridge *bridge)
 {
 	struct lt9611 *lt9611 = bridge_to_lt9611(bridge);
+	static const struct reg_sequence reg_cfg[] = {
+		{ 0x8102, 0x12 },
+		{ 0x8123, 0x40 },
+		{ 0x8130, 0xea },
+		{ 0x8011, 0xfa },
+	};
 
-	lt9611_reset(lt9611);
-	regmap_write(lt9611->regmap, 0x80ee, 0x01);
-	lt9611_enable_hpd_interrupts(lt9611);
+	if (!lt9611->sleep)
+		return;
 
+	regmap_multi_reg_write(lt9611->regmap,
+			       reg_cfg, ARRAY_SIZE(reg_cfg));
+
+	lt9611->sleep = false;
 }
 
 static void lt9611_bridge_post_disable(struct drm_bridge *bridge)
 {
+	struct lt9611 *lt9611 = bridge_to_lt9611(bridge);
+
+	lt9611_sleep_setup(lt9611);
 }
 
 static void lt9611_bridge_mode_set(struct drm_bridge *bridge,
-				   struct drm_display_mode *mode,
-				   struct drm_display_mode *adj_mode)
+				   const struct drm_display_mode *mode,
+				   const struct drm_display_mode *adj_mode)
 {
 	struct lt9611 *lt9611 = bridge_to_lt9611(bridge);
 	struct hdmi_avi_infoframe avi_frame;
+	unsigned int postdiv;
 	int ret;
 
 	lt9611_bridge_pre_enable(bridge);
 
 	lt9611_mipi_input_digital(lt9611, mode);
-	lt9611_pll_setup(lt9611, mode);
+	lt9611_pll_setup(lt9611, mode, &postdiv);
 	lt9611_mipi_video_setup(lt9611, mode);
-	lt9611_pcr_setup(lt9611, mode);
+	lt9611_pcr_setup(lt9611, mode, postdiv);
 
-	ret = drm_hdmi_avi_infoframe_from_display_mode(&avi_frame, mode, false);
+	ret = drm_hdmi_avi_infoframe_from_display_mode(&avi_frame,
+						       &lt9611->connector,
+						       mode);
 	if (!ret)
 		lt9611->vic = avi_frame.video_code;
+}
+
+static enum drm_connector_status lt9611_bridge_detect(struct drm_bridge *bridge)
+{
+	struct lt9611 *lt9611 = bridge_to_lt9611(bridge);
+	unsigned int reg_val = 0;
+	int connected;
+
+	regmap_read(lt9611->regmap, 0x825e, &reg_val);
+	connected  = reg_val & BIT(2);
+
+	lt9611->status = connected ?  connector_status_connected :
+				connector_status_disconnected;
+
+	return lt9611->status;
+}
+
+static struct edid *lt9611_bridge_get_edid(struct drm_bridge *bridge,
+					   struct drm_connector *connector)
+{
+	struct lt9611 *lt9611 = bridge_to_lt9611(bridge);
+
+	lt9611_power_on(lt9611);
+	return drm_do_get_edid(connector, lt9611_get_edid_block, lt9611);
+}
+
+static void lt9611_bridge_hpd_enable(struct drm_bridge *bridge)
+{
+	struct lt9611 *lt9611 = bridge_to_lt9611(bridge);
+
+	lt9611_enable_hpd_interrupts(lt9611);
 }
 
 static const struct drm_bridge_funcs lt9611_bridge_funcs = {
@@ -884,6 +969,9 @@ static const struct drm_bridge_funcs lt9611_bridge_funcs = {
 	.disable = lt9611_bridge_disable,
 	.post_disable = lt9611_bridge_post_disable,
 	.mode_set = lt9611_bridge_mode_set,
+	.detect = lt9611_bridge_detect,
+	.get_edid = lt9611_bridge_get_edid,
+	.hpd_enable = lt9611_bridge_hpd_enable,
 };
 
 static int lt9611_parse_dt(struct device *dev,
@@ -1050,6 +1138,7 @@ static int lt9611_probe(struct i2c_client *client,
 
 	lt9611->dev = &client->dev;
 	lt9611->client = client;
+	lt9611->sleep = false;
 
 	lt9611->regmap = devm_regmap_init_i2c(client, &lt9611_regmap_config);
 	if (IS_ERR(lt9611->regmap)) {
@@ -1087,8 +1176,7 @@ static int lt9611_probe(struct i2c_client *client,
 
 	ret = devm_request_threaded_irq(dev, client->irq, NULL,
 					lt9611_irq_thread_handler,
-					IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-					"lt9611", lt9611);
+					IRQF_ONESHOT, "lt9611", lt9611);
 	if (ret) {
 		dev_err(dev, "failed to request irq\n");
 		goto err_disable_regulators;
@@ -1098,6 +1186,9 @@ static int lt9611_probe(struct i2c_client *client,
 
 	lt9611->bridge.funcs = &lt9611_bridge_funcs;
 	lt9611->bridge.of_node = client->dev.of_node;
+	lt9611->bridge.ops = DRM_BRIDGE_OP_DETECT | DRM_BRIDGE_OP_EDID |
+			     DRM_BRIDGE_OP_HPD | DRM_BRIDGE_OP_MODES;
+	lt9611->bridge.type = DRM_MODE_CONNECTOR_HDMIA;
 
 	drm_bridge_add(&lt9611->bridge);
 

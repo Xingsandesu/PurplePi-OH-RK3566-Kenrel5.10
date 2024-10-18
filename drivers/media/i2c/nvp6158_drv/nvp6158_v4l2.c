@@ -8,9 +8,6 @@
  * V0.0X01.0X01
  * 1. add workqueue to detect ahd state.
  * 2. add more resolution support.
- * V0.0X01.0X02
- * 1. get init status before start workqueue.
- * 2. replace some dev_info to dev_dbg.
  */
 
 #include <linux/clk.h>
@@ -48,7 +45,7 @@
 #include "nvp6158_video_auto_detect.h"
 #include "nvp6158_drv.h"
 
-#define WORK_QUEUE
+//#define WORK_QUEUE
 
 #ifdef WORK_QUEUE
 #include <linux/workqueue.h>
@@ -60,14 +57,14 @@ struct sensor_state_check_work {
 
 #endif
 
-#define DRIVER_VERSION				KERNEL_VERSION(0, 0x01, 0x2)
+#define DRIVER_VERSION				KERNEL_VERSION(0, 0x01, 0x1)
 
 #ifndef V4L2_CID_DIGITAL_GAIN
 #define V4L2_CID_DIGITAL_GAIN			V4L2_CID_GAIN
 #endif
 
 #define NVP6158_XVCLK_FREQ			24000000
-#define NVP6158_BITS_PER_SAMPLE		8
+#define NVP6158_BITS_PER_SAMPLE			8
 
 /* pixel rate = link frequency * 2 * lanes / BITS_PER_SAMPLE */
 #define NVP6158_PIXEL_RATE			297000000LL
@@ -79,25 +76,17 @@ struct sensor_state_check_work {
 #define OF_CAMERA_MODULE_REGULATOR_VOLTAGES	"rockchip,regulator-voltages"
 
 /* DVP MODE, BT1120 or BT656 */
-#define RK_CAMERA_MODULE_DVP_MODE			"rockchip,dvp_mode"
+#define RK_CAMERA_MODULE_DVP_MODE		"rockchip,dvp_mode"
 #define RK_CAMERA_MODULE_CHANNEL_NUMS		"rockchip,channel_nums"
-#define RK_CAMERA_MODULE_DUAL_EDGE			"rockchip,dual_edge"
+#define RK_CAMERA_MODULE_DUAL_EDGE		"rockchip,dual_edge"
 #define RK_CAMERA_MODULE_DEFAULT_RECT		"rockchip,default_rect"
 
 #define NVP6158_DEFAULT_DVP_MODE		"BT1120"
-#define NVP6158_DEFAULT_CHANNEL_NUMS	4U
+#define NVP6158_DEFAULT_CHANNEL_NUMS		4U
 #define NVP6158_DEFAULT_DUAL_EDGE		0U
 #define NVP6158_NAME				"nvp6158"
-#define NVP6158_DEFAULT_WIDTH		1920
-#define NVP6158_DEFAULT_HEIGHT		1080
-
-enum nvp6158_max_pad {
-	PAD0,
-	PAD1,
-	PAD2,
-	PAD3,
-	PAD_MAX,
-};
+#define NVP6158_DEFAULT_WIDTH			1920
+#define NVP6158_DEFAULT_HEIGHT			1080
 
 struct nvp6158_gpio {
 	int pltfrm_gpio;
@@ -195,8 +184,7 @@ static const struct nvp6158_framesize nvp6158_framesizes[] = {
 			.numerator = 10000,
 			.denominator = 250000,
 		},
-	},
-	{
+	}, {
 		.width		= 1920,
 		.height		= 1080,
 		.fmt_idx	= AHD20_1080P_25P,
@@ -204,8 +192,7 @@ static const struct nvp6158_framesize nvp6158_framesizes[] = {
 			.numerator = 10000,
 			.denominator = 250000,
 		},
-	},
-	{
+	}, {
 		.width		= 2048,
 		.height		= 1536,
 		.fmt_idx	= AHD30_3M_18P,
@@ -213,8 +200,7 @@ static const struct nvp6158_framesize nvp6158_framesizes[] = {
 			.numerator = 10000,
 			.denominator = 180000,
 		},
-	},
-	{
+	}, {
 		.width		= 1280,
 		.height		= 1440,
 		.fmt_idx	= AHD30_4M_30P,
@@ -222,8 +208,7 @@ static const struct nvp6158_framesize nvp6158_framesizes[] = {
 			.numerator = 10000,
 			.denominator = 300000,
 		},
-	},
-	{
+	}, {
 		.width		= 2560,
 		.height		= 1440,
 		.fmt_idx	= AHD30_4M_15P,
@@ -231,8 +216,7 @@ static const struct nvp6158_framesize nvp6158_framesizes[] = {
 			.numerator = 10000,
 			.denominator = 150000,
 		},
-	},
-	{
+	}, {
 		.width		= 2592,
 		.height		= 1944,
 		.fmt_idx	= AHD30_5M_12_5P,
@@ -240,8 +224,7 @@ static const struct nvp6158_framesize nvp6158_framesizes[] = {
 			.numerator = 10000,
 			.denominator = 125000,
 		},
-	},
-	{
+	}, {
 		.width		= 3840,
 		.height		= 2160,
 		.fmt_idx	= AHD30_8M_7_5P,
@@ -249,10 +232,7 @@ static const struct nvp6158_framesize nvp6158_framesizes[] = {
 			.numerator = 10000,
 			.denominator = 75000,
 		},
-	},
-
-	/* test modes, Interlace mode*/
-	{
+	}, {/* test modes, Interlace mode*/
 		.width		= 720,
 		.height		= 480,
 		.fmt_idx	= AHD20_SD_SH720_NT,
@@ -260,8 +240,7 @@ static const struct nvp6158_framesize nvp6158_framesizes[] = {
 			.numerator = 10000,
 			.denominator = 250000,
 		},
-	},
-	{
+	}, {
 		.width		= 720,
 		.height		= 576,
 		.fmt_idx	= AHD20_SD_SH720_PAL,
@@ -269,8 +248,7 @@ static const struct nvp6158_framesize nvp6158_framesizes[] = {
 			.numerator = 10000,
 			.denominator = 250000,
 		},
-	},
-	{
+	}, {
 		.width		= 960,
 		.height		= 576,
 		.fmt_idx	= AHD20_SD_H960_PAL,
@@ -278,8 +256,7 @@ static const struct nvp6158_framesize nvp6158_framesizes[] = {
 			.numerator = 10000,
 			.denominator = 250000,
 		},
-	},
-	{
+	}, {
 		.width		= 1920,
 		.height		= 576,
 		.fmt_idx	= AHD20_SD_H960_EX_PAL,
@@ -328,7 +305,7 @@ static int nvp6158_write(struct i2c_client *client, u8 reg, u8 val)
 	u8 buf[2];
 	int ret;
 
-	dev_dbg(&client->dev, "write reg(0x%x val:0x%x)!\n", reg, val);
+	dev_info(&client->dev, "write reg(0x%x val:0x%x)!\n", reg, val);
 	buf[0] = reg & 0xFF;
 	buf[1] = val;
 
@@ -624,7 +601,6 @@ static void nvp6158_get_default_format(struct nvp6158 *nvp6158)
 	nvp6158->frame_size = match;
 }
 
-static inline bool nvp6158_no_signal(struct v4l2_subdev *sd, u8 *novid);
 static int nvp6158_stream(struct v4l2_subdev *sd, int on)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
@@ -652,12 +628,6 @@ static int nvp6158_stream(struct v4l2_subdev *sd, int on)
 		video_init.mode = nvp6158->mode;
 		nvp6158_start(&video_init, nvp6158->dual_edge ? true : false);
 #ifdef WORK_QUEUE
-		nvp6158->hot_plug = false;
-		nvp6158->is_reset = 0;
-		usleep_range(20000, 21000);
-		/* get power on state first*/
-		nvp6158_no_signal(sd, &nvp6158->last_detect_status);
-
 		if (nvp6158->plug_state_check.state_check_wq) {
 			dev_info(&client->dev, "%s queue_delayed_work 1000ms", __func__);
 			queue_delayed_work(nvp6158->plug_state_check.state_check_wq,
@@ -752,12 +722,12 @@ static inline bool nvp6158_no_signal(struct v4l2_subdev *sd, u8 *novid)
 		dev_err(&client->dev, "Failed to read videoloss state!\n");
 
 	*novid = videoloss;
-	dev_dbg(&client->dev, "%s: video loss status:0x%x.\n", __func__, videoloss);
+	dev_info(&client->dev, "%s: video loss status:0x%x.\n", __func__, videoloss);
 	if (videoloss == 0xf) {
-		dev_dbg(&client->dev, "%s: all channels No Video detected.\n", __func__);
+		dev_info(&client->dev, "%s: all channels No Video detected.\n", __func__);
 		no_signal = true;
 	} else {
-		dev_dbg(&client->dev, "%s: channel has some video detection.\n", __func__);
+		dev_info(&client->dev, "%s: channel has some video detection.\n", __func__);
 		no_signal = false;
 	}
 	return no_signal;
@@ -776,14 +746,14 @@ static inline bool nvp6158_sync(struct v4l2_subdev *sd, u8 *lock_st)
 	if (ret < 0)
 		dev_err(&client->dev, "Failed to read sync state!\n");
 
-	dev_dbg(&client->dev, "%s: video AGC LOCK status:0x%x.\n",
+	dev_info(&client->dev, "%s: video AGC LOCK status:0x%x.\n",
 			__func__, video_lock_status);
 	*lock_st = video_lock_status;
 	if (video_lock_status) {
-		dev_dbg(&client->dev, "%s: channel has AGC LOCK.\n", __func__);
+		dev_info(&client->dev, "%s: channel has AGC LOCK.\n", __func__);
 		has_sync = true;
 	} else {
-		dev_dbg(&client->dev, "%s: channel has no AGC LOCK.\n", __func__);
+		dev_info(&client->dev, "%s: channel has no AGC LOCK.\n", __func__);
 		has_sync = false;
 	}
 	return has_sync;
@@ -813,8 +783,10 @@ static void nvp6158_plug_state_check_work(struct work_struct *work)
 		nvp6158->hot_plug = false;
 	nvp6158->last_detect_status = nvp6158->cur_detect_status;
 
+	dev_info(&client->dev, "%s has plug motion? (%s)", __func__,
+			 nvp6158->hot_plug ? "true" : "false");
 	if (nvp6158->hot_plug) {
-		dev_info(&client->dev, "queue_delayed_work 1500ms, has hot plug motion.");
+		dev_info(&client->dev, "queue_delayed_work 1500ms, if has hot plug motion.");
 		queue_delayed_work(nvp6158->plug_state_check.state_check_wq,
 				   &nvp6158->plug_state_check.d_work, msecs_to_jiffies(1500));
 		nvp6158_write(client, 0xFF, 0x20);
@@ -822,14 +794,14 @@ static void nvp6158_plug_state_check_work(struct work_struct *work)
 		usleep_range(3000, 5000);
 		nvp6158_write(client, 0x00, 0xFF);
 	} else {
-		dev_dbg(&client->dev, "queue_delayed_work 100ms, if no hot plug motion.");
+		dev_info(&client->dev, "queue_delayed_work 100ms, if no hot plug motion.");
 		queue_delayed_work(nvp6158->plug_state_check.state_check_wq,
 				   &nvp6158->plug_state_check.d_work, msecs_to_jiffies(100));
 	}
 }
 #endif
 
-static int nvp6158_g_mbus_config(struct v4l2_subdev *sd,
+static int nvp6158_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad,
 				 struct v4l2_mbus_config *cfg)
 {
 	struct nvp6158 *nvp6158 = to_nvp6158(sd);
@@ -950,6 +922,17 @@ static int nvp6158_set_fmt(struct v4l2_subdev *sd,
 
 	mutex_unlock(&nvp6158->mutex);
 	return ret;
+}
+
+static int nvp6158_g_frame_interval(struct v4l2_subdev *sd,
+				    struct v4l2_subdev_frame_interval *fi)
+{
+	struct nvp6158 *nvp6158 = to_nvp6158(sd);
+	const struct nvp6158_framesize *size = nvp6158->frame_size;
+
+	fi->interval = size->max_fps;
+
+	return 0;
 }
 
 static void nvp6158_get_module_inf(struct nvp6158 *nvp6158,
@@ -1201,8 +1184,8 @@ static const struct dev_pm_ops nvp6158_pm_ops = {
 
 static const struct v4l2_subdev_video_ops nvp6158_video_ops = {
 	.s_stream = nvp6158_stream,
-	.g_mbus_config = nvp6158_g_mbus_config,
 	.querystd = nvp6158_querystd,
+	.g_frame_interval = nvp6158_g_frame_interval,
 };
 
 static const struct v4l2_subdev_pad_ops nvp6158_subdev_pad_ops = {
@@ -1212,6 +1195,7 @@ static const struct v4l2_subdev_pad_ops nvp6158_subdev_pad_ops = {
 	.set_fmt = nvp6158_set_fmt,
 	.get_selection = nvp6158_get_selection,
 	.enum_frame_interval = nvp6158_enum_frame_interval,
+	.get_mbus_config = nvp6158_g_mbus_config,
 };
 
 static const struct v4l2_subdev_core_ops nvp6158_core_ops = {

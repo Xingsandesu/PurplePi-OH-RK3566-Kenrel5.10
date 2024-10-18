@@ -1,12 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  *  linux/drivers/devfreq/governor_performance.c
  *
  *  Copyright (C) 2011 Samsung Electronics
  *	MyungJoo Ham <myungjoo.ham@samsung.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/devfreq.h>
@@ -33,9 +30,6 @@ static int devfreq_performance_handler(struct devfreq *devfreq,
 		mutex_lock(&devfreq->lock);
 		ret = update_devfreq(devfreq);
 		mutex_unlock(&devfreq->lock);
-		devfreq->last_status.update = true;
-	} else if (event == DEVFREQ_GOV_STOP) {
-		devfreq->last_status.update = false;
 	}
 
 	return ret;

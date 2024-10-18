@@ -4,6 +4,8 @@ if ARCH_ROCKCHIP
 
 menuconfig RK_FLASH
 	tristate "Rockchip Flash Devices Support"
+	select ROCKCHIP_VENDOR_STORAGE
+	select ROCKCHIP_FLASH_VENDOR_STORAGE
 	default n
 	help
 	  This enables support for Rockchip Flash Devices including Nandc Slc
@@ -20,7 +22,7 @@ comment "Rockchip Flash Devices"
 config RK_SFTL
 	tristate "Rockchip Slc Nand FTL support"
 	default y
-	depends on (RK_NAND || (RK_SFC_NAND && RK_SFC_NAND_MTD !=y))
+	depends on (RK_NANDC_NAND || (RK_SFC_NAND && RK_SFC_NAND_MTD !=y))
 	help
 	  This enables support for Slc Nand FTL.
 
@@ -52,6 +54,7 @@ config RK_SFC_NAND
 
 config RK_SFC_NAND_MTD
 	bool "RK SFC NAND mtd Interface Support"
+	select ROCKCHIP_MTD_VENDOR_STORAGE
 	default n
 	depends on RK_SFC_NAND && MTD
 	help
@@ -61,7 +64,8 @@ config RK_SFC_NAND_MTD
 
 config RK_SFC_NOR
 	tristate "Rockchip SFC Spi Nor Devices Support"
-	select CRYPTO_ARC4
+	select CRYPTO
+	select CRYPTO_LIB_ARC4
 	default n
 	help
 	  This enables support for Rockchip SFC Spi Nor Devices.

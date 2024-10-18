@@ -50,13 +50,6 @@
 		bootargs = "earlycon=uart8250,mmio32,0xff690000 vmalloc=496M";
 	};
 
-	aliases {
-		mmc0 = &sdmmc;
-		mmc1 = &sdio0;
-		mmc2 = &emmc;
-		mmc3 = &sdio1;
-	};
-
 	cpuinfo {
 		compatible = "rockchip,cpuinfo";
 		nvmem-cells = <&efuse_id>;
@@ -152,9 +145,11 @@
 		pinctrl-0 = <&uart2_xfer>;
 	};
 
-	psci {
-		compatible = "arm,psci-1.0";
-		method = "smc";
+	firmware {
+		optee: optee {
+			compatible = "linaro,optee-tz";
+			method = "smc";
+		};
 	};
 
 	/delete-node/ timer@ff810000;
@@ -241,22 +236,6 @@
 			"Headphone Jack", "HPOL",
 			"Headphone Jack", "HPOR";
 	};
-};
-
-&cpu0 {
-	enable-method = "psci";
-};
-
-&cpu1 {
-	enable-method = "psci";
-};
-
-&cpu2 {
-	enable-method = "psci";
-};
-
-&cpu3 {
-	enable-method = "psci";
 };
 
 &dmac_bus_s {

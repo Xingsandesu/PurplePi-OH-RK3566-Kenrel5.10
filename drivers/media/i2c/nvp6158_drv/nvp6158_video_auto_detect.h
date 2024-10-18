@@ -24,9 +24,9 @@ typedef enum CH_NUM
 	CH2,
 	CH3,
 	CH4
-}CH_NUM;
+} CH_NUM;
 
-typedef struct _video_input_vafe{
+typedef struct _video_input_vafe {
 	unsigned char powerdown;		//B0       0x00/1/2/3 [0]
 	unsigned char gain;			//B0       0x00/1/2/3 [4]
 	unsigned char spd;				//B5/6/7/8 0x00       [5:4]
@@ -52,9 +52,9 @@ typedef struct _video_input_vafe{
 	unsigned char clk_sel;			//B5/6/7/8 0x5C       [3]
 	unsigned char eq_gainsel;		//B5/6/7/8 0x5C       [2:0]
 
-}video_input_vafe;
+} video_input_vafe;
 
-typedef struct _video_input_auto_detect{
+typedef struct _video_input_auto_detect {
 	unsigned char ch;
 	unsigned char devnum;
 
@@ -76,37 +76,37 @@ typedef struct _video_input_auto_detect{
 
 	unsigned char novid_det;		//B0		0x23/0x27/0x2B/0x2F
 	video_input_vafe vafe;
-}video_input_auto_detect;
+} video_input_auto_detect;
 
-typedef struct _video_input_novid{
+typedef struct _video_input_novid {
 	unsigned char ch;
 	unsigned char novid; 				//B0 0xa8 [3:0]  MSB 1Ch ~ LSB 4Ch
 	unsigned char devnum;
-}video_input_novid;
+} video_input_novid;
 
-typedef struct _video_input_vfc{
+typedef struct _video_input_vfc {
 	unsigned char ch;
 	unsigned char vfc;				//B5/6/7/8 0xf0
 	unsigned char devnum;
-}video_input_vfc;
+} video_input_vfc;
 
-typedef struct _video_input_onvid_set{
+typedef struct _video_input_onvid_set {
 	unsigned char ch;
 	unsigned char auto_gnos_mode;		//B5/6/7/8 0x82
 	unsigned char auto_sync_mode;		//B5/6/7/8 0x83
 	unsigned char op_md;				//B5/6/7/8 0xB8
-}video_input_onvid_set;
+} video_input_onvid_set;
 
-typedef struct _video_input_onvid_set_2{
+typedef struct _video_input_onvid_set_2 {
 	unsigned char ch;
 	unsigned char dfe_ref_sel;			//B5/6/7/8 0x76
 	unsigned char wpd_77;				//B5/6/7/8 0x77
 	unsigned char wpd_78;				//B5/6/7/8 0x78
 	unsigned char wpd_79;				//B5/6/7/8 0x79
 	unsigned char slice_mode;			//B5/6/7/8 0x0E
-}video_input_onvid_set_2;
+} video_input_onvid_set_2;
 
-typedef struct _video_input_novid_set{
+typedef struct _video_input_novid_set {
 	unsigned char ch;
 	unsigned char devnum;
 	unsigned char control_mode;
@@ -119,17 +119,17 @@ typedef struct _video_input_novid_set{
 	unsigned char wpd_78;				//B5/6/7/8 0x78
 	unsigned char wpd_79;				//B5/6/7/8 0x79
 	unsigned char slice_mode;			//B5/6/7/8 0x0E
-}video_input_novid_set;
+} video_input_novid_set;
 
-typedef struct _video_input_cable_dist{	
+typedef struct _video_input_cable_dist {	
 	unsigned char ch;
 	unsigned char devnum;
 	unsigned char dist;				// B13 0xA0
 	unsigned char FmtDef;
 	unsigned char cabletype;			// 0:coax, 1:utp, 2:reserved1, 3:reserved2
-}video_input_cable_dist;
+} video_input_cable_dist;
 
-typedef struct _video_input_sam_val{
+typedef struct _video_input_sam_val {
 	unsigned char ch;
 	unsigned char devnum;
 	/*
@@ -137,28 +137,28 @@ typedef struct _video_input_sam_val{
 	unsigned char sam_val_2;		// B13 0xCC [9:8]
 	*/
 	unsigned int  sam_val;
-}video_input_sam_val;
+} video_input_sam_val;
 
-typedef struct _video_input_hsync_accum{
+typedef struct _video_input_hsync_accum {
 	unsigned char ch;
 	unsigned char devnum;
 	unsigned char h_lock;				// Bank 0 0xE2 [3:0] [Ch3:Ch0]
 	unsigned int  hsync_accum_val1;		// Value 1  			// 170210 Add
 	unsigned int  hsync_accum_val2;		// Value 2				// 170210 Add
 	unsigned int  hsync_accum_result;	// Value 1 - Value 2	// 170210 Fix
-}video_input_hsync_accum;
+} video_input_hsync_accum;
 
-typedef struct _video_input_agc_val{
+typedef struct _video_input_agc_val {
 	unsigned char ch;
 	unsigned char devnum;
 	unsigned char agc_lock;
 	unsigned char agc_val;			// B13 0xB8
-}video_input_agc_val;
+} video_input_agc_val;
 
 typedef struct _video_input_format_set_done { // [add] 170209 format set done
 	unsigned char ch;
 	unsigned char set_val;		// B13 0x70 [3:0] each channel
-}video_input_format_set_done;
+} video_input_format_set_done;
 
 typedef struct _video_input_fsc_val {
 	unsigned char ch;
@@ -166,66 +166,66 @@ typedef struct _video_input_fsc_val {
 	unsigned int fsc_val1;
 	unsigned int fsc_val2;
 	unsigned int fsc_final;
-}video_input_fsc_val;
+} video_input_fsc_val;
 
-typedef struct _video_input_aeq_set{ // 170214 AEQ Set
+typedef struct _video_input_aeq_set { // 170214 AEQ Set
 	unsigned char ch;
 	unsigned char aeq_val;				//B5/6/7/8 0x58       [7:4]
-}video_input_aeq_set;
+} video_input_aeq_set;
 
-typedef struct _video_input_deq_set{ // 170214 DEQ Set
+typedef struct _video_input_deq_set { // 170214 DEQ Set
 	unsigned char ch;
 	unsigned char deq_val;				// B9 0x80/0xA0/0xC0/0xE0 [3:0]
-}video_input_deq_set;
+} video_input_deq_set;
 
-typedef struct _video_input_vfc_set{	// 170215 VFC Setting Enable  (temp)
+typedef struct _video_input_vfc_set {	// 170215 VFC Setting Enable  (temp)
 	unsigned char ch;
 	unsigned char set_val;
-}video_input_vfc_set;
+} video_input_vfc_set;
 
 
-typedef struct _video_input_acc_gain_val{	// 170215 acc gain value read
+typedef struct _video_input_acc_gain_val {	// 170215 acc gain value read
 	unsigned char ch;
 	unsigned char devnum;
 	unsigned int acc_gain_val;
 	unsigned char func_sel;
-}video_input_acc_gain_val;
+} video_input_acc_gain_val;
 
-typedef struct _video_input_sleep_time_val{	// 170215 acc gain value read
+typedef struct _video_input_sleep_time_val {	// 170215 acc gain value read
 	unsigned char sleep_val;
-}video_input_sleep_time_val;
+} video_input_sleep_time_val;
 
-typedef struct _video_input_agc_reset_val{	// 170221 agc init
+typedef struct _video_input_agc_reset_val {	// 170221 agc init
 	unsigned char ch;
 	unsigned char reset_val;
-}video_input_agc_reset_val;
+} video_input_agc_reset_val;
 
-typedef struct _video_output_data_out_mode{
+typedef struct _video_output_data_out_mode {
 	unsigned char ch;
 	unsigned char devnum;
 	unsigned char set_val;
-}video_output_data_out_mode;
+} video_output_data_out_mode;
 
-typedef struct _video_input_manual_mode{
+typedef struct _video_input_manual_mode {
 	unsigned char ch;
 	unsigned char dev_num;
-}video_input_manual_mode;
+} video_input_manual_mode;
 
-typedef struct _video_input_onvideo_check_s{
+typedef struct _video_input_onvideo_check_s {
 	unsigned char vfc;
 	unsigned char sw_rst_ret;
 	decoder_dev_ch_info_s info;
-}video_input_onvideo_check_s;
+} video_input_onvideo_check_s;
 
 
 void nvp6158_video_input_auto_detect_set(video_input_auto_detect *vin_auto_det);
 void nvp6158_video_input_vfc_read(video_input_vfc *vin_vfc);
 void nvp6158_video_input_novid_read(video_input_novid *vin_novid); // 170204 novid
 void nvp6158_video_input_no_video_set(video_input_novid *auto_novid); // 170206 novideo set 
-void nvp6158_video_input_cable_dist_read(video_input_cable_dist *vin_cable_dist);	// 170207 Cable Distance 
-void nvp6158_video_input_sam_val_read(video_input_sam_val *vin_sam_val ); 	// 170207 SAM Value 
-void nvp6158_video_input_hsync_accum_read(video_input_hsync_accum *vin_hsync_accum );	// 170207 Hsync Accumulation 
-void nvp6158_video_input_agc_val_read(video_input_agc_val *vin_agc_val); 	// 170207 AGC Value 
+void nvp6158_video_input_cable_dist_read(video_input_cable_dist *vin_cable_dist);	// 170207 Cable Distance
+void nvp6158_video_input_sam_val_read(video_input_sam_val *vin_sam_val ); 	// 170207 SAM Value
+void nvp6158_video_input_hsync_accum_read(video_input_hsync_accum *vin_hsync_accum );	// 170207 Hsync Accumulation
+void nvp6158_video_input_agc_val_read(video_input_agc_val *vin_agc_val); 	// 170207 AGC Value
 void nvp6158_video_input_fsc_val_read(video_input_fsc_val *vin_fsc_val); // 170214 fsc value read
 void nvp6158_video_input_aeq_val_set(video_input_aeq_set *vin_aeq_val); // 170214 aeq value set
 void nvp6158_video_input_deq_val_set(video_input_deq_set *vin_deq_val); // 170214 deq value set

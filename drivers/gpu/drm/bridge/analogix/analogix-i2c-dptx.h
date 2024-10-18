@@ -1,18 +1,15 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright(c) 2017 Icenowy Zheng <icenowy@aosc.io>
+ * Copyright(c) 2016, Analogix Semiconductor.
  *
- * Based on analogix-anx78xx.h, which is:
- *   Copyright(c) 2016, Analogix Semiconductor. All rights reserved.
+ * Based on anx7808 driver obtained from chromeos with copyright:
+ * Copyright(c) 2013, Google Inc.
  */
-
 #ifndef _ANALOGIX_I2C_DPTX_H_
 #define _ANALOGIX_I2C_DPTX_H_
 
-#define ANALOGIX_I2C_DPTX		0x70
-
 /***************************************************************/
-/* Register definition of device address 0x70                  */
+/* Register definitions for TX_P0                              */
 /***************************************************************/
 
 /* HDCP Status Register */
@@ -253,6 +250,7 @@
 /* DP AUX Buffer Data Registers */
 #define SP_DP_BUF_DATA0_REG		0xf0
 
-ssize_t anx_aux_transfer(struct regmap *map_dptx, struct drm_dp_aux_msg *msg);
+ssize_t anx_dp_aux_transfer(struct regmap *map_dptx,
+				struct drm_dp_aux_msg *msg);
 
 #endif

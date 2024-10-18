@@ -2,11 +2,12 @@
 /*
  * sc223a driver
  *
- * Copyright (C) 2020 Cnd Electronics Co., Ltd.
+ * Copyright (C) 2023 Rockchip Electronics Co., Ltd.
  *
- * V0.0X01.0X01 first version.
+ * V0.0X01.0X01 first version
  */
 
+//#define DEBUG
 #include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/delay.h>
@@ -25,6 +26,7 @@
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-subdev.h>
 #include <linux/pinctrl/consumer.h>
+#include "../platform/rockchip/isp/rkisp_tb_helper.h"
 
 #define DRIVER_VERSION			KERNEL_VERSION(0, 0x01, 0x01)
 
@@ -34,11 +36,13 @@
 
 #define SC223A_LANES			2
 #define SC223A_BITS_PER_SAMPLE		10
-#define SC223A_LINK_FREQ_371		371250000// 742.5Mbps
+#define SC223A_LINK_FREQ_405		202500000
 
-#define PIXEL_RATE_WITH_371M_10BIT		(SC223A_LINK_FREQ_371 * 2 * \
+#define PIXEL_RATE_WITH_405M_10BIT	(SC223A_LINK_FREQ_405 * 2 * \
 					SC223A_LANES / SC223A_BITS_PER_SAMPLE)
-#define SC223A_XVCLK_FREQ		27000000
+/* 79.2Mhz */
+#define SC223A_PIXEL_RATE		(79200000)
+#define SC223A_XVCLK_FREQ		24000000
 
 #define CHIP_ID				0xcb3e
 #define SC223A_REG_CHIP_ID		0x3107
@@ -50,35 +54,23 @@
 #define SC223A_REG_EXPOSURE_H		0x3e00
 #define SC223A_REG_EXPOSURE_M		0x3e01
 #define SC223A_REG_EXPOSURE_L		0x3e02
-#define SC223A_REG_SEXPOSURE_H		0x3e22
-#define SC223A_REG_SEXPOSURE_M		0x3e04
-#define SC223A_REG_SEXPOSURE_L		0x3e05
-#define	SC223A_EXPOSURE_MIN		1
+#define	SC223A_EXPOSURE_MIN		3
 #define	SC223A_EXPOSURE_STEP		1
 #define SC223A_VTS_MAX			0x7fff
 
 #define SC223A_REG_DIG_GAIN		0x3e06
 #define SC223A_REG_DIG_FINE_GAIN	0x3e07
 #define SC223A_REG_ANA_GAIN		0x3e09
-#define SC223A_REG_SDIG_GAIN		0x3e10
-#define SC223A_REG_SDIG_FINE_GAIN	0x3e11
-#define SC223A_REG_SANA_GAIN		0x3e12
-#define SC223A_REG_SANA_FINE_GAIN	0x3e13
-#define SC223A_GAIN_MIN		0x0040
-#define SC223A_GAIN_MAX		(54 * 32 * 64)
+#define SC223A_GAIN_MIN			0x0080
+#define SC223A_GAIN_MAX			(29656)	//57.92*4*128
 #define SC223A_GAIN_STEP		1
-#define SC223A_GAIN_DEFAULT		0x0800
-#define SC223A_LGAIN			0
-#define SC223A_SGAIN			1
+#define SC223A_GAIN_DEFAULT		0x80
 
 #define SC223A_REG_GROUP_HOLD		0x3812
-#define SC223A_GROUP_HOLD_START	0x00
+#define SC223A_GROUP_HOLD_START		0x00
 #define SC223A_GROUP_HOLD_END		0x30
 
-#define SC223A_REG_HIGH_TEMP_H		0x3974
-#define SC223A_REG_HIGH_TEMP_L		0x3975
-
-#define SC223A_REG_TEST_PATTERN	0x4501
+#define SC223A_REG_TEST_PATTERN		0x4501
 #define SC223A_TEST_PATTERN_BIT_MASK	BIT(3)
 
 #define SC223A_REG_VTS_H		0x320e
@@ -86,8 +78,12 @@
 
 #define SC223A_FLIP_MIRROR_REG		0x3221
 
-#define SC223A_FETCH_AGAIN_H(VAL)		(((VAL) >> 8) & 0x03)
-#define SC223A_FETCH_AGAIN_L(VAL)		((VAL) & 0xFF)
+#define SC223A_FETCH_EXP_H(VAL)		(((VAL) >> 12) & 0xF)
+#define SC223A_FETCH_EXP_M(VAL)		(((VAL) >> 4) & 0xFF)
+#define SC223A_FETCH_EXP_L(VAL)		(((VAL) & 0xF) << 4)
+
+#define SC223A_FETCH_AGAIN_H(VAL)	(((VAL) >> 8) & 0x03)
+#define SC223A_FETCH_AGAIN_L(VAL)	((VAL) & 0xFF)
 
 #define SC223A_FETCH_MIRROR(VAL, ENABLE)	(ENABLE ? VAL | 0x06 : VAL & 0xf9)
 #define SC223A_FETCH_FLIP(VAL, ENABLE)		(ENABLE ? VAL | 0x60 : VAL & 0x9f)
@@ -99,11 +95,12 @@
 #define SC223A_REG_VALUE_16BIT		2
 #define SC223A_REG_VALUE_24BIT		3
 
+#define RKMODULE_CAMERA_MODULE_MODE	"rockchip,camera_mode"
 #define OF_CAMERA_PINCTRL_STATE_DEFAULT	"rockchip,camera_default"
 #define OF_CAMERA_PINCTRL_STATE_SLEEP	"rockchip,camera_sleep"
-#define OF_CAMERA_HDR_MODE		"rockchip,camera-hdr-mode"
 #define SC223A_NAME			"sc223a"
-
+#define CAMERA_MIPI_MODE		"mipi_mode"
+#define CAMERA_DVP_MODE			"dvp_mode"
 static const char * const sc223a_supply_names[] = {
 	"avdd",		/* Analog power */
 	"dovdd",	/* Digital I/O power */
@@ -112,12 +109,15 @@ static const char * const sc223a_supply_names[] = {
 
 #define SC223A_NUM_SUPPLIES ARRAY_SIZE(sc223a_supply_names)
 
-enum sc223a_max_pad {
-	PAD0, /* link to isp */
-	PAD1, /* link to csi wr0 | hdr x2:L x3:M */
-	PAD2, /* link to csi wr1 | hdr      x3:L */
-	PAD3, /* link to csi wr2 | hdr x2:M x3:S */
-	PAD_MAX,
+enum sc223a_support_mode_id {
+	SC223A_MIPI_1920X1080 = 0,
+	SC223A_DVP_1920X1080,
+	SC223A_MODE_ID_MAX = SC223A_DVP_1920X1080,
+};
+
+enum sc223a_mode_id {
+	SC223A_MIPI_MODE = 0,
+	SC223A_DVP_MODE,
 };
 
 struct regval {
@@ -136,6 +136,7 @@ struct sc223a_mode {
 	const struct regval *reg_list;
 	u32 hdr_mode;
 	u32 vc[PAD_MAX];
+	u8 mode_id;
 };
 
 struct sc223a {
@@ -159,6 +160,7 @@ struct sc223a {
 	struct v4l2_ctrl	*vblank;
 	struct v4l2_ctrl	*test_pattern;
 	struct mutex		mutex;
+	struct v4l2_fract	cur_fps;
 	bool			streaming;
 	bool			power_on;
 	const struct sc223a_mode *cur_mode;
@@ -166,8 +168,11 @@ struct sc223a {
 	const char		*module_facing;
 	const char		*module_name;
 	const char		*len_name;
+	const char		*mode;
 	u32			cur_vts;
 	bool			has_init_exp;
+	bool			is_thunderboot;
+	bool			is_first_streamoff;
 	struct preisp_hdrae_exp_s init_hdrae_exp;
 };
 
@@ -182,23 +187,29 @@ static const struct regval sc223a_global_regs[] = {
 
 /*
  * Xclk 24Mhz
- * max_framerate 90fps
- * mipi_datarate per lane 1008Mbps, 4lane
+ * max_framerate 30fps
+ * mipi_datarate per lane 405Mbps, 2lane
  */
-static const struct regval sc223a_linear_10_1920x1080_regs[] = {
+static const struct regval sc223a_linear_10_1920x1080_30fps_regs[] = {
 	{0x0100, 0x00},
 	{0x36e9, 0x80},
 	{0x37f9, 0x80},
-	{0x301f, 0x01},
+	{0x301f, 0x08},
+	{0x30b8, 0x44},
+	{0x320c, 0x08},
+	{0x320d, 0xca},
+	{0x320e, 0x04},
+	{0x320f, 0xb0},
 	{0x3253, 0x0c},
 	{0x3281, 0x80},
-	{0x3301, 0x08},
+	{0x3301, 0x06},
 	{0x3302, 0x12},
-	{0x3306, 0xb0},
+	{0x3306, 0x84},
 	{0x3309, 0x60},
-	{0x330a, 0x01},
-	{0x330b, 0x60},
+	{0x330a, 0x00},
+	{0x330b, 0xe0},
 	{0x330d, 0x20},
+	{0x3314, 0x15},
 	{0x331e, 0x41},
 	{0x331f, 0x51},
 	{0x3320, 0x0a},
@@ -216,69 +227,115 @@ static const struct regval sc223a_linear_10_1920x1080_regs[] = {
 	{0x3390, 0x03},
 	{0x3391, 0x0f},
 	{0x3392, 0x1f},
-	{0x3393, 0x08},
-	{0x3394, 0x08},
-	{0x3395, 0x08},
-	{0x3396, 0x41},
-	{0x3397, 0x47},
+	{0x3393, 0x06},
+	{0x3394, 0x06},
+	{0x3395, 0x06},
+	{0x3396, 0x48},
+	{0x3397, 0x4b},
 	{0x3398, 0x5f},
-	{0x3399, 0x08},
-	{0x339a, 0x10},
-	{0x339b, 0x38},
-	{0x339c, 0x3c},
+	{0x3399, 0x06},
+	{0x339a, 0x06},
+	{0x339b, 0x9c},
+	{0x339c, 0x9c},
 	{0x33a2, 0x04},
 	{0x33a3, 0x0a},
-	{0x33ad, 0x18},
+	{0x33ad, 0x1c},
 	{0x33af, 0x40},
 	{0x33b1, 0x80},
 	{0x33b3, 0x20},
 	{0x349f, 0x02},
-	{0x34a6, 0x41},
-	{0x34a7, 0x47},
+	{0x34a6, 0x48},
+	{0x34a7, 0x4b},
 	{0x34a8, 0x20},
 	{0x34a9, 0x20},
 	{0x34f8, 0x5f},
-	{0x34f9, 0x20},
+	{0x34f9, 0x10},
+	{0x3616, 0xac},
 	{0x3630, 0xc0},
 	{0x3631, 0x86},
 	{0x3632, 0x26},
 	{0x3633, 0x32},
+	{0x3637, 0x29},
 	{0x363a, 0x84},
+	{0x363b, 0x04},
+	{0x363c, 0x08},
 	{0x3641, 0x3a},
-	{0x3670, 0x4e},
+	{0x364f, 0x39},
+	{0x3670, 0xce},
 	{0x3674, 0xc0},
 	{0x3675, 0xc0},
 	{0x3676, 0xc0},
 	{0x3677, 0x86},
 	{0x3678, 0x8b},
 	{0x3679, 0x8c},
-	{0x367c, 0x47},
+	{0x367c, 0x4b},
 	{0x367d, 0x5f},
-	{0x367e, 0x47},
+	{0x367e, 0x4b},
 	{0x367f, 0x5f},
-	{0x3690, 0x42},
-	{0x3691, 0x43},
+	{0x3690, 0x62},
+	{0x3691, 0x63},
 	{0x3692, 0x63},
-	{0x3699, 0x84},
-	{0x369a, 0x8c},
+	{0x3699, 0x86},
+	{0x369a, 0x92},
 	{0x369b, 0xa4},
-	{0x369c, 0x41},
-	{0x369d, 0x47},
-	{0x36a2, 0x41},
-	{0x36a3, 0x47},
+	{0x369c, 0x48},
+	{0x369d, 0x4b},
+	{0x36a2, 0x4b},
+	{0x36a3, 0x4f},
+	{0x36ea, 0x09},
+	{0x36eb, 0x0c},
+	{0x36ec, 0x1c},
+	{0x36ed, 0x28},
 	{0x370f, 0x01},
 	{0x3721, 0x6c},
 	{0x3722, 0x09},
-	{0x3725, 0xa4},
+	{0x3724, 0x41},
+	{0x3725, 0xc4},
 	{0x37b0, 0x09},
 	{0x37b1, 0x09},
-	{0x37b2, 0x05},
-	{0x37b3, 0x41},
+	{0x37b2, 0x09},
+	{0x37b3, 0x48},
 	{0x37b4, 0x5f},
+	{0x37fa, 0x09},
+	{0x37fb, 0x32},
+	{0x37fc, 0x10},
+	{0x37fd, 0x37},
+	{0x3900, 0x19},
 	{0x3901, 0x02},
-	{0x3e01, 0x8c},
-	{0x4509, 0x28},
+	{0x3905, 0xb8},
+	{0x391b, 0x82},
+	{0x391c, 0x00},
+	{0x391f, 0x04},
+	{0x3933, 0x81},
+	{0x3934, 0x4c},
+	{0x393f, 0xff},
+	{0x3940, 0x73},
+	{0x3942, 0x01},
+	{0x3943, 0x4d},
+	{0x3946, 0x20},
+	{0x3957, 0x86},
+	{0x3e01, 0x95},
+	{0x3e02, 0x60},
+	{0x3e28, 0xc4},
+	{0x440e, 0x02},
+	{0x4501, 0xc0},
+	{0x4509, 0x14},
+	{0x450d, 0x11},
 	{0x4518, 0x00},
+	{0x451b, 0x0a},
+	{0x4819, 0x07},
+	{0x481b, 0x04},
+	{0x481d, 0x0e},
+	{0x481f, 0x03},
+	{0x4821, 0x09},
+	{0x4823, 0x04},
+	{0x4825, 0x03},
+	{0x4827, 0x03},
+	{0x4829, 0x06},
+	{0x501c, 0x00},
+	{0x501d, 0x60},
+	{0x501e, 0x00},
+	{0x501f, 0x40},
 	{0x5799, 0x06},
 	{0x5ae0, 0xfe},
 	{0x5ae1, 0x40},
@@ -308,14 +365,228 @@ static const struct regval sc223a_linear_10_1920x1080_regs[] = {
 	{0x5afd, 0x3f},
 	{0x5afe, 0x34},
 	{0x5aff, 0x2c},
-	{0x36e9, 0x20},
-	{0x37f9, 0x27},
-	{0x0100, 0x01},
+	{0x36e9, 0x53},
+	{0x37f9, 0x53},
+	{REG_NULL, 0x00},
+};
+
+/*
+ * Xclk 24Mhz
+ * Pclk 79.2Mhz
+ * max_framerate 30fps
+ * 1920x1080
+ * dvp 10bit, 2lane
+ */
+static const struct regval sc223a_linear_10_1920x1080_dvp_30fps_regs[] = {
+	{0x0100, 0x00},
+	{0x36e9, 0x80},
+	{0x37f9, 0x80},
+	{0x3001, 0xff},
+	{0x3002, 0xf0},
+	{0x300a, 0x24},
+	{0x3018, 0x0f},
+	{0x301a, 0xf8},
+	{0x301c, 0x94},
+	{0x301f, 0x40},
+	{0x303f, 0x81},
+	{0x30b8, 0x44},
+	{0x3200, 0x00},
+	{0x3201, 0x00},
+	{0x3202, 0x00},
+	{0x3203, 0x00},
+	{0x3204, 0x07},
+	{0x3205, 0x87},
+	{0x3206, 0x04},
+	{0x3207, 0x3f},
+	{0x3208, 0x07},
+	{0x3209, 0x80},
+	{0x320a, 0x04},
+	{0x320b, 0x38},
+	{0x320c, 0x09},
+	{0x320d, 0x60},
+	{0x320e, 0x04},
+	{0x320f, 0x65},
+	{0x3210, 0x00},
+	{0x3211, 0x04},
+	{0x3212, 0x00},
+	{0x3213, 0x04},
+	{0x3227, 0x03},
+	{0x3250, 0x00},
+	{0x3253, 0x0c},
+	{0x3281, 0x80},
+	{0x3301, 0x06},
+	{0x3302, 0x12},
+	{0x3306, 0x84},
+	{0x3309, 0x60},
+	{0x330a, 0x00},
+	{0x330b, 0xe0},
+	{0x330d, 0x20},
+	{0x3314, 0x15},
+	{0x331e, 0x41},
+	{0x331f, 0x51},
+	{0x3320, 0x0a},
+	{0x3326, 0x0e},
+	{0x3333, 0x10},
+	{0x3334, 0x40},
+	{0x335d, 0x60},
+	{0x335e, 0x06},
+	{0x335f, 0x08},
+	{0x3364, 0x56},
+	{0x337a, 0x06},
+	{0x337b, 0x0e},
+	{0x337c, 0x02},
+	{0x337d, 0x0a},
+	{0x3390, 0x03},
+	{0x3391, 0x0f},
+	{0x3392, 0x1f},
+	{0x3393, 0x06},
+	{0x3394, 0x06},
+	{0x3395, 0x06},
+	{0x3396, 0x48},
+	{0x3397, 0x4b},
+	{0x3398, 0x5f},
+	{0x3399, 0x06},
+	{0x339a, 0x06},
+	{0x339b, 0x9c},
+	{0x339c, 0x9c},
+	{0x33a2, 0x04},
+	{0x33a3, 0x0a},
+	{0x33ad, 0x1c},
+	{0x33af, 0x40},
+	{0x33b1, 0x80},
+	{0x33b3, 0x20},
+	{0x349f, 0x02},
+	{0x34a6, 0x48},
+	{0x34a7, 0x4b},
+	{0x34a8, 0x20},
+	{0x34a9, 0x20},
+	{0x34f8, 0x5f},
+	{0x34f9, 0x10},
+	{0x3616, 0xac},
+	{0x3630, 0xc0},
+	{0x3631, 0x86},
+	{0x3632, 0x26},
+	{0x3633, 0x32},
+	{0x3637, 0x29},
+	{0x363a, 0x84},
+	{0x363b, 0x04},
+	{0x363c, 0x08},
+	{0x3641, 0x3a},
+	{0x364f, 0x39},
+	{0x3670, 0xce},
+	{0x3674, 0xc0},
+	{0x3675, 0xc0},
+	{0x3676, 0xc0},
+	{0x3677, 0x86},
+	{0x3678, 0x8b},
+	{0x3679, 0x8c},
+	{0x367c, 0x4b},
+	{0x367d, 0x5f},
+	{0x367e, 0x4b},
+	{0x367f, 0x5f},
+	{0x3690, 0x62},
+	{0x3691, 0x63},
+	{0x3692, 0x63},
+	{0x3699, 0x86},
+	{0x369a, 0x92},
+	{0x369b, 0xa4},
+	{0x369c, 0x48},
+	{0x369d, 0x4b},
+	{0x36a2, 0x4b},
+	{0x36a3, 0x4f},
+	{0x36ea, 0x09},
+	{0x36eb, 0x0c},
+	{0x36ec, 0x1c},
+	{0x36ed, 0x28},
+	{0x370f, 0x01},
+	{0x3721, 0x6c},
+	{0x3722, 0x09},
+	{0x3724, 0x41},
+	{0x3725, 0xc4},
+	{0x37b0, 0x09},
+	{0x37b1, 0x09},
+	{0x37b2, 0x09},
+	{0x37b3, 0x48},
+	{0x37b4, 0x5f},
+	{0x37fa, 0x09},
+	{0x37fb, 0x32},
+	{0x37fc, 0x10},
+	{0x37fd, 0x37},
+	{0x3900, 0x19},
+	{0x3901, 0x02},
+	{0x3905, 0xb8},
+	{0x391b, 0x82},
+	{0x391c, 0x00},
+	{0x391f, 0x04},
+	{0x3928, 0xc1},
+	{0x3933, 0x81},
+	{0x3934, 0x4c},
+	{0x393f, 0xff},
+	{0x3940, 0x73},
+	{0x3942, 0x01},
+	{0x3943, 0x4d},
+	{0x3946, 0x20},
+	{0x3957, 0x86},
+	{0x3e01, 0x8c},
+	{0x3e02, 0x00},
+	{0x3e28, 0xc4},
+	{0x440e, 0x02},
+	{0x4501, 0xc0},
+	{0x4509, 0x14},
+	{0x450d, 0x11},
+	{0x4518, 0x00},
+	{0x451b, 0x0a},
+	{0x4603, 0x09},
+	{0x4819, 0x07},
+	{0x481b, 0x04},
+	{0x481d, 0x0e},
+	{0x3000, 0xff},
+	{0x481f, 0x03},
+	{0x4821, 0x09},
+	{0x4823, 0x04},
+	{0x4825, 0x03},
+	{0x4827, 0x03},
+	{0x4829, 0x06},
+	{0x501c, 0x00},
+	{0x501d, 0x60},
+	{0x501e, 0x00},
+	{0x501f, 0x40},
+	{0x5799, 0x06},
+	{0x5ae0, 0xfe},
+	{0x5ae1, 0x40},
+	{0x5ae2, 0x38},
+	{0x5ae3, 0x30},
+	{0x5ae4, 0x28},
+	{0x5ae5, 0x38},
+	{0x5ae6, 0x30},
+	{0x5ae7, 0x28},
+	{0x5ae8, 0x3f},
+	{0x5ae9, 0x34},
+	{0x5aea, 0x2c},
+	{0x5aeb, 0x3f},
+	{0x5aec, 0x34},
+	{0x5aed, 0x2c},
+	{0x5aee, 0xfe},
+	{0x5aef, 0x40},
+	{0x5af4, 0x38},
+	{0x5af5, 0x30},
+	{0x5af6, 0x28},
+	{0x5af7, 0x38},
+	{0x5af8, 0x30},
+	{0x5af9, 0x28},
+	{0x5afa, 0x3f},
+	{0x5afb, 0x34},
+	{0x5afc, 0x2c},
+	{0x5afd, 0x3f},
+	{0x5afe, 0x34},
+	{0x5aff, 0x2c},
+	{0x36e9, 0x53},
+	{0x37f9, 0x53},
 	{REG_NULL, 0x00},
 };
 
 static const struct sc223a_mode supported_modes[] = {
-	{
+	[SC223A_MIPI_1920X1080] = {
 		.width = 1920,
 		.height = 1080,
 		.max_fps = {
@@ -323,17 +594,34 @@ static const struct sc223a_mode supported_modes[] = {
 			.denominator = 300000,
 		},
 		.exp_def = 0x0080,
-		.hts_def = 0x44C * 2,
-		.vts_def = 0x0465,
+		.hts_def = 0x08ca,
+		.vts_def = 0x04b0,
 		.bus_fmt = MEDIA_BUS_FMT_SBGGR10_1X10,
-		.reg_list = sc223a_linear_10_1920x1080_regs,
+		.reg_list = sc223a_linear_10_1920x1080_30fps_regs,
 		.hdr_mode = NO_HDR,
+		.mode_id = SC223A_MIPI_MODE,
 		.vc[PAD0] = V4L2_MBUS_CSI2_CHANNEL_0,
-	}
+	},
+	[SC223A_DVP_1920X1080] = {
+		.width = 1920,
+		.height = 1080,
+		.max_fps = {
+			.numerator = 10000,
+			.denominator = 300000,
+		},
+		.exp_def = 0x0080,
+		.hts_def = 0x0960,
+		.vts_def = 0x0465,
+		.bus_fmt = MEDIA_BUS_FMT_SBGGR8_1X8,
+		.reg_list = sc223a_linear_10_1920x1080_dvp_30fps_regs,
+		.hdr_mode = NO_HDR,
+		.mode_id = SC223A_DVP_MODE,
+		.vc[PAD0] = 0,
+	},
 };
 
-static const s64 link_freq_menu_items[] = {
-	SC223A_LINK_FREQ_371
+static const __maybe_unused s64 link_freq_menu_items[] = {
+	SC223A_LINK_FREQ_405
 };
 
 static const char * const sc223a_test_pattern_menu[] = {
@@ -369,7 +657,6 @@ static int sc223a_write_reg(struct i2c_client *client, u16 reg,
 
 	if (i2c_master_send(client, buf, len + 2) != len + 2)
 		return -EIO;
-
 	return 0;
 }
 
@@ -423,62 +710,69 @@ static int sc223a_read_reg(struct i2c_client *client, u16 reg, unsigned int len,
 
 static int sc223a_set_gain_reg(struct sc223a *sc223a, u32 gain)
 {
-	struct device *dev = &sc223a->client->dev;
-	u8 again_reg, dgain_reg;
-	u8 dgain_f_reg;
-	int ret = 0;
+	struct i2c_client *client = sc223a->client;
+	u32 coarse_again = 0, coarse_dgain = 0, fine_dgain = 0;
+	int ret = 0, gain_factor;
 
-	if (gain < 0xe8) {/* 1 - 1.81 gain */
-		if (gain < 0x80)
-			dev_info(dev, "The minimum gain reg value is 0x80\n");
-		again_reg = 0x00;
-		dgain_reg = 0x00;
-		dgain_f_reg = gain;
-	} else if (gain < 0x1cf) {/* 1.81 - 3.62 gain */
-		again_reg = 0x40;
-		dgain_reg = 0x00;
-		dgain_f_reg = (gain * 100) / 181;
-	} else if (gain < 0x39e) {/* 3.62 - 7.24 gain */
-		again_reg = 0x48;
-		dgain_reg = 0x00;
-		dgain_f_reg = ((gain >> 1) * 100) / 181;
-	} else if (gain < 0x73d) {/* 7.24 - 14.48 gain */
-		again_reg = 0x49;
-		dgain_reg = 0x00;
-		dgain_f_reg = ((gain >> 2) * 100) / 181;
-	} else if (gain < 0xe7a) {/* 14.48 - 28.96 gain */
-		again_reg = 0x4B;
-		dgain_reg = 0x00;
-		dgain_f_reg = ((gain >> 3) * 100) / 181;
-	} else if (gain < 0x1cf5) {/* 28.96 - 57.92 gain */
-		again_reg = 0x4F;
-		dgain_reg = 0x00;
-		dgain_f_reg = ((gain >> 4) * 100) / 181;
-	} else if (gain < 0x3985) {/* 57.92 - 115.84 gain */
-		again_reg = 0x5F;
-		dgain_reg = 0x00;
-		dgain_f_reg = ((gain >> 5) * 100) / 181;
-	} else if (gain < 0x73d7) {/* 115.84 - 231.68 gain */
-		again_reg = 0x5F;
-		dgain_reg = 0x01;
-		dgain_f_reg = ((gain >> 6) * 100) / 181;
-	} else {/* 231.68 gain */
-		again_reg = 0x5F;
-		dgain_reg = 0x03;
-		dgain_f_reg = 0x80;
+	if (gain < 128)
+		gain = 128;
+	else if (gain > SC223A_GAIN_MAX)
+		gain = SC223A_GAIN_MAX;
+
+	gain_factor = gain * 1000 / 128;
+	if (gain_factor < 1810) {
+		coarse_again = 0x00;
+		coarse_dgain = 0x00;
+		fine_dgain = gain_factor * 128 / 1000;
+	} else if (gain_factor < 1810 * 2) {
+		coarse_again = 0x40;
+		coarse_dgain = 0x00;
+		fine_dgain = gain_factor * 128 / 1810;
+	} else if (gain_factor < 1810 * 4) {
+		coarse_again = 0x48;
+		coarse_dgain = 0x00;
+		fine_dgain = gain_factor * 128 / 1810 / 2;
+	} else if (gain_factor < 1810 * 8) {
+		coarse_again = 0x49;
+		coarse_dgain = 0x00;
+		fine_dgain = gain_factor * 128 / 1810 / 4;
+	} else if (gain_factor < 1810 * 16) {
+		coarse_again = 0x4b;
+		coarse_dgain = 0x00;
+		fine_dgain = gain_factor * 128 / 1810 / 8;
+	} else if (gain_factor < 1810 * 32) {
+		coarse_again = 0x4f;
+		coarse_dgain = 0x00;
+		fine_dgain = gain_factor * 128 / 1810 / 16;
+	} else if (gain_factor < 1810 * 64) {
+		//open dgain begin  max digital gain 4X
+		coarse_again = 0x5f;
+		coarse_dgain = 0x00;
+		fine_dgain = gain_factor * 128 / 1810 / 32;
+	} else if (gain_factor < 1810 * 128) {
+		coarse_again = 0x5f;
+		coarse_dgain = 0x01;
+		fine_dgain = gain_factor * 128 / 1810 / 64;
+	} else {
+		coarse_again = 0x5f;
+		coarse_dgain = 0x03;
+		fine_dgain = 0x80;
 	}
+	dev_dbg(&client->dev, "c_again: 0x%x, c_dgain: 0x%x, f_dgain: 0x%0x\n",
+		    coarse_again, coarse_dgain, fine_dgain);
+
 	ret = sc223a_write_reg(sc223a->client,
-		SC223A_REG_DIG_GAIN,
-		SC223A_REG_VALUE_08BIT,
-		dgain_reg);
+				SC223A_REG_DIG_GAIN,
+				SC223A_REG_VALUE_08BIT,
+				coarse_dgain);
 	ret |= sc223a_write_reg(sc223a->client,
-		SC223A_REG_DIG_FINE_GAIN,
-		SC223A_REG_VALUE_08BIT,
-		dgain_f_reg);
+				 SC223A_REG_DIG_FINE_GAIN,
+				 SC223A_REG_VALUE_08BIT,
+				 fine_dgain);
 	ret |= sc223a_write_reg(sc223a->client,
-		SC223A_REG_ANA_GAIN,
-		SC223A_REG_VALUE_08BIT,
-		again_reg);
+				 SC223A_REG_ANA_GAIN,
+				 SC223A_REG_VALUE_08BIT,
+				 coarse_again);
 
 	return ret;
 }
@@ -487,7 +781,7 @@ static int sc223a_get_reso_dist(const struct sc223a_mode *mode,
 				 struct v4l2_mbus_framefmt *framefmt)
 {
 	return abs(mode->width - framefmt->width) +
-		abs(mode->height - framefmt->height);
+	       abs(mode->height - framefmt->height);
 }
 
 static const struct sc223a_mode *
@@ -541,6 +835,7 @@ static int sc223a_set_fmt(struct v4l2_subdev *sd,
 		__v4l2_ctrl_modify_range(sc223a->vblank, vblank_def,
 					 SC223A_VTS_MAX - mode->height,
 					 1, vblank_def);
+		sc223a->cur_fps = mode->max_fps;
 	}
 
 	mutex_unlock(&sc223a->mutex);
@@ -633,29 +928,40 @@ static int sc223a_g_frame_interval(struct v4l2_subdev *sd,
 	struct sc223a *sc223a = to_sc223a(sd);
 	const struct sc223a_mode *mode = sc223a->cur_mode;
 
-	mutex_lock(&sc223a->mutex);
-	fi->interval = mode->max_fps;
-	mutex_unlock(&sc223a->mutex);
+	if (sc223a->streaming)
+		fi->interval = sc223a->cur_fps;
+	else
+		fi->interval = mode->max_fps;
 
 	return 0;
 }
 
 static int sc223a_g_mbus_config(struct v4l2_subdev *sd,
-				 struct v4l2_mbus_config *config)
+				unsigned int pad_id,
+				struct v4l2_mbus_config *config)
 {
 	struct sc223a *sc223a = to_sc223a(sd);
 	const struct sc223a_mode *mode = sc223a->cur_mode;
-	u32 val = 1 << (SC223A_LANES - 1) |
-		V4L2_MBUS_CSI2_CHANNEL_0 |
-		V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
 
-	if (mode->hdr_mode != NO_HDR)
-		val |= V4L2_MBUS_CSI2_CHANNEL_1;
-	if (mode->hdr_mode == HDR_X3)
-		val |= V4L2_MBUS_CSI2_CHANNEL_2;
+	u32 val;
 
-	config->type = V4L2_MBUS_CSI2;
-	config->flags = val;
+	if (!strcmp(sc223a->mode, CAMERA_MIPI_MODE)) {
+		val = 1 << (SC223A_LANES - 1) |
+		      V4L2_MBUS_CSI2_CHANNEL_0 |
+		      V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
+		if (mode->hdr_mode != NO_HDR)
+			val |= V4L2_MBUS_CSI2_CHANNEL_1;
+		if (mode->hdr_mode == HDR_X3)
+			val |= V4L2_MBUS_CSI2_CHANNEL_2;
+
+		config->type = V4L2_MBUS_CSI2_DPHY;
+		config->flags = val;
+	} else if (!strcmp(sc223a->mode, CAMERA_DVP_MODE)) {
+		config->type = V4L2_MBUS_PARALLEL;
+		config->flags = V4L2_MBUS_HSYNC_ACTIVE_HIGH |
+				V4L2_MBUS_VSYNC_ACTIVE_LOW |
+				V4L2_MBUS_PCLK_SAMPLE_RISING;
+	}
 
 	return 0;
 }
@@ -675,6 +981,7 @@ static long sc223a_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 	struct sc223a *sc223a = to_sc223a(sd);
 	struct rkmodule_hdr_cfg *hdr;
 	u32 i, h, w;
+	u8 mode;
 	long ret = 0;
 	u32 stream = 0;
 
@@ -691,9 +998,11 @@ static long sc223a_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 		hdr = (struct rkmodule_hdr_cfg *)arg;
 		w = sc223a->cur_mode->width;
 		h = sc223a->cur_mode->height;
+		mode = sc223a->cur_mode->mode_id;
 		for (i = 0; i < ARRAY_SIZE(supported_modes); i++) {
 			if (w == supported_modes[i].width &&
 			    h == supported_modes[i].height &&
+			    mode == supported_modes[i].mode_id &&
 			    supported_modes[i].hdr_mode == hdr->hdr_mode) {
 				sc223a->cur_mode = &supported_modes[i];
 				break;
@@ -710,7 +1019,10 @@ static long sc223a_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 			__v4l2_ctrl_modify_range(sc223a->hblank, w, w, 1, w);
 			__v4l2_ctrl_modify_range(sc223a->vblank, h,
 						 SC223A_VTS_MAX - sc223a->cur_mode->height, 1, h);
+			sc223a->cur_fps = sc223a->cur_mode->max_fps;
 		}
+		break;
+	case PREISP_CMD_SET_HDRAE_EXP:
 		break;
 	case RKMODULE_SET_QUICK_STREAM:
 
@@ -738,6 +1050,7 @@ static long sc223a_compat_ioctl32(struct v4l2_subdev *sd,
 	void __user *up = compat_ptr(arg);
 	struct rkmodule_inf *inf;
 	struct rkmodule_hdr_cfg *hdr;
+	struct preisp_hdrae_exp_s *hdrae;
 	long ret;
 	u32 stream = 0;
 
@@ -751,9 +1064,8 @@ static long sc223a_compat_ioctl32(struct v4l2_subdev *sd,
 
 		ret = sc223a_ioctl(sd, cmd, inf);
 		if (!ret) {
-			ret = copy_to_user(up, inf, sizeof(*inf));
-			if (ret)
-				return -EFAULT;
+			if (copy_to_user(up, inf, sizeof(*inf)))
+				ret = -EFAULT;
 		}
 		kfree(inf);
 		break;
@@ -766,9 +1078,8 @@ static long sc223a_compat_ioctl32(struct v4l2_subdev *sd,
 
 		ret = sc223a_ioctl(sd, cmd, hdr);
 		if (!ret) {
-			ret = copy_to_user(up, hdr, sizeof(*hdr));
-			if (ret)
-				return -EFAULT;
+			if (copy_to_user(up, hdr, sizeof(*hdr)))
+				ret = -EFAULT;
 		}
 		kfree(hdr);
 		break;
@@ -779,17 +1090,33 @@ static long sc223a_compat_ioctl32(struct v4l2_subdev *sd,
 			return ret;
 		}
 
-		if (copy_from_user(hdr, up, sizeof(*hdr)))
-			return -EFAULT;
-
-		ret = sc223a_ioctl(sd, cmd, hdr);
+		ret = copy_from_user(hdr, up, sizeof(*hdr));
+		if (!ret)
+			ret = sc223a_ioctl(sd, cmd, hdr);
+		else
+			ret = -EFAULT;
 		kfree(hdr);
 		break;
-	case RKMODULE_SET_QUICK_STREAM:
-		if (copy_from_user(&stream, up, sizeof(u32)))
-			return -EFAULT;
+	case PREISP_CMD_SET_HDRAE_EXP:
+		hdrae = kzalloc(sizeof(*hdrae), GFP_KERNEL);
+		if (!hdrae) {
+			ret = -ENOMEM;
+			return ret;
+		}
 
-		ret = sc223a_ioctl(sd, cmd, &stream);
+		ret = copy_from_user(hdrae, up, sizeof(*hdrae));
+		if (!ret)
+			ret = sc223a_ioctl(sd, cmd, hdrae);
+		else
+			ret = -EFAULT;
+		kfree(hdrae);
+		break;
+	case RKMODULE_SET_QUICK_STREAM:
+		ret = copy_from_user(&stream, up, sizeof(u32));
+		if (!ret)
+			ret = sc223a_ioctl(sd, cmd, &stream);
+		else
+			ret = -EFAULT;
 		break;
 	default:
 		ret = -ENOIOCTLCMD;
@@ -804,35 +1131,41 @@ static int __sc223a_start_stream(struct sc223a *sc223a)
 {
 	int ret;
 
-	ret = sc223a_write_array(sc223a->client, sc223a->cur_mode->reg_list);
-	if (ret)
-		return ret;
-
-	/* In case these controls are set before streaming */
-	ret = __v4l2_ctrl_handler_setup(&sc223a->ctrl_handler);
-	if (ret)
-		return ret;
-	if (sc223a->has_init_exp && sc223a->cur_mode->hdr_mode != NO_HDR) {
-		ret = sc223a_ioctl(&sc223a->subdev, PREISP_CMD_SET_HDRAE_EXP,
-			&sc223a->init_hdrae_exp);
-		if (ret) {
-			dev_err(&sc223a->client->dev,
-				"init exp fail in hdr mode\n");
+	if (!sc223a->is_thunderboot) {
+		ret = sc223a_write_array(sc223a->client, sc223a->cur_mode->reg_list);
+		if (ret)
 			return ret;
+		/* In case these controls are set before streaming */
+		ret = __v4l2_ctrl_handler_setup(&sc223a->ctrl_handler);
+		if (ret)
+			return ret;
+		if (sc223a->has_init_exp && sc223a->cur_mode->hdr_mode != NO_HDR) {
+			ret = sc223a_ioctl(&sc223a->subdev, PREISP_CMD_SET_HDRAE_EXP,
+				&sc223a->init_hdrae_exp);
+			if (ret) {
+				dev_err(&sc223a->client->dev,
+					"init exp fail in hdr mode\n");
+				return ret;
+			}
 		}
 	}
 
 	return sc223a_write_reg(sc223a->client, SC223A_REG_CTRL_MODE,
-				 SC223A_REG_VALUE_08BIT, SC223A_MODE_STREAMING);
+				SC223A_REG_VALUE_08BIT, SC223A_MODE_STREAMING);
 }
 
 static int __sc223a_stop_stream(struct sc223a *sc223a)
 {
 	sc223a->has_init_exp = false;
+	if (sc223a->is_thunderboot) {
+		sc223a->is_first_streamoff = true;
+		pm_runtime_put(&sc223a->client->dev);
+	}
 	return sc223a_write_reg(sc223a->client, SC223A_REG_CTRL_MODE,
 				 SC223A_REG_VALUE_08BIT, SC223A_MODE_SW_STANDBY);
 }
 
+static int __sc223a_power_on(struct sc223a *sc223a);
 static int sc223a_s_stream(struct v4l2_subdev *sd, int on)
 {
 	struct sc223a *sc223a = to_sc223a(sd);
@@ -843,14 +1176,16 @@ static int sc223a_s_stream(struct v4l2_subdev *sd, int on)
 	on = !!on;
 	if (on == sc223a->streaming)
 		goto unlock_and_return;
-
 	if (on) {
+		if (sc223a->is_thunderboot && rkisp_tb_get_state() == RKISP_TB_NG) {
+			sc223a->is_thunderboot = false;
+			__sc223a_power_on(sc223a);
+		}
 		ret = pm_runtime_get_sync(&client->dev);
 		if (ret < 0) {
 			pm_runtime_put_noidle(&client->dev);
 			goto unlock_and_return;
 		}
-
 		ret = __sc223a_start_stream(sc223a);
 		if (ret) {
 			v4l2_err(sd, "start stream failed while write regs\n");
@@ -863,10 +1198,8 @@ static int sc223a_s_stream(struct v4l2_subdev *sd, int on)
 	}
 
 	sc223a->streaming = on;
-
 unlock_and_return:
 	mutex_unlock(&sc223a->mutex);
-
 	return ret;
 }
 
@@ -889,11 +1222,13 @@ static int sc223a_s_power(struct v4l2_subdev *sd, int on)
 			goto unlock_and_return;
 		}
 
-		ret = sc223a_write_array(sc223a->client, sc223a_global_regs);
-		if (ret) {
-			v4l2_err(sd, "could not set init registers\n");
-			pm_runtime_put_noidle(&client->dev);
-			goto unlock_and_return;
+		if (!sc223a->is_thunderboot) {
+			ret = sc223a_write_array(sc223a->client, sc223a_global_regs);
+			if (ret) {
+				v4l2_err(sd, "could not set init registers\n");
+				pm_runtime_put_noidle(&client->dev);
+				goto unlock_and_return;
+			}
 		}
 
 		sc223a->power_on = true;
@@ -936,6 +1271,10 @@ static int __sc223a_power_on(struct sc223a *sc223a)
 		dev_err(dev, "Failed to enable xvclk\n");
 		return ret;
 	}
+
+	if (sc223a->is_thunderboot)
+		return 0;
+
 	if (!IS_ERR(sc223a->reset_gpio))
 		gpiod_set_value_cansleep(sc223a->reset_gpio, 0);
 
@@ -949,6 +1288,7 @@ static int __sc223a_power_on(struct sc223a *sc223a)
 		gpiod_set_value_cansleep(sc223a->reset_gpio, 1);
 
 	usleep_range(500, 1000);
+
 	if (!IS_ERR(sc223a->pwdn_gpio))
 		gpiod_set_value_cansleep(sc223a->pwdn_gpio, 1);
 
@@ -973,6 +1313,16 @@ static void __sc223a_power_off(struct sc223a *sc223a)
 {
 	int ret;
 	struct device *dev = &sc223a->client->dev;
+
+	clk_disable_unprepare(sc223a->xvclk);
+	if (sc223a->is_thunderboot) {
+		if (sc223a->is_first_streamoff) {
+			sc223a->is_thunderboot = false;
+			sc223a->is_first_streamoff = false;
+		} else {
+			return;
+		}
+	}
 
 	if (!IS_ERR(sc223a->pwdn_gpio))
 		gpiod_set_value_cansleep(sc223a->pwdn_gpio, 0);
@@ -1067,7 +1417,6 @@ static const struct v4l2_subdev_core_ops sc223a_core_ops = {
 static const struct v4l2_subdev_video_ops sc223a_video_ops = {
 	.s_stream = sc223a_s_stream,
 	.g_frame_interval = sc223a_g_frame_interval,
-	.g_mbus_config = sc223a_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops sc223a_pad_ops = {
@@ -1076,6 +1425,7 @@ static const struct v4l2_subdev_pad_ops sc223a_pad_ops = {
 	.enum_frame_interval = sc223a_enum_frame_interval,
 	.get_fmt = sc223a_get_fmt,
 	.set_fmt = sc223a_set_fmt,
+	.get_mbus_config = sc223a_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops sc223a_subdev_ops = {
@@ -1083,6 +1433,14 @@ static const struct v4l2_subdev_ops sc223a_subdev_ops = {
 	.video	= &sc223a_video_ops,
 	.pad	= &sc223a_pad_ops,
 };
+
+static void sc223a_modify_fps_info(struct sc223a *sc223a)
+{
+	const struct sc223a_mode *mode = sc223a->cur_mode;
+
+	sc223a->cur_fps.denominator = mode->max_fps.denominator * mode->vts_def /
+				      sc223a->cur_vts;
+}
 
 static int sc223a_set_ctrl(struct v4l2_ctrl *ctrl)
 {
@@ -1092,13 +1450,12 @@ static int sc223a_set_ctrl(struct v4l2_ctrl *ctrl)
 	s64 max;
 	int ret = 0;
 	u32 val = 0;
-	u32 reg = 0;
+
 	/* Propagate change of current control to all related controls */
 	switch (ctrl->id) {
 	case V4L2_CID_VBLANK:
 		/* Update max exposure while meeting expected vblanking */
-		max = sc223a->cur_mode->height + ctrl->val - 4;
-
+		max = sc223a->cur_mode->height + ctrl->val - 10;
 		__v4l2_ctrl_modify_range(sc223a->exposure,
 					 sc223a->exposure->minimum, max,
 					 sc223a->exposure->step,
@@ -1111,43 +1468,43 @@ static int sc223a_set_ctrl(struct v4l2_ctrl *ctrl)
 
 	switch (ctrl->id) {
 	case V4L2_CID_EXPOSURE:
+		dev_dbg(&client->dev, "set exposure 0x%x\n", ctrl->val);
 		if (sc223a->cur_mode->hdr_mode == NO_HDR) {
-			val = ctrl->val < 2;
-
-			ret = sc223a_read_reg(sc223a->client, SC223A_REG_EXPOSURE_H,
-						SC223A_REG_VALUE_08BIT, &reg);
-			ret |= sc223a_write_reg(sc223a->client,
+			val = ctrl->val * 2;
+			/* 4 least significant bits of expsoure are fractional part */
+			ret = sc223a_write_reg(sc223a->client,
 						SC223A_REG_EXPOSURE_H,
 						SC223A_REG_VALUE_08BIT,
-						((val >> 12) | (reg & 0xF0)));
-
+						SC223A_FETCH_EXP_H(val));
 			ret |= sc223a_write_reg(sc223a->client,
-						SC223A_REG_EXPOSURE_M,
-						SC223A_REG_VALUE_08BIT,
-						((val >> 4) & 0xFF));
-
-			ret |= sc223a_read_reg(sc223a->client, SC223A_REG_EXPOSURE_L,
-						SC223A_REG_VALUE_08BIT, &reg);
+						 SC223A_REG_EXPOSURE_M,
+						 SC223A_REG_VALUE_08BIT,
+						 SC223A_FETCH_EXP_M(val));
 			ret |= sc223a_write_reg(sc223a->client,
-						SC223A_REG_EXPOSURE_L,
-						SC223A_REG_VALUE_08BIT,
-						(((val & 0x0f) << 4) | (reg & 0x0F)));
+						 SC223A_REG_EXPOSURE_L,
+						 SC223A_REG_VALUE_08BIT,
+						 SC223A_FETCH_EXP_L(val));
 		}
 		break;
 	case V4L2_CID_ANALOGUE_GAIN:
+		dev_dbg(&client->dev, "set gain 0x%x\n", ctrl->val);
 		if (sc223a->cur_mode->hdr_mode == NO_HDR)
 			ret = sc223a_set_gain_reg(sc223a, ctrl->val);
 		break;
 	case V4L2_CID_VBLANK:
+		dev_dbg(&client->dev, "set vblank 0x%x\n", ctrl->val);
 		ret = sc223a_write_reg(sc223a->client,
 					SC223A_REG_VTS_H,
 					SC223A_REG_VALUE_08BIT,
-					(ctrl->val + sc223a->cur_mode->height) >> 8);
+					(ctrl->val + sc223a->cur_mode->height)
+					>> 8);
 		ret |= sc223a_write_reg(sc223a->client,
 					 SC223A_REG_VTS_L,
 					 SC223A_REG_VALUE_08BIT,
-					 (ctrl->val + sc223a->cur_mode->height) & 0xff);
+					 (ctrl->val + sc223a->cur_mode->height)
+					 & 0xff);
 		sc223a->cur_vts = ctrl->val + sc223a->cur_mode->height;
+		sc223a_modify_fps_info(sc223a);
 		break;
 	case V4L2_CID_TEST_PATTERN:
 		ret = sc223a_enable_test_pattern(sc223a, ctrl->val);
@@ -1197,13 +1554,18 @@ static int sc223a_initialize_controls(struct sc223a *sc223a)
 		return ret;
 	handler->lock = &sc223a->mutex;
 
-	ctrl = v4l2_ctrl_new_int_menu(handler, NULL, V4L2_CID_LINK_FREQ,
-				      0, 0, link_freq_menu_items);
-	if (ctrl)
-		ctrl->flags |= V4L2_CTRL_FLAG_READ_ONLY;
+	if (!strcmp(sc223a->mode, CAMERA_MIPI_MODE)) {
+		ctrl = v4l2_ctrl_new_int_menu(handler, NULL, V4L2_CID_LINK_FREQ,
+					      0, 0, link_freq_menu_items);
+		if (ctrl)
+			ctrl->flags |= V4L2_CTRL_FLAG_READ_ONLY;
+		v4l2_ctrl_new_std(handler, NULL, V4L2_CID_PIXEL_RATE,
+				  0, PIXEL_RATE_WITH_405M_10BIT, 1, PIXEL_RATE_WITH_405M_10BIT);
+	} else if (!strcmp(sc223a->mode, CAMERA_DVP_MODE)) {
+		v4l2_ctrl_new_std(handler, NULL, V4L2_CID_PIXEL_RATE,
+				  0, SC223A_PIXEL_RATE, 1, SC223A_PIXEL_RATE);
+	}
 
-	v4l2_ctrl_new_std(handler, NULL, V4L2_CID_PIXEL_RATE,
-			  0, PIXEL_RATE_WITH_371M_10BIT, 1, PIXEL_RATE_WITH_371M_10BIT);
 
 	h_blank = mode->hts_def - mode->width;
 	sc223a->hblank = v4l2_ctrl_new_std(handler, NULL, V4L2_CID_HBLANK,
@@ -1215,7 +1577,7 @@ static int sc223a_initialize_controls(struct sc223a *sc223a)
 					    V4L2_CID_VBLANK, vblank_def,
 					    SC223A_VTS_MAX - mode->height,
 					    1, vblank_def);
-	exposure_max = mode->vts_def - 4;
+	exposure_max = mode->vts_def - 10;
 	sc223a->exposure = v4l2_ctrl_new_std(handler, &sc223a_ctrl_ops,
 					      V4L2_CID_EXPOSURE, SC223A_EXPOSURE_MIN,
 					      exposure_max, SC223A_EXPOSURE_STEP,
@@ -1231,10 +1593,8 @@ static int sc223a_initialize_controls(struct sc223a *sc223a)
 					0, 0, sc223a_test_pattern_menu);
 	v4l2_ctrl_new_std(handler, &sc223a_ctrl_ops,
 				V4L2_CID_HFLIP, 0, 1, 1, 0);
-
 	v4l2_ctrl_new_std(handler, &sc223a_ctrl_ops,
 				V4L2_CID_VFLIP, 0, 1, 1, 0);
-
 	if (handler->error) {
 		ret = handler->error;
 		dev_err(&sc223a->client->dev,
@@ -1244,6 +1604,7 @@ static int sc223a_initialize_controls(struct sc223a *sc223a)
 
 	sc223a->subdev.ctrl_handler = handler;
 	sc223a->has_init_exp = false;
+	sc223a->cur_fps = mode->max_fps;
 
 	return 0;
 
@@ -1259,6 +1620,11 @@ static int sc223a_check_sensor_id(struct sc223a *sc223a,
 	struct device *dev = &sc223a->client->dev;
 	u32 id = 0;
 	int ret;
+
+	if (sc223a->is_thunderboot) {
+		dev_info(dev, "Enable thunderboot mode, skip sensor id check\n");
+		return 0;
+	}
 
 	ret = sc223a_read_reg(client, SC223A_REG_CHIP_ID,
 			       SC223A_REG_VALUE_16BIT, &id);
@@ -1293,7 +1659,7 @@ static int sc223a_probe(struct i2c_client *client,
 	struct v4l2_subdev *sd;
 	char facing[2];
 	int ret;
-	u32 i, hdr_mode = 0;
+	int i, hdr_mode = 0;
 
 	dev_info(dev, "driver version: %02x.%02x.%02x",
 		 DRIVER_VERSION >> 16,
@@ -1304,7 +1670,6 @@ static int sc223a_probe(struct i2c_client *client,
 	if (!sc223a)
 		return -ENOMEM;
 
-	of_property_read_u32(node, OF_CAMERA_HDR_MODE, &hdr_mode);
 	ret = of_property_read_u32(node, RKMODULE_CAMERA_MODULE_INDEX,
 				   &sc223a->module_index);
 	ret |= of_property_read_string(node, RKMODULE_CAMERA_MODULE_FACING,
@@ -1313,20 +1678,28 @@ static int sc223a_probe(struct i2c_client *client,
 				       &sc223a->module_name);
 	ret |= of_property_read_string(node, RKMODULE_CAMERA_LENS_NAME,
 				       &sc223a->len_name);
+	ret |= of_property_read_string(node, RKMODULE_CAMERA_MODULE_MODE,
+				       &sc223a->mode);
 	if (ret) {
 		dev_err(dev, "could not get module information!\n");
 		return -EINVAL;
 	}
 
+	sc223a->is_thunderboot = IS_ENABLED(CONFIG_VIDEO_ROCKCHIP_THUNDER_BOOT_ISP);
+
 	sc223a->client = client;
-	for (i = 0; i < ARRAY_SIZE(supported_modes); i++) {
-		if (hdr_mode == supported_modes[i].hdr_mode) {
-			sc223a->cur_mode = &supported_modes[i];
-			break;
+	if (!strcmp(sc223a->mode, CAMERA_MIPI_MODE)) {
+		for (i = 0; i < ARRAY_SIZE(supported_modes); i++) {
+			if (hdr_mode == supported_modes[i].hdr_mode) {
+				sc223a->cur_mode = &supported_modes[i];
+				break;
+			}
 		}
+		if (i == ARRAY_SIZE(supported_modes))
+			sc223a->cur_mode = &supported_modes[SC223A_MIPI_1920X1080];
+	} else if (!strcmp(sc223a->mode, CAMERA_DVP_MODE)) {
+		sc223a->cur_mode = &supported_modes[SC223A_DVP_1920X1080];
 	}
-	if (i == ARRAY_SIZE(supported_modes))
-		sc223a->cur_mode = &supported_modes[0];
 
 	sc223a->xvclk = devm_clk_get(dev, "xvclk");
 	if (IS_ERR(sc223a->xvclk)) {
@@ -1334,13 +1707,23 @@ static int sc223a_probe(struct i2c_client *client,
 		return -EINVAL;
 	}
 
-	sc223a->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
-	if (IS_ERR(sc223a->reset_gpio))
-		dev_warn(dev, "Failed to get reset-gpios\n");
+	if (sc223a->is_thunderboot) {
+		sc223a->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_ASIS);
+		if (IS_ERR(sc223a->reset_gpio))
+			dev_warn(dev, "Failed to get reset-gpios\n");
 
-	sc223a->pwdn_gpio = devm_gpiod_get(dev, "pwdn", GPIOD_OUT_LOW);
-	if (IS_ERR(sc223a->pwdn_gpio))
-		dev_warn(dev, "Failed to get pwdn-gpios\n");
+		sc223a->pwdn_gpio = devm_gpiod_get(dev, "pwdn", GPIOD_ASIS);
+		if (IS_ERR(sc223a->pwdn_gpio))
+			dev_warn(dev, "Failed to get pwdn-gpios\n");
+	} else {
+		sc223a->reset_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_LOW);
+		if (IS_ERR(sc223a->reset_gpio))
+			dev_warn(dev, "Failed to get reset-gpios\n");
+
+		sc223a->pwdn_gpio = devm_gpiod_get(dev, "pwdn", GPIOD_OUT_LOW);
+		if (IS_ERR(sc223a->pwdn_gpio))
+			dev_warn(dev, "Failed to get pwdn-gpios\n");
+	}
 
 	sc223a->pinctrl = devm_pinctrl_get(dev);
 	if (!IS_ERR(sc223a->pinctrl)) {
@@ -1411,7 +1794,10 @@ static int sc223a_probe(struct i2c_client *client,
 
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
-	pm_runtime_idle(dev);
+	if (sc223a->is_thunderboot)
+		pm_runtime_get_sync(dev);
+	else
+		pm_runtime_idle(dev);
 
 	return 0;
 
@@ -1483,8 +1869,12 @@ static void __exit sensor_mod_exit(void)
 	i2c_del_driver(&sc223a_i2c_driver);
 }
 
+#if defined(CONFIG_VIDEO_ROCKCHIP_THUNDER_BOOT_ISP) && !defined(CONFIG_INITCALL_ASYNC)
+subsys_initcall(sensor_mod_init);
+#else
 device_initcall_sync(sensor_mod_init);
+#endif
 module_exit(sensor_mod_exit);
 
 MODULE_DESCRIPTION("smartsens sc223a sensor driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

@@ -76,14 +76,15 @@ static void tx_complete(void *arg)
 
 static int gdm_lte_rx(struct sk_buff *skb, struct nic *nic, int nic_type)
 {
-	int ret;
+	int ret, len;
 
+	len = skb->len + ETH_HLEN;
 	ret = netif_rx_ni(skb);
 	if (ret == NET_RX_DROP) {
 		nic->stats.rx_dropped++;
 	} else {
 		nic->stats.rx_packets++;
-		nic->stats.rx_bytes += skb->len + ETH_HLEN;
+		nic->stats.rx_bytes += len;
 	}
 
 	return 0;
@@ -172,7 +173,7 @@ static int gdm_lte_emulate_arp(struct sk_buff *skb_in, u32 nic_type)
 
 static __sum16 icmp6_checksum(struct ipv6hdr *ipv6, u16 *ptr, int len)
 {
-	unsigned short *w = ptr;
+	unsigned short *w;
 	__wsum sum = 0;
 	int i;
 	u16 pa;
@@ -513,7 +514,7 @@ static int gdm_lte_event_send(struct net_device *dev, char *buf, int len)
 
 	length = gdm_dev16_to_cpu(phy_dev->get_endian(phy_dev->priv_dev),
 				  hci->len) + HCI_HEADER_SIZE;
-	return netlink_send(lte_event.sock, idx, 0, buf, length);
+	return netlink_send(lte_event.sock, idx, 0, buf, length, dev);
 }
 
 static void gdm_lte_event_rcv(struct net_device *dev, u16 type,
@@ -794,7 +795,7 @@ static int gdm_lte_receive_pkt(struct phy_dev *phy_dev, char *buf, int len)
 			return index;
 		dev = phy_dev->dev[index];
 		gdm_lte_pdn_table(dev, buf, len);
-		/* Fall through */
+		fallthrough;
 	default:
 		ret = gdm_lte_event_send(dev, buf, len);
 		break;
@@ -881,7 +882,6 @@ int register_lte_device(struct phy_dev *phy_dev,
 		net = alloc_netdev(sizeof(struct nic), pdn_dev_name,
 				   NET_NAME_UNKNOWN, ether_setup);
 		if (!net) {
-			pr_err("alloc_netdev failed\n");
 			ret = -ENOMEM;
 			goto err;
 		}

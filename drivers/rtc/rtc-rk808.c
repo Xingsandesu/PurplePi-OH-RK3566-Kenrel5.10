@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * RTC driver for Rockchip RK808
  *
@@ -5,15 +6,6 @@
  *
  * Author: Chris Zhong <zyw@rock-chips.com>
  * Author: Zhang Qing <zhangqing@rock-chips.com>
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
  */
 
 #include <linux/module.h>
@@ -36,6 +28,7 @@
 #define BIT_RTC_CTRL_REG_RTC_READSEL_M		BIT(7)
 #define BIT_RTC_INTERRUPTS_REG_IT_ALARM_M	BIT(3)
 #define RTC_STATUS_MASK		0xFE
+#define RTC_ALARM_STATUS			BIT(6)
 
 #define SECONDS_REG_MSK		0x7F
 #define MINUTES_REG_MAK		0x7F
@@ -240,10 +233,8 @@ static int rk808_rtc_readalarm(struct device *dev, struct rtc_wkalrm *alrm)
 		return ret;
 	}
 
-	dev_dbg(dev, "alrm read RTC date/time %4d-%02d-%02d(%d) %02d:%02d:%02d\n",
-		1900 + alrm->time.tm_year, alrm->time.tm_mon + 1,
-		alrm->time.tm_mday, alrm->time.tm_wday, alrm->time.tm_hour,
-		alrm->time.tm_min, alrm->time.tm_sec);
+	dev_dbg(dev, "alrm read RTC date/time %ptRd(%d) %ptRt\n",
+		&alrm->time, alrm->time.tm_wday, &alrm->time);
 
 	alrm->enabled = (int_reg & BIT_RTC_INTERRUPTS_REG_IT_ALARM_M) ? 1 : 0;
 
@@ -258,6 +249,12 @@ static int rk808_rtc_stop_alarm(struct rk808_rtc *rk808_rtc)
 	ret = regmap_update_bits(rk808->regmap, rk808_rtc->creg->int_reg,
 				 BIT_RTC_INTERRUPTS_REG_IT_ALARM_M, 0);
 
+	/*
+	 * The rtc alarm status(BIT(6)) must be cleared after alarm 1s or
+	 * after the alarm is disabled.
+	 */
+	ret = regmap_write(rk808->regmap, rk808_rtc->creg->status_reg,
+			   RTC_ALARM_STATUS);
 	return ret;
 }
 
@@ -285,10 +282,8 @@ static int rk808_rtc_setalarm(struct device *dev, struct rtc_wkalrm *alrm)
 		dev_err(dev, "Failed to stop alarm: %d\n", ret);
 		return ret;
 	}
-	dev_dbg(dev, "alrm set RTC date/time %4d-%02d-%02d(%d) %02d:%02d:%02d\n",
-		1900 + alrm->time.tm_year, alrm->time.tm_mon + 1,
-		alrm->time.tm_mday, alrm->time.tm_wday, alrm->time.tm_hour,
-		alrm->time.tm_min, alrm->time.tm_sec);
+	dev_dbg(dev, "alrm set RTC date/time %ptRd(%d) %ptRt\n",
+		&alrm->time, alrm->time.tm_wday, &alrm->time);
 
 	if (rk808_rtc->flag & RTC_NEED_TRANSITIONS)
 		gregorian_to_rockchip(&alrm->time);
@@ -371,8 +366,7 @@ static const struct rtc_class_ops rk808_rtc_ops = {
 /* Turn off the alarm if it should not be a wake source. */
 static int rk808_rtc_suspend(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct rk808_rtc *rk808_rtc = dev_get_drvdata(&pdev->dev);
+	struct rk808_rtc *rk808_rtc = dev_get_drvdata(dev);
 
 	if (device_may_wakeup(dev))
 		enable_irq_wake(rk808_rtc->irq);
@@ -385,8 +379,7 @@ static int rk808_rtc_suspend(struct device *dev)
  */
 static int rk808_rtc_resume(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct rk808_rtc *rk808_rtc = dev_get_drvdata(&pdev->dev);
+	struct rk808_rtc *rk808_rtc = dev_get_drvdata(dev);
 
 	if (device_may_wakeup(dev))
 		disable_irq_wake(rk808_rtc->irq);
@@ -477,7 +470,7 @@ static int rk808_rtc_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev,
 			"Failed to write RTC status: %d\n", ret);
-			return ret;
+		return ret;
 	}
 
 	device_init_wakeup(&pdev->dev, 1);
@@ -489,12 +482,8 @@ static int rk808_rtc_probe(struct platform_device *pdev)
 	rk808_rtc->rtc->ops = &rk808_rtc_ops;
 
 	rk808_rtc->irq = platform_get_irq(pdev, 0);
-	if (rk808_rtc->irq < 0) {
-		if (rk808_rtc->irq != -EPROBE_DEFER)
-			dev_err(&pdev->dev, "Wake up is not possible as irq = %d\n",
-				rk808_rtc->irq);
+	if (rk808_rtc->irq < 0)
 		return rk808_rtc->irq;
-	}
 
 	/* request alarm irq of rk808 */
 	ret = devm_request_threaded_irq(&pdev->dev, rk808_rtc->irq, NULL,
@@ -517,21 +506,7 @@ static struct platform_driver rk808_rtc_driver = {
 	},
 };
 
-#if 0 //by Lyle,20200824
 module_platform_driver(rk808_rtc_driver);
-#else
-static int __init rk809_rtc_init(void)
-{
-	return platform_driver_register(&rk808_rtc_driver);
-}
-
-static void __exit rk809_rtc_exit(void)
-{
-	platform_driver_unregister(&rk808_rtc_driver);
-}
-late_initcall(rk809_rtc_init);
-module_exit(rk809_rtc_exit);
-#endif
 
 MODULE_DESCRIPTION("RTC driver for the rk808 series PMICs");
 MODULE_AUTHOR("Chris Zhong <zyw@rock-chips.com>");

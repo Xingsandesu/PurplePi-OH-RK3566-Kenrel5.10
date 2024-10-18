@@ -19,11 +19,20 @@
 #include <sound/tlv.h>
 
 #include "rockchip_sai.h"
+#include "rockchip_dlp_pcm.h"
+#include "rockchip_utils.h"
 
 #define DRV_NAME		"rockchip-sai"
 
+#define CLK_SHIFT_RATE_HZ_MAX	5
 #define FW_RATIO_MAX		8
 #define FW_RATIO_MIN		1
+#define MAXBURST_PER_FIFO	8
+
+#define DEFAULT_FS		48000
+#define TIMEOUT_US		1000
+#define WAIT_TIME_MS_MAX	10000
+#define QUIRK_ALWAYS_ON		BIT(0)
 
 enum fpw_mode {
 	FPW_ONE_BCLK_WIDTH,
@@ -41,14 +50,30 @@ struct rk_sai_dev {
 	struct snd_dmaengine_dai_dma_data capture_dma_data;
 	struct snd_dmaengine_dai_dma_data playback_dma_data;
 	struct snd_pcm_substream *substreams[SNDRV_PCM_STREAM_LAST + 1];
+	unsigned int wait_time[SNDRV_PCM_STREAM_LAST + 1];
+	unsigned int tx_lanes;
+	unsigned int rx_lanes;
+	unsigned int quirks;
 	enum fpw_mode fpw;
-	int fw_ratio;
+	int  fw_ratio;
 	bool has_capture;
 	bool has_playback;
 	bool is_master_mode;
+	bool is_tdm;
+	bool is_clk_auto;
 };
 
-static int sai_runtime_suspend(struct device *dev)
+static const struct sai_of_quirks {
+	char *quirk;
+	int id;
+} of_quirks[] = {
+	{
+		.quirk = "rockchip,always-on",
+		.id = QUIRK_ALWAYS_ON,
+	},
+};
+
+static int rockchip_sai_runtime_suspend(struct device *dev)
 {
 	struct rk_sai_dev *sai = dev_get_drvdata(dev);
 	unsigned int val;
@@ -62,20 +87,40 @@ static int sai_runtime_suspend(struct device *dev)
 				   SAI_XFER_FSS_DIS);
 
 	ret = regmap_read_poll_timeout_atomic(sai->regmap, SAI_XFER, val,
-					      (val & SAI_XFER_FS_IDLE), 10, 100);
+					      (val & SAI_XFER_FS_IDLE), 10, TIMEOUT_US);
 	if (ret < 0)
 		dev_warn(sai->dev, "Failed to idle FS\n");
 
 	regcache_cache_only(sai->regmap, true);
+	/*
+	 * After FS idle, should wait at least 2 BCLK cycle to make sure
+	 * the CLK gate operation done, and then disable mclk.
+	 *
+	 * Otherwise, the BCLK is still ungated. once the mclk is enabled,
+	 * there maybe a risk that a few BCLK cycle leak. especially for
+	 * low speed situation, such as 8k samplerate.
+	 *
+	 * The best way is to use delay per samplerate, but, the max time
+	 * is quite a tiny value, so, let's make it simple to use the max
+	 * time.
+	 *
+	 * The max BCLK cycle time is: 31us @ 8K-8Bit (64K BCLK)
+	 */
+	udelay(40);
 	clk_disable_unprepare(sai->mclk);
+	clk_disable_unprepare(sai->hclk);
 
 	return 0;
 }
 
-static int sai_runtime_resume(struct device *dev)
+static int rockchip_sai_runtime_resume(struct device *dev)
 {
 	struct rk_sai_dev *sai = dev_get_drvdata(dev);
 	int ret;
+
+	ret = clk_prepare_enable(sai->hclk);
+	if (ret)
+		goto err_hclk;
 
 	ret = clk_prepare_enable(sai->mclk);
 	if (ret)
@@ -87,7 +132,7 @@ static int sai_runtime_resume(struct device *dev)
 	if (ret)
 		goto err_regmap;
 
-	if (sai->is_master_mode)
+	if (sai->quirks & QUIRK_ALWAYS_ON && sai->is_master_mode)
 		regmap_update_bits(sai->regmap, SAI_XFER,
 				   SAI_XFER_CLK_MASK |
 				   SAI_XFER_FSS_MASK,
@@ -99,6 +144,8 @@ static int sai_runtime_resume(struct device *dev)
 err_regmap:
 	clk_disable_unprepare(sai->mclk);
 err_mclk:
+	clk_disable_unprepare(sai->hclk);
+err_hclk:
 	return ret;
 }
 
@@ -178,7 +225,7 @@ static int rockchip_sai_clear(struct rk_sai_dev *sai, unsigned int clr)
 
 	regmap_update_bits(sai->regmap, SAI_CLR, clr, clr);
 	ret = regmap_read_poll_timeout_atomic(sai->regmap, SAI_CLR, val,
-					      !(val & clr), 10, 100);
+					      !(val & clr), 10, TIMEOUT_US);
 	if (ret < 0) {
 		dev_warn(sai->dev, "Failed to clear %u\n", clr);
 		goto reset;
@@ -224,7 +271,7 @@ static void rockchip_sai_xfer_stop(struct rk_sai_dev *sai, int stream)
 
 	regmap_update_bits(sai->regmap, SAI_XFER, msk, val);
 	ret = regmap_read_poll_timeout_atomic(sai->regmap, SAI_XFER, val,
-					      (val & idle), 10, 100);
+					      (val & idle), 10, TIMEOUT_US);
 	if (ret < 0)
 		dev_warn(sai->dev, "Failed to idle stream %d\n", stream);
 
@@ -359,19 +406,46 @@ err_pm_put:
 	return ret;
 }
 
+static unsigned int rockchip_sai_lanes_auto(struct snd_pcm_hw_params *params,
+					    struct snd_soc_dai *dai)
+{
+	struct rk_sai_dev *sai = snd_soc_dai_get_drvdata(dai);
+	unsigned int lanes = 1;
+
+	if (!sai->is_tdm)
+		lanes = DIV_ROUND_UP(params_channels(params), 2);
+
+	return lanes;
+}
+
 static int rockchip_sai_hw_params(struct snd_pcm_substream *substream,
 				  struct snd_pcm_hw_params *params,
 				  struct snd_soc_dai *dai)
 {
 	struct rk_sai_dev *sai = snd_soc_dai_get_drvdata(dai);
-	unsigned int mclk_rate, bclk_rate, div_bclk;
+	struct snd_dmaengine_dai_dma_data *dma_data;
+	unsigned int mclk_rate, mclk_req_rate, bclk_rate, div_bclk;
 	unsigned int ch_per_lane, lanes, slot_width;
-	unsigned int val, fscr, reg;
+	unsigned int val, fscr, reg, fifo;
 
-	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+	dma_data = snd_soc_dai_get_dma_data(dai, substream);
+	dma_data->maxburst = MAXBURST_PER_FIFO * params_channels(params) / 2;
+
+	lanes = rockchip_sai_lanes_auto(params, dai);
+
+	regmap_read(sai->regmap, SAI_DMACR, &val);
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		reg = SAI_TXCR;
-	else
+		if (sai->tx_lanes)
+			lanes = sai->tx_lanes;
+		fifo = SAI_DMACR_TDL_V(val) * lanes;
+	} else {
 		reg = SAI_RXCR;
+		if (sai->rx_lanes)
+			lanes = sai->rx_lanes;
+		fifo = SAI_DMACR_TDL_V(val) * lanes;
+	}
 
 	switch (params_format(params)) {
 	case SNDRV_PCM_FORMAT_S8:
@@ -385,18 +459,20 @@ static int rockchip_sai_hw_params(struct snd_pcm_substream *substream,
 		val = SAI_XCR_VDW(24);
 		break;
 	case SNDRV_PCM_FORMAT_S32_LE:
+	case SNDRV_PCM_FORMAT_IEC958_SUBFRAME_LE:
 		val = SAI_XCR_VDW(32);
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	regmap_update_bits(sai->regmap, reg, SAI_XCR_VDW_MASK, val);
+	val |= SAI_XCR_CSR(lanes);
+
+	regmap_update_bits(sai->regmap, reg, SAI_XCR_VDW_MASK | SAI_XCR_CSR_MASK, val);
 
 	regmap_read(sai->regmap, reg, &val);
 
 	slot_width = SAI_XCR_SBW_V(val);
-	lanes = SAI_XCR_CSR_V(val);
 	ch_per_lane = params_channels(params) / lanes;
 
 	regmap_update_bits(sai->regmap, reg, SAI_XCR_SNB_MASK,
@@ -424,17 +500,58 @@ static int rockchip_sai_hw_params(struct snd_pcm_substream *substream,
 
 	if (sai->is_master_mode) {
 		bclk_rate = sai->fw_ratio * slot_width * ch_per_lane * params_rate(params);
+		if (sai->is_clk_auto)
+			clk_set_rate(sai->mclk, bclk_rate);
 		mclk_rate = clk_get_rate(sai->mclk);
-		if (mclk_rate < bclk_rate) {
-			dev_err(sai->dev, "Mismatch mclk: %u, expected %u at least\n",
-				mclk_rate, bclk_rate);
+		div_bclk = DIV_ROUND_CLOSEST(mclk_rate, bclk_rate);
+		mclk_req_rate = bclk_rate * div_bclk;
+
+		if (mclk_rate < mclk_req_rate - CLK_SHIFT_RATE_HZ_MAX ||
+		    mclk_rate > mclk_req_rate + CLK_SHIFT_RATE_HZ_MAX) {
+			dev_err(sai->dev, "Mismatch mclk: %u, expected %u (+/- %dHz)\n",
+				mclk_rate, mclk_req_rate, CLK_SHIFT_RATE_HZ_MAX);
 			return -EINVAL;
 		}
 
-		div_bclk = DIV_ROUND_CLOSEST(mclk_rate, bclk_rate);
-
 		regmap_update_bits(sai->regmap, SAI_CKR, SAI_CKR_MDIV_MASK,
 				   SAI_CKR_MDIV(div_bclk));
+	}
+
+	rockchip_utils_get_performance(substream, params, dai, fifo);
+
+	return 0;
+}
+
+static int rockchip_sai_hw_free(struct snd_pcm_substream *substream,
+				struct snd_soc_dai *dai)
+{
+	rockchip_utils_put_performance(substream, dai);
+
+	return 0;
+}
+
+static int rockchip_sai_prepare(struct snd_pcm_substream *substream,
+				struct snd_soc_dai *dai)
+{
+	struct rk_sai_dev *sai = snd_soc_dai_get_drvdata(dai);
+
+	if (sai->is_master_mode) {
+		/*
+		 * Should wait for one BCLK ready after DIV and then ungate
+		 * output clk to achieve the clean clk.
+		 *
+		 * The best way is to use delay per samplerate, but, the max time
+		 * is quite a tiny value, so, let's make it simple to use the max
+		 * time.
+		 *
+		 * The max BCLK cycle time is: 15.6us @ 8K-8Bit (64K BCLK)
+		 */
+		udelay(20);
+		regmap_update_bits(sai->regmap, SAI_XFER,
+				   SAI_XFER_CLK_MASK |
+				   SAI_XFER_FSS_MASK,
+				   SAI_XFER_CLK_EN |
+				   SAI_XFER_FSS_EN);
 	}
 
 	return 0;
@@ -471,7 +588,7 @@ static int rockchip_sai_set_sysclk(struct snd_soc_dai *dai, int clk_id,
 	struct rk_sai_dev *sai = snd_soc_dai_get_drvdata(dai);
 	int ret;
 
-	if (!freq)
+	if (!freq || sai->is_clk_auto)
 		return 0;
 
 	ret = clk_set_rate(sai->mclk, freq);
@@ -496,11 +613,15 @@ static int rockchip_sai_startup(struct snd_pcm_substream *substream,
 				    struct snd_soc_dai *dai)
 {
 	struct rk_sai_dev *sai = snd_soc_dai_get_drvdata(dai);
+	int stream = substream->stream;
 
-	if (sai->substreams[substream->stream])
+	if (sai->substreams[stream])
 		return -EBUSY;
 
-	sai->substreams[substream->stream] = substream;
+	if (sai->wait_time[stream])
+		substream->wait_time = msecs_to_jiffies(sai->wait_time[stream]);
+
+	sai->substreams[stream] = substream;
 
 	return 0;
 }
@@ -526,6 +647,8 @@ static int rockchip_sai_set_tdm_slot(struct snd_soc_dai *dai,
 			   SAI_XCR_SBW(slot_width));
 	pm_runtime_put(dai->dev);
 
+	sai->is_tdm = true;
+
 	return 0;
 }
 
@@ -533,8 +656,10 @@ static const struct snd_soc_dai_ops rockchip_sai_dai_ops = {
 	.startup = rockchip_sai_startup,
 	.shutdown = rockchip_sai_shutdown,
 	.hw_params = rockchip_sai_hw_params,
+	.hw_free = rockchip_sai_hw_free,
 	.set_sysclk = rockchip_sai_set_sysclk,
 	.set_fmt = rockchip_sai_set_fmt,
+	.prepare = rockchip_sai_prepare,
 	.trigger = rockchip_sai_trigger,
 	.set_tdm_slot = rockchip_sai_set_tdm_slot,
 };
@@ -690,31 +815,33 @@ static int rockchip_sai_init_dai(struct rk_sai_dev *sai, struct resource *res,
 	if (sai->has_playback) {
 		dai->playback.stream_name = "Playback";
 		dai->playback.channels_min = 1;
-		dai->playback.channels_max = 128;
-		dai->playback.rates = SNDRV_PCM_RATE_8000_192000;
+		dai->playback.channels_max = 512;
+		dai->playback.rates = SNDRV_PCM_RATE_8000_384000;
 		dai->playback.formats = SNDRV_PCM_FMTBIT_S8 |
 					SNDRV_PCM_FMTBIT_S16_LE |
 					SNDRV_PCM_FMTBIT_S24_LE |
-					SNDRV_PCM_FMTBIT_S32_LE;
+					SNDRV_PCM_FMTBIT_S32_LE |
+					SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_LE;
 
 		sai->playback_dma_data.addr = res->start + SAI_TXDR;
 		sai->playback_dma_data.addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
-		sai->playback_dma_data.maxburst = 8;
+		sai->playback_dma_data.maxburst = MAXBURST_PER_FIFO;
 	}
 
 	if (sai->has_capture) {
 		dai->capture.stream_name = "Capture";
 		dai->capture.channels_min = 1;
-		dai->capture.channels_max = 128;
-		dai->capture.rates = SNDRV_PCM_RATE_8000_192000;
+		dai->capture.channels_max = 512;
+		dai->capture.rates = SNDRV_PCM_RATE_8000_384000;
 		dai->capture.formats = SNDRV_PCM_FMTBIT_S8 |
 				       SNDRV_PCM_FMTBIT_S16_LE |
 				       SNDRV_PCM_FMTBIT_S24_LE |
-				       SNDRV_PCM_FMTBIT_S32_LE;
+				       SNDRV_PCM_FMTBIT_S32_LE |
+				       SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_LE;
 
 		sai->capture_dma_data.addr = res->start + SAI_RXDR;
 		sai->capture_dma_data.addr_width = DMA_SLAVE_BUSWIDTH_4_BYTES;
-		sai->capture_dma_data.maxburst = 8;
+		sai->capture_dma_data.maxburst = MAXBURST_PER_FIFO;
 	}
 
 	regmap_update_bits(sai->regmap, SAI_DMACR, SAI_DMACR_TDL_MASK,
@@ -728,8 +855,8 @@ static int rockchip_sai_init_dai(struct rk_sai_dev *sai, struct resource *res,
 	return 0;
 }
 
-static const char * const tcsr_text[] = { "SDOx1", "SDOx2", "SDOx3", "SDOx4" };
-static const char * const rcsr_text[] = { "SDIx1", "SDIx2", "SDIx3", "SDIx4" };
+static const char * const tx_lanes_text[] = { "Auto", "SDOx1", "SDOx2", "SDOx3", "SDOx4" };
+static const char * const rx_lanes_text[] = { "Auto", "SDIx1", "SDIx2", "SDIx3", "SDIx4" };
 static const char * const edge_text[] = { "Rising Edge", "Dual Edge" };
 static const char * const edge_shift_text[] = { "Normal", "Shift 1 Edge" };
 
@@ -743,8 +870,8 @@ static const char * const fbm_text[] = { "MSB", "LSB" };
 static const char * const vdj_text[] = { "Right J", "Left J" };
 
 static const char * const sbw_text[] = {
-	" 0", " 0", " 0", " 0", " 0", " 0", " 0", " 8",
-	" 9", "10", "11", "12", "13", "14", "15", "16",
+	 "0",  "0",  "0",  "0",  "0",  "0",  "0",  "8",
+	 "9", "10", "11", "12", "13", "14", "15", "16",
 	"17", "18", "19", "20", "21", "22", "23", "24",
 	"25", "26", "27", "28", "29", "30", "31", "32", };
 
@@ -752,7 +879,7 @@ static const char * const mono_text[] = { "Disable", "Enable" };
 
 static DECLARE_TLV_DB_SCALE(rmss_tlv, 0, 128, 0);
 
-static const char * const mss_text[] = { "Master", "Slave" };
+static const char * const mss_text[] = { "Slave", "Master" };
 
 static const char * const ckp_text[] = { "Normal", "Inverted" };
 
@@ -760,46 +887,49 @@ static const char * const lpx_text[] = {
 	"From SDO0", "From SDO1", "From SDO2", "From SDO3" };
 
 static const char * const lps_text[] = { "Disable", "Enable" };
-static const char * const sync_out_text[] = { "External", "Internal" };
-static const char * const sync_in_text[] = { "External", "Internal" };
+static const char * const sync_out_text[] = { "From CRU", "From IO" };
+static const char * const sync_in_text[] = { "From IO", "From Sync Port" };
 
 static const char * const rpaths_text[] = {
 	"From SDI0", "From SDI1", "From SDI2", "From SDI3" };
 
 static const char * const tpaths_text[] = {
-	"To SDO0", "To SDO1", "To SDO2", "To SDO3" };
+	"From PATH0", "From PATH1", "From PATH2", "From PATH3" };
 
 /* TXCR */
-static SOC_ENUM_SINGLE_DECL(tsft_enum, SAI_TXCR, 22, edge_shift_text);
-static SOC_ENUM_SINGLE_DECL(tcsr_enum, SAI_TXCR, 20, tcsr_text);
-static SOC_ENUM_SINGLE_DECL(tsjm_enum, SAI_TXCR, 19, sjm_text);
-static SOC_ENUM_SINGLE_DECL(tfbm_enum, SAI_TXCR, 18, fbm_text);
-static SOC_ENUM_SINGLE_DECL(tvdj_enum, SAI_TXCR, 10, vdj_text);
-static SOC_ENUM_SINGLE_DECL(tsbw_enum, SAI_TXCR,  5, sbw_text);
+static SOC_ENUM_SINGLE_DECL(__maybe_unused tsft_enum, SAI_TXCR, 22, edge_shift_text);
+static const struct soc_enum tx_lanes_enum =
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(tx_lanes_text), tx_lanes_text);
+static SOC_ENUM_SINGLE_DECL(__maybe_unused tsjm_enum, SAI_TXCR, 19, sjm_text);
+static SOC_ENUM_SINGLE_DECL(__maybe_unused tfbm_enum, SAI_TXCR, 18, fbm_text);
+static SOC_ENUM_SINGLE_DECL(__maybe_unused tvdj_enum, SAI_TXCR, 10, vdj_text);
+static SOC_ENUM_SINGLE_DECL(__maybe_unused tsbw_enum, SAI_TXCR,  5, sbw_text);
 
 /* FSCR */
-static SOC_ENUM_SINGLE_DECL(edge_enum, SAI_FSCR, 24, edge_text);
-static const struct soc_enum fpw_enum =
+static SOC_ENUM_SINGLE_DECL(__maybe_unused edge_enum, SAI_FSCR, 24, edge_text);
+static const struct soc_enum __maybe_unused fpw_enum =
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(fpw_text), fpw_text);
-static const struct soc_enum fw_ratio_enum =
+static const struct soc_enum __maybe_unused fw_ratio_enum =
 	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(fw_ratio_text), fw_ratio_text);
 
 /* RXCR */
-static SOC_ENUM_SINGLE_DECL(rsft_enum, SAI_RXCR, 22, edge_shift_text);
-static SOC_ENUM_SINGLE_DECL(rcsr_enum, SAI_RXCR, 20, rcsr_text);
-static SOC_ENUM_SINGLE_DECL(rsjm_enum, SAI_RXCR, 19, sjm_text);
-static SOC_ENUM_SINGLE_DECL(rfbm_enum, SAI_RXCR, 18, fbm_text);
-static SOC_ENUM_SINGLE_DECL(rvdj_enum, SAI_RXCR, 10, vdj_text);
-static SOC_ENUM_SINGLE_DECL(rsbw_enum, SAI_RXCR,  5, sbw_text);
+static SOC_ENUM_SINGLE_DECL(__maybe_unused rsft_enum, SAI_RXCR, 22, edge_shift_text);
+static const struct soc_enum rx_lanes_enum =
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(rx_lanes_text), rx_lanes_text);
+static SOC_ENUM_SINGLE_DECL(__maybe_unused rsjm_enum, SAI_RXCR, 19, sjm_text);
+static SOC_ENUM_SINGLE_DECL(__maybe_unused rfbm_enum, SAI_RXCR, 18, fbm_text);
+static SOC_ENUM_SINGLE_DECL(__maybe_unused rvdj_enum, SAI_RXCR, 10, vdj_text);
+static SOC_ENUM_SINGLE_DECL(__maybe_unused rsbw_enum, SAI_RXCR,  5, sbw_text);
 
 /* MONO_CR */
 static SOC_ENUM_SINGLE_DECL(rmono_switch, SAI_MONO_CR, 1, mono_text);
 static SOC_ENUM_SINGLE_DECL(tmono_switch, SAI_MONO_CR, 0, mono_text);
 
 /* CKR */
-static SOC_ENUM_SINGLE_DECL(mss_switch, SAI_CKR, 2, mss_text);
-static SOC_ENUM_SINGLE_DECL(sp_switch,  SAI_CKR, 1, ckp_text);
-static SOC_ENUM_SINGLE_DECL(fp_switch,  SAI_CKR, 0, ckp_text);
+static const struct soc_enum __maybe_unused mss_switch =
+	SOC_ENUM_SINGLE_EXT(ARRAY_SIZE(mss_text), mss_text);
+static SOC_ENUM_SINGLE_DECL(__maybe_unused sp_switch,  SAI_CKR, 1, ckp_text);
+static SOC_ENUM_SINGLE_DECL(__maybe_unused fp_switch,  SAI_CKR, 0, ckp_text);
 
 /* PATH_SEL */
 static SOC_ENUM_SINGLE_DECL(lp3_enum, SAI_PATH_SEL, 28, lpx_text);
@@ -821,8 +951,8 @@ static SOC_ENUM_SINGLE_DECL(tpath2_enum, SAI_PATH_SEL, 4, tpaths_text);
 static SOC_ENUM_SINGLE_DECL(tpath1_enum, SAI_PATH_SEL, 2, tpaths_text);
 static SOC_ENUM_SINGLE_DECL(tpath0_enum, SAI_PATH_SEL, 0, tpaths_text);
 
-static int rockchip_sai_fpw_get(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
+static int __maybe_unused rockchip_sai_fpw_get(struct snd_kcontrol *kcontrol,
+					       struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
 	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
@@ -832,8 +962,8 @@ static int rockchip_sai_fpw_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-static int rockchip_sai_fpw_put(struct snd_kcontrol *kcontrol,
-				struct snd_ctl_elem_value *ucontrol)
+static int __maybe_unused rockchip_sai_fpw_put(struct snd_kcontrol *kcontrol,
+					       struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
 	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
@@ -848,8 +978,8 @@ static int rockchip_sai_fpw_put(struct snd_kcontrol *kcontrol,
 	return 1;
 }
 
-static int rockchip_sai_fw_ratio_get(struct snd_kcontrol *kcontrol,
-				     struct snd_ctl_elem_value *ucontrol)
+static int __maybe_unused rockchip_sai_fw_ratio_get(struct snd_kcontrol *kcontrol,
+						    struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
 	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
@@ -859,8 +989,8 @@ static int rockchip_sai_fw_ratio_get(struct snd_kcontrol *kcontrol,
 	return 0;
 }
 
-static int rockchip_sai_fw_ratio_put(struct snd_kcontrol *kcontrol,
-				     struct snd_ctl_elem_value *ucontrol)
+static int __maybe_unused rockchip_sai_fw_ratio_put(struct snd_kcontrol *kcontrol,
+						    struct snd_ctl_elem_value *ucontrol)
 {
 	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
 	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
@@ -874,19 +1004,219 @@ static int rockchip_sai_fw_ratio_put(struct snd_kcontrol *kcontrol,
 	return 1;
 }
 
-static DECLARE_TLV_DB_SCALE(fs_shift_tlv, 0, 8192, 0);
+static int rockchip_sai_tx_lanes_get(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
+
+	ucontrol->value.enumerated.item[0] = sai->tx_lanes;
+
+	return 0;
+}
+
+static int rockchip_sai_tx_lanes_put(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
+	int num;
+
+	num = ucontrol->value.enumerated.item[0];
+	if (num >= ARRAY_SIZE(tx_lanes_text))
+		return -EINVAL;
+
+	sai->tx_lanes = num;
+
+	return 1;
+}
+
+static int rockchip_sai_rx_lanes_get(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
+
+	ucontrol->value.enumerated.item[0] = sai->rx_lanes;
+
+	return 0;
+}
+
+static int rockchip_sai_rx_lanes_put(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
+	int num;
+
+	num = ucontrol->value.enumerated.item[0];
+	if (num >= ARRAY_SIZE(rx_lanes_text))
+		return -EINVAL;
+
+	sai->rx_lanes = num;
+
+	return 1;
+}
+
+static int __maybe_unused rockchip_sai_mss_get(struct snd_kcontrol *kcontrol,
+					       struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
+
+	ucontrol->value.enumerated.item[0] = sai->is_master_mode;
+
+	return 0;
+}
+
+static int __maybe_unused rockchip_sai_mss_put(struct snd_kcontrol *kcontrol,
+					       struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
+	bool mss;
+
+	/* MUST: do not update mode while stream is running */
+	if (snd_soc_component_active(component))
+		return -EPERM;
+
+	mss = !!ucontrol->value.enumerated.item[0];
+	if (mss == sai->is_master_mode)
+		return 0;
+
+	sai->is_master_mode = mss;
+
+	pm_runtime_get_sync(sai->dev);
+	if (sai->is_master_mode) {
+		/* Switch from Slave to Master */
+		regmap_update_bits(sai->regmap, SAI_CKR,
+				   SAI_CKR_MSS_MASK,
+				   SAI_CKR_MSS_MASTER);
+		regmap_update_bits(sai->regmap, SAI_XFER,
+				   SAI_XFER_CLK_MASK |
+				   SAI_XFER_FSS_MASK,
+				   SAI_XFER_CLK_EN |
+				   SAI_XFER_FSS_EN);
+	} else {
+		/* Switch from Master to Slave */
+		regmap_update_bits(sai->regmap, SAI_CKR,
+				   SAI_CKR_MSS_MASK,
+				   SAI_CKR_MSS_SLAVE);
+		regmap_update_bits(sai->regmap, SAI_XFER,
+				   SAI_XFER_CLK_MASK |
+				   SAI_XFER_FSS_MASK,
+				   SAI_XFER_CLK_DIS |
+				   SAI_XFER_FSS_DIS);
+	}
+	pm_runtime_put(sai->dev);
+
+	return 1;
+}
+
+static int rockchip_sai_clk_auto_get(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
+
+	ucontrol->value.integer.value[0] = sai->is_clk_auto;
+
+	return 0;
+}
+
+static int rockchip_sai_clk_auto_put(struct snd_kcontrol *kcontrol,
+				     struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
+	bool clk_auto = ucontrol->value.integer.value[0];
+
+	if (clk_auto == sai->is_clk_auto)
+		return 0;
+
+	sai->is_clk_auto = clk_auto;
+
+	return 1;
+}
+
+static int rockchip_sai_wait_time_info(struct snd_kcontrol *kcontrol,
+				       struct snd_ctl_elem_info *uinfo)
+{
+	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->count = 1;
+	uinfo->value.integer.min = 0;
+	uinfo->value.integer.max = WAIT_TIME_MS_MAX;
+	uinfo->value.integer.step = 1;
+
+	return 0;
+}
+
+static int rockchip_sai_rd_wait_time_get(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
+
+	ucontrol->value.integer.value[0] = sai->wait_time[SNDRV_PCM_STREAM_CAPTURE];
+
+	return 0;
+}
+
+static int rockchip_sai_rd_wait_time_put(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
+
+	if (ucontrol->value.integer.value[0] > WAIT_TIME_MS_MAX)
+		return -EINVAL;
+
+	sai->wait_time[SNDRV_PCM_STREAM_CAPTURE] = ucontrol->value.integer.value[0];
+
+	return 1;
+}
+
+static int rockchip_sai_wr_wait_time_get(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
+
+	ucontrol->value.integer.value[0] = sai->wait_time[SNDRV_PCM_STREAM_PLAYBACK];
+
+	return 0;
+}
+
+static int rockchip_sai_wr_wait_time_put(struct snd_kcontrol *kcontrol,
+					 struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component = snd_soc_kcontrol_component(kcontrol);
+	struct rk_sai_dev *sai = snd_soc_component_get_drvdata(component);
+
+	if (ucontrol->value.integer.value[0] > WAIT_TIME_MS_MAX)
+		return -EINVAL;
+
+	sai->wait_time[SNDRV_PCM_STREAM_PLAYBACK] = ucontrol->value.integer.value[0];
+
+	return 1;
+}
+
+#define SAI_PCM_WAIT_TIME(xname, xhandler_get, xhandler_put)	\
+{	.iface = SNDRV_CTL_ELEM_IFACE_PCM, .name = xname,	\
+	.info = rockchip_sai_wait_time_info,			\
+	.get = xhandler_get, .put = xhandler_put }
+
+static __maybe_unused DECLARE_TLV_DB_SCALE(fs_shift_tlv, 0, 8192, 0);
 
 static const struct snd_kcontrol_new rockchip_sai_controls[] = {
-
+#ifdef CONFIG_SND_SOC_ROCKCHIP_SAI_VERBOSE
 	SOC_ENUM("Transmit Edge Shift", tsft_enum),
-	SOC_ENUM("Transmit SDOx Select", tcsr_enum),
 	SOC_ENUM("Transmit Store Justified Mode", tsjm_enum),
 	SOC_ENUM("Transmit First Bit Mode", tfbm_enum),
 	SOC_ENUM("Transmit Valid Data Justified", tvdj_enum),
 	SOC_ENUM("Transmit Slot Bit Width", tsbw_enum),
 
 	SOC_ENUM("Receive Edge Shift", rsft_enum),
-	SOC_ENUM("Receive SDIx Select", rcsr_enum),
 	SOC_ENUM("Receive Store Justified Mode", rsjm_enum),
 	SOC_ENUM("Receive First Bit Mode", rfbm_enum),
 	SOC_ENUM("Receive Valid Data Justified", rvdj_enum),
@@ -898,14 +1228,24 @@ static const struct snd_kcontrol_new rockchip_sai_controls[] = {
 	SOC_ENUM_EXT("Frame Width Ratio", fw_ratio_enum,
 		     rockchip_sai_fw_ratio_get, rockchip_sai_fw_ratio_put),
 
+	SOC_ENUM_EXT("Master Slave Mode Select", mss_switch,
+		     rockchip_sai_mss_get, rockchip_sai_mss_put),
+	SOC_ENUM("Sclk Polarity", sp_switch),
+	SOC_ENUM("Frame Sync Polarity", fp_switch),
+
+	SOC_SINGLE_TLV("Transmit Frame Shift Select", SAI_TX_SHIFT,
+		       0, 8192, 0, fs_shift_tlv),
+	SOC_SINGLE_TLV("Receive Frame Shift Select", SAI_RX_SHIFT,
+		       0, 8192, 0, fs_shift_tlv),
+#endif
+	SOC_ENUM_EXT("Transmit SDOx Select", tx_lanes_enum,
+		     rockchip_sai_tx_lanes_get, rockchip_sai_tx_lanes_put),
+	SOC_ENUM_EXT("Receive SDIx Select", rx_lanes_enum,
+		     rockchip_sai_rx_lanes_get, rockchip_sai_rx_lanes_put),
 	SOC_SINGLE_TLV("Receive Mono Slot Select", SAI_MONO_CR,
 		       2, 128, 0, rmss_tlv),
 	SOC_ENUM("Receive Mono Switch", rmono_switch),
 	SOC_ENUM("Transmit Mono Switch", tmono_switch),
-
-	SOC_ENUM("Master / Slave Mode Select", mss_switch),
-	SOC_ENUM("Sclk Polarity", sp_switch),
-	SOC_ENUM("Frame Sync Polarity", fp_switch),
 
 	SOC_ENUM("SDI3 Loopback Src Select", lp3_enum),
 	SOC_ENUM("SDI2 Loopback Src Select", lp2_enum),
@@ -921,15 +1261,21 @@ static const struct snd_kcontrol_new rockchip_sai_controls[] = {
 	SOC_ENUM("Receive PATH2 Source Select", rpath2_enum),
 	SOC_ENUM("Receive PATH1 Source Select", rpath1_enum),
 	SOC_ENUM("Receive PATH0 Source Select", rpath0_enum),
-	SOC_ENUM("Transmit PATH3 Sink Select", tpath3_enum),
-	SOC_ENUM("Transmit PATH2 Sink Select", tpath2_enum),
-	SOC_ENUM("Transmit PATH1 Sink Select", tpath1_enum),
-	SOC_ENUM("Transmit PATH0 Sink Select", tpath0_enum),
+	SOC_ENUM("Transmit SDO3 Source Select", tpath3_enum),
+	SOC_ENUM("Transmit SDO2 Source Select", tpath2_enum),
+	SOC_ENUM("Transmit SDO1 Source Select", tpath1_enum),
+	SOC_ENUM("Transmit SDO0 Source Select", tpath0_enum),
 
-	SOC_SINGLE_TLV("Transmit Frame Shift Select", SAI_TX_SHIFT,
-		       0, 8192, 0, fs_shift_tlv),
-	SOC_SINGLE_TLV("Receive Frame Shift Select", SAI_RX_SHIFT,
-		       0, 8192, 0, fs_shift_tlv),
+	SOC_SINGLE_BOOL_EXT("Clk Auto Switch", 0,
+			    rockchip_sai_clk_auto_get,
+			    rockchip_sai_clk_auto_put),
+
+	SAI_PCM_WAIT_TIME("PCM Read Wait Time MS",
+			  rockchip_sai_rd_wait_time_get,
+			  rockchip_sai_rd_wait_time_put),
+	SAI_PCM_WAIT_TIME("PCM Write Wait Time MS",
+			  rockchip_sai_wr_wait_time_get,
+			  rockchip_sai_wr_wait_time_put),
 };
 
 static const struct snd_soc_component_driver rockchip_sai_component = {
@@ -949,6 +1295,9 @@ static irqreturn_t rockchip_sai_isr(int irq, void *devid)
 		dev_warn_ratelimited(sai->dev, "TX FIFO Underrun\n");
 		regmap_update_bits(sai->regmap, SAI_INTCR,
 				   SAI_INTCR_TXUIC, SAI_INTCR_TXUIC);
+		regmap_update_bits(sai->regmap, SAI_INTCR,
+				   SAI_INTCR_TXUIE_MASK,
+				   SAI_INTCR_TXUIE(0));
 		substream = sai->substreams[SNDRV_PCM_STREAM_PLAYBACK];
 		if (substream)
 			snd_pcm_stop_xrun(substream);
@@ -958,6 +1307,9 @@ static irqreturn_t rockchip_sai_isr(int irq, void *devid)
 		dev_warn_ratelimited(sai->dev, "RX FIFO Overrun\n");
 		regmap_update_bits(sai->regmap, SAI_INTCR,
 				   SAI_INTCR_RXOIC, SAI_INTCR_RXOIC);
+		regmap_update_bits(sai->regmap, SAI_INTCR,
+				   SAI_INTCR_RXOIE_MASK,
+				   SAI_INTCR_RXOIE(0));
 		substream = sai->substreams[SNDRV_PCM_STREAM_CAPTURE];
 		if (substream)
 			snd_pcm_stop_xrun(substream);
@@ -965,6 +1317,73 @@ static irqreturn_t rockchip_sai_isr(int irq, void *devid)
 
 	return IRQ_HANDLED;
 }
+
+static int rockchip_sai_keep_clk_always_on(struct rk_sai_dev *sai)
+{
+	unsigned int mclk_rate, bclk_rate, div_bclk;
+
+	sai->is_master_mode = true;
+
+	/* init I2S fmt default */
+	rockchip_sai_fmt_create(sai, SND_SOC_DAIFMT_I2S);
+
+	regmap_update_bits(sai->regmap, SAI_FSCR,
+			   SAI_FSCR_FW_MASK |
+			   SAI_FSCR_FPW_MASK,
+			   SAI_FSCR_FW(64) |
+			   SAI_FSCR_FPW(32));
+
+	mclk_rate = clk_get_rate(sai->mclk);
+	bclk_rate = DEFAULT_FS * 64;
+	div_bclk = DIV_ROUND_CLOSEST(mclk_rate, bclk_rate);
+
+	regmap_update_bits(sai->regmap, SAI_CKR, SAI_CKR_MDIV_MASK,
+			   SAI_CKR_MDIV(div_bclk));
+
+	pm_runtime_forbid(sai->dev);
+
+	dev_info(sai->dev, "CLK-ALWAYS-ON: mclk: %d, bclk: %d, fsync: %d\n",
+		 mclk_rate, bclk_rate, DEFAULT_FS);
+
+	return 0;
+}
+
+static int rockchip_sai_parse_quirks(struct rk_sai_dev *sai)
+{
+	int ret = 0, i = 0;
+
+	for (i = 0; i < ARRAY_SIZE(of_quirks); i++)
+		if (device_property_read_bool(sai->dev, of_quirks[i].quirk))
+			sai->quirks |= of_quirks[i].id;
+
+	if (sai->quirks & QUIRK_ALWAYS_ON)
+		ret = rockchip_sai_keep_clk_always_on(sai);
+
+	return ret;
+}
+
+static int rockchip_sai_get_fifo_count(struct device *dev,
+				       struct snd_pcm_substream *substream)
+{
+	struct rk_sai_dev *sai = dev_get_drvdata(dev);
+	int val = 0;
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK)
+		regmap_read(sai->regmap, SAI_TXFIFOLR, &val);
+	else
+		regmap_read(sai->regmap, SAI_RXFIFOLR, &val);
+
+	val = ((val & SAI_FIFOLR_XFL3_MASK) >> SAI_FIFOLR_XFL3_SHIFT) +
+	      ((val & SAI_FIFOLR_XFL2_MASK) >> SAI_FIFOLR_XFL2_SHIFT) +
+	      ((val & SAI_FIFOLR_XFL1_MASK) >> SAI_FIFOLR_XFL1_SHIFT) +
+	      ((val & SAI_FIFOLR_XFL0_MASK) >> SAI_FIFOLR_XFL0_SHIFT);
+
+	return val;
+}
+
+static const struct snd_dlp_config dconfig = {
+	.get_fifo_count = rockchip_sai_get_fifo_count,
+};
 
 static int rockchip_sai_probe(struct platform_device *pdev)
 {
@@ -981,6 +1400,8 @@ static int rockchip_sai_probe(struct platform_device *pdev)
 
 	sai->dev = &pdev->dev;
 	sai->fw_ratio = 1;
+	/* match to register default */
+	sai->is_master_mode = true;
 	dev_set_drvdata(&pdev->dev, sai);
 
 	sai->rst_h = devm_reset_control_get_optional_exclusive(&pdev->dev, "h");
@@ -1000,7 +1421,7 @@ static int rockchip_sai_probe(struct platform_device *pdev)
 	if (IS_ERR(sai->regmap))
 		return PTR_ERR(sai->regmap);
 
-	irq = platform_get_irq(pdev, 0);
+	irq = platform_get_irq_optional(pdev, 0);
 	if (irq > 0) {
 		ret = devm_request_irq(&pdev->dev, irq, rockchip_sai_isr,
 				       IRQF_SHARED, node->name, sai);
@@ -1022,20 +1443,30 @@ static int rockchip_sai_probe(struct platform_device *pdev)
 		return PTR_ERR(sai->hclk);
 	}
 
-	ret = clk_prepare_enable(sai->hclk);
+	ret = rockchip_sai_parse_quirks(sai);
 	if (ret)
 		return ret;
 
+	ret = rockchip_sai_init_dai(sai, res, &dai);
+	if (ret)
+		return ret;
+
+	/*
+	 * MUST: after pm_runtime_enable step, any register R/W
+	 * should be wrapped with pm_runtime_get_sync/put.
+	 *
+	 * Another approach is to enable the regcache true to
+	 * avoid access HW registers.
+	 *
+	 * Alternatively, performing the registers R/W before
+	 * pm_runtime_enable is also a good option.
+	 */
 	pm_runtime_enable(&pdev->dev);
 	if (!pm_runtime_enabled(&pdev->dev)) {
-		ret = sai_runtime_resume(&pdev->dev);
+		ret = rockchip_sai_runtime_resume(&pdev->dev);
 		if (ret)
 			goto err_runtime_disable;
 	}
-
-	ret = rockchip_sai_init_dai(sai, res, &dai);
-	if (ret)
-		goto err_runtime_suspend;
 
 	ret = devm_snd_soc_register_component(&pdev->dev,
 					      &rockchip_sai_component,
@@ -1043,7 +1474,16 @@ static int rockchip_sai_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_runtime_suspend;
 
-	ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
+	if (device_property_read_bool(&pdev->dev, "rockchip,no-dmaengine")) {
+		dev_info(&pdev->dev, "Used for Multi-DAI\n");
+		return 0;
+	}
+
+	if (device_property_read_bool(&pdev->dev, "rockchip,digital-loopback"))
+		ret = devm_snd_dmaengine_dlp_register(&pdev->dev, &dconfig);
+	else
+		ret = devm_snd_dmaengine_pcm_register(&pdev->dev, NULL, 0);
+
 	if (ret)
 		goto err_runtime_suspend;
 
@@ -1051,29 +1491,25 @@ static int rockchip_sai_probe(struct platform_device *pdev)
 
 err_runtime_suspend:
 	if (!pm_runtime_status_suspended(&pdev->dev))
-		sai_runtime_suspend(&pdev->dev);
+		rockchip_sai_runtime_suspend(&pdev->dev);
 err_runtime_disable:
 	pm_runtime_disable(&pdev->dev);
-	clk_disable_unprepare(sai->hclk);
 
 	return ret;
 }
 
 static int rockchip_sai_remove(struct platform_device *pdev)
 {
-	struct rk_sai_dev *sai = dev_get_drvdata(&pdev->dev);
-
 	pm_runtime_disable(&pdev->dev);
 	if (!pm_runtime_status_suspended(&pdev->dev))
-		sai_runtime_suspend(&pdev->dev);
-
-	clk_disable_unprepare(sai->hclk);
+		rockchip_sai_runtime_suspend(&pdev->dev);
 
 	return 0;
 }
 
 static const struct dev_pm_ops rockchip_sai_pm_ops = {
-	SET_RUNTIME_PM_OPS(sai_runtime_suspend, sai_runtime_resume, NULL)
+	SET_RUNTIME_PM_OPS(rockchip_sai_runtime_suspend, rockchip_sai_runtime_resume, NULL)
+	SET_SYSTEM_SLEEP_PM_OPS(pm_runtime_force_suspend, pm_runtime_force_resume)
 };
 
 static struct platform_driver rockchip_sai_driver = {

@@ -56,26 +56,21 @@ void nvp6158_motion_onoff_set(motion_mode *motion_set)
 	//BANK2_MOTION
 	gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0xFF, 0x02);
 
-	if(motion_set->fmtdef == TVI_3M_18P || motion_set->fmtdef == TVI_5M_12_5P || motion_set->fmtdef == TVI_5M_20P)
-	{
+	if(motion_set->fmtdef == TVI_3M_18P || motion_set->fmtdef == TVI_5M_12_5P ||
+		motion_set->fmtdef == TVI_5M_20P) {
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x00 + (0x07 * motion_set->ch), 0x0C);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x02 + (0x07 * motion_set->ch), 0x23);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x28 + (0x06 * motion_set->ch), 0x11);
 
-		if(motion_set->fmtdef == TVI_3M_18P)
-		{
+		if(motion_set->fmtdef == TVI_3M_18P) {
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x29 + (0x06 * motion_set->ch), 0x78);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2A + (0x06 * motion_set->ch), 0x40);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2C + (0x06 * motion_set->ch), 0x72);
-		}
-		else if(motion_set->fmtdef == TVI_5M_12_5P)
-		{
+		} else if(motion_set->fmtdef == TVI_5M_12_5P) {
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x29 + (0x06 * motion_set->ch), 0xA2);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2A + (0x06 * motion_set->ch), 0x51);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2C + (0x06 * motion_set->ch), 0x9c);
-		}
-		else if(motion_set->fmtdef == TVI_5M_20P)
-		{
+		} else if(motion_set->fmtdef == TVI_5M_20P) {
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x29 + (0x06 * motion_set->ch), 0xA0);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2A + (0x06 * motion_set->ch), 0x51);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2C + (0x06 * motion_set->ch), 0x9a);
@@ -84,9 +79,7 @@ void nvp6158_motion_onoff_set(motion_mode *motion_set)
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2B + (0x06 * motion_set->ch), 0x6);
 
 		printk("[DRV_Motion_OnOff] ch(%d) fmtdef(%d)\n", motion_set->ch, motion_set->fmtdef);
-	}
-	else if( motion_set->fmtdef == AHD20_1080P_15P_EX || motion_set->fmtdef == AHD20_1080P_12_5P_EX )
-	{
+	} else if( motion_set->fmtdef == AHD20_1080P_15P_EX || motion_set->fmtdef == AHD20_1080P_12_5P_EX ) {
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x00 + (0x07 * motion_set->ch), 0x0C);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x02 + (0x07 * motion_set->ch), 0x23);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x28 + (0x06 * motion_set->ch), 0x11);
@@ -94,20 +87,16 @@ void nvp6158_motion_onoff_set(motion_mode *motion_set)
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2A + (0x06 * motion_set->ch), 0x2d);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2B + (0x06 * motion_set->ch), 0x06);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2C + (0x06 * motion_set->ch), 0xea);
-	}
-	else
-	{
+	} else {
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x28 + (0x06 * motion_set->ch), 0x00);
 	}
 
-	if(motion_set->set_val<0 || motion_set->set_val>1)
-	{
+	if(motion_set->set_val<0 || motion_set->set_val>1) {
 		printk("[DRV_Motion_OnOff]Error!! ch(%d) Setting Value Over:%x!! Only 0 or 1\n", motion_set->ch, motion_set->set_val);
 		return;
 	}
 
-	switch(motion_set->set_val)
-	{
+	switch(motion_set->set_val) {
 		case FUNC_OFF : gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], (0x00 + (0x07 * motion_set->ch)), 0x0D);
 						gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x28 + (0x06 * motion_set->ch), 0x00);
 			break;
@@ -126,26 +115,21 @@ void nvp6158_motion_pixel_all_onoff_set(motion_mode *motion_set)
 	//BANK2_MOTION
 	gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0xFF, 0x02);
 
-	if(motion_set->fmtdef == TVI_3M_18P || motion_set->fmtdef == TVI_5M_12_5P || motion_set->fmtdef == TVI_5M_20P)
-	{
+	if(motion_set->fmtdef == TVI_3M_18P || motion_set->fmtdef == TVI_5M_12_5P ||
+			motion_set->fmtdef == TVI_5M_20P) {
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x00 + (0x07 * motion_set->ch), 0x0C);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x02 + (0x07 * motion_set->ch), 0x23);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x28 + (0x06 * motion_set->ch), 0x11);
 
-		if(motion_set->fmtdef == TVI_3M_18P)
-		{
+		if(motion_set->fmtdef == TVI_3M_18P) {
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x29 + (0x06 * motion_set->ch), 0x78);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2A + (0x06 * motion_set->ch), 0x40);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2C + (0x06 * motion_set->ch), 0x72);
-		}
-		else if(motion_set->fmtdef == TVI_5M_12_5P)
-		{
+		} else if(motion_set->fmtdef == TVI_5M_12_5P) {
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x29 + (0x06 * motion_set->ch), 0xA2);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2A + (0x06 * motion_set->ch), 0x51);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2C + (0x06 * motion_set->ch), 0x9c);
-		}
-		else if(motion_set->fmtdef == TVI_5M_20P)
-		{
+		} else if(motion_set->fmtdef == TVI_5M_20P) {
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x29 + (0x06 * motion_set->ch), 0xA0);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2A + (0x06 * motion_set->ch), 0x51);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2C + (0x06 * motion_set->ch), 0x9a);
@@ -153,9 +137,7 @@ void nvp6158_motion_pixel_all_onoff_set(motion_mode *motion_set)
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2B + (0x06 * motion_set->ch), 0x6);
 
 		printk("[DRV_Motion_OnOff] ch(%d) fmtdef(%d)\n", motion_set->ch, motion_set->fmtdef);
-	}
-	else  if( motion_set->fmtdef == AHD20_1080P_15P_EX || motion_set->fmtdef == AHD20_1080P_12_5P_EX )
-	{
+	} else  if( motion_set->fmtdef == AHD20_1080P_15P_EX || motion_set->fmtdef == AHD20_1080P_12_5P_EX ) {
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x00 + (0x07 * motion_set->ch), 0x0C);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x02 + (0x07 * motion_set->ch), 0x23);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x28 + (0x06 * motion_set->ch), 0x11);
@@ -163,14 +145,11 @@ void nvp6158_motion_pixel_all_onoff_set(motion_mode *motion_set)
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2A + (0x06 * motion_set->ch), 0x2d);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2B + (0x06 * motion_set->ch), 0x06);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2C + (0x06 * motion_set->ch), 0xea);
-	}
-	else
-	{
+	} else {
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x28 + (0x06 * motion_set->ch), 0x00);
 	}
 
-	for(ii=0; ii<24; ii++)
-	{
+	for(ii=0; ii<24; ii++) {
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], (0x40 +(0x18 *motion_set->ch)) + ii, motion_set->set_val);
 		addr = (0x40 +(0x18 *motion_set->ch)) + ii;
 	}
@@ -191,32 +170,25 @@ void nvp6158_motion_pixel_onoff_set(motion_mode *motion_set)
 	//BANK2_MOTION
 	gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0xFF, 0x02);
 
-	if(motion_set->fmtdef == TVI_3M_18P || motion_set->fmtdef == TVI_5M_12_5P || motion_set->fmtdef == TVI_5M_20P)
-	{
+	if(motion_set->fmtdef == TVI_3M_18P || motion_set->fmtdef == TVI_5M_12_5P ||
+			motion_set->fmtdef == TVI_5M_20P) {
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x00 + (0x07 * motion_set->ch), 0x0C);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x02 + (0x07 * motion_set->ch), 0x23);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x28 + (0x06 * motion_set->ch), 0x11);
 
-		if(motion_set->fmtdef == TVI_3M_18P)
-		{
+		if(motion_set->fmtdef == TVI_3M_18P) {
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x29 + (0x06 * motion_set->ch), 0x78);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2A + (0x06 * motion_set->ch), 0x40);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2C + (0x06 * motion_set->ch), 0x72);
-		}
-		else if(motion_set->fmtdef == TVI_4M_15P)
-		{
+		} else if(motion_set->fmtdef == TVI_4M_15P) {
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x29 + (0x06 * motion_set->ch), 0xA0);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2A + (0x06 * motion_set->ch), 0x3C);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2C + (0x06 * motion_set->ch), 0x9a);
-		}
-		else if(motion_set->fmtdef == TVI_5M_12_5P)
-		{
+		} else if(motion_set->fmtdef == TVI_5M_12_5P) {
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x29 + (0x06 * motion_set->ch), 0xA2);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2A + (0x06 * motion_set->ch), 0x51);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2C + (0x06 * motion_set->ch), 0x9c);
-		}
-		else if(motion_set->fmtdef == TVI_5M_20P)
-		{
+		} else if(motion_set->fmtdef == TVI_5M_20P) {
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x29 + (0x06 * motion_set->ch), 0xA0);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2A + (0x06 * motion_set->ch), 0x51);
 			gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2C + (0x06 * motion_set->ch), 0x9a);
@@ -225,9 +197,7 @@ void nvp6158_motion_pixel_onoff_set(motion_mode *motion_set)
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2B + (0x06 * motion_set->ch), 0x6);
 
 		printk("[DRV_Motion_OnOff] ch(%d) fmtdef(%d)\n", motion_set->ch, motion_set->fmtdef);
-	}
-	else if( motion_set->fmtdef == AHD20_1080P_15P_EX || motion_set->fmtdef == AHD20_1080P_12_5P_EX )
-	{
+	} else if( motion_set->fmtdef == AHD20_1080P_15P_EX || motion_set->fmtdef == AHD20_1080P_12_5P_EX ) {
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x00 + (0x07 * motion_set->ch), 0x0C);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x02 + (0x07 * motion_set->ch), 0x23);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x28 + (0x06 * motion_set->ch), 0x11);
@@ -235,21 +205,16 @@ void nvp6158_motion_pixel_onoff_set(motion_mode *motion_set)
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2A + (0x06 * motion_set->ch), 0x2d);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2B + (0x06 * motion_set->ch), 0x06);
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x2C + (0x06 * motion_set->ch), 0xea);
-	}
-	else
-	{
+	} else {
 		gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], 0x28 + (0x06 * motion_set->ch), 0x00);
 	}
 
 	ReadVal = gpio_i2c_read(nvp6158_iic_addr[motion_set->devnum], (0x40 +(0x18 *ch)) + SetPix);
 	on = val&ReadVal;
-	if(on)
-	{
+	if(on) {
 		val = ~val;
 		val = val&ReadVal;
-	}
-	else
-	{
+	} else {
 		val = val|ReadVal;
 	}
 	gpio_i2c_write(nvp6158_iic_addr[motion_set->devnum], (0x40 +(0x18 *ch)) + SetPix, val);
@@ -273,12 +238,9 @@ void nvp6158_motion_pixel_onoff_get(motion_mode *motion_set)
 
 	on = val&ReadVal;
 
-	if(on)
-	{
+	if(on) {
 		motion_set->set_val = 1;
-	}
-	else
-	{
+	} else {
 		motion_set->set_val = 0;
 	}
 }

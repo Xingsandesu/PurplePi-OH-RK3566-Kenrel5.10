@@ -1,16 +1,7 @@
+/* SPDX-License-Identifier: (GPL-2.0+ OR MIT) */
 /*
  * Copyright (c) 2015 Rockchip Electronics Co. Ltd.
  * Author: Jeffy Chen <jeffy.chen@rock-chips.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #ifndef _DT_BINDINGS_CLK_ROCKCHIP_RK3228_H
@@ -73,12 +64,11 @@
 #define SCLK_WIFI		141
 #define SCLK_OTGPHY0		142
 #define SCLK_OTGPHY1		143
-#define SCLK_DDRC		144
+#define SCLK_HDMI_PHY		144
 
 /* dclk gates */
 #define DCLK_VOP		190
 #define DCLK_HDMI_PHY		191
-#define HDMIPHY			192
 
 /* aclk gates */
 #define ACLK_DMAC		194
@@ -125,7 +115,6 @@
 #define PCLK_HDMI_CTRL		364
 #define PCLK_HDMI_PHY		365
 #define PCLK_GMAC		367
-#define PCLK_ACODECPHY		368
 
 /* hclk gates */
 #define HCLK_I2S0_8CH		442

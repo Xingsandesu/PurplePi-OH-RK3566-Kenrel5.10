@@ -5,7 +5,7 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- * date: 2021-06-16
+ * date: 2021-07-16
  * function: rk ftl v5 for rockchip soc base on arm v8 to support MLC NAND.
  */
 	.file	"rk_ftlv5_arm64.S"
@@ -21541,38 +21541,38 @@ samsung_14nm_mlc_rr:
 	.byte	18
 	.byte	9
 	.byte	8
-	.type	__func__.21177, %object
-	.size	__func__.21177, 11
-__func__.21177:
+	.type	__func__.27051, %object
+	.size	__func__.27051, 11
+__func__.27051:
 	.string	"FtlMemInit"
 	.zero	5
-	.type	__func__.21924, %object
-	.size	__func__.21924, 12
-__func__.21924:
+	.type	__func__.27798, %object
+	.size	__func__.27798, 12
+__func__.27798:
 	.string	"FtlCheckVpc"
 	.zero	4
-	.type	__func__.21956, %object
-	.size	__func__.21956, 17
-__func__.21956:
+	.type	__func__.27830, %object
+	.size	__func__.27830, 17
+__func__.27830:
 	.string	"FtlDumpBlockInfo"
 	.zero	7
-	.type	__func__.21975, %object
-	.size	__func__.21975, 16
-__func__.21975:
+	.type	__func__.27849, %object
+	.size	__func__.27849, 16
+__func__.27849:
 	.string	"FtlScanAllBlock"
-	.type	__func__.22243, %object
-	.size	__func__.22243, 17
-__func__.22243:
+	.type	__func__.28117, %object
+	.size	__func__.28117, 17
+__func__.28117:
 	.string	"ftl_scan_all_ppa"
 	.zero	7
-	.type	__func__.22223, %object
-	.size	__func__.22223, 21
-__func__.22223:
+	.type	__func__.28097, %object
+	.size	__func__.28097, 21
+__func__.28097:
 	.string	"FtlVpcCheckAndModify"
 	.zero	3
-	.type	__func__.21250, %object
-	.size	__func__.21250, 8
-__func__.21250:
+	.type	__func__.27124, %object
+	.size	__func__.27124, 8
+__func__.27124:
 	.string	"FtlInit"
 	.data
 	.align	3

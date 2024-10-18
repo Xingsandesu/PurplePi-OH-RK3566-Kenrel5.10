@@ -1,10 +1,10 @@
 /*
- * Marvell Wireless LAN device driver: utility functions
+ * NXP Wireless LAN device driver: utility functions
  *
- * Copyright (C) 2011-2014, Marvell International Ltd.
+ * Copyright 2011-2020 NXP
  *
- * This software file (the "File") is distributed by Marvell International
- * Ltd. under the terms of the GNU General Public License Version 2, June 1991
+ * This software file (the "File") is distributed by NXP
+ * under the terms of the GNU General Public License Version 2, June 1991
  * (the "License").  You may use, redistribute and/or modify this File in
  * accordance with the terms and conditions of the License, a copy of which
  * is available by writing to the Free Software Foundation, Inc.,
@@ -405,11 +405,15 @@ mwifiex_process_mgmt_packet(struct mwifiex_private *priv,
 	}
 
 	rx_pd = (struct rxpd *)skb->data;
+	pkt_len = le16_to_cpu(rx_pd->rx_pkt_length);
+	if (pkt_len < sizeof(struct ieee80211_hdr) + sizeof(pkt_len)) {
+		mwifiex_dbg(priv->adapter, ERROR, "invalid rx_pkt_length");
+		return -1;
+	}
 
 	skb_pull(skb, le16_to_cpu(rx_pd->rx_pkt_offset));
 	skb_pull(skb, sizeof(pkt_len));
-
-	pkt_len = le16_to_cpu(rx_pd->rx_pkt_length);
+	pkt_len -= sizeof(pkt_len);
 
 	ieee_hdr = (void *)skb->data;
 	if (ieee80211_is_mgmt(ieee_hdr->frame_control)) {
@@ -422,7 +426,7 @@ mwifiex_process_mgmt_packet(struct mwifiex_private *priv,
 		skb->data + sizeof(struct ieee80211_hdr),
 		pkt_len - sizeof(struct ieee80211_hdr));
 
-	pkt_len -= ETH_ALEN + sizeof(pkt_len);
+	pkt_len -= ETH_ALEN;
 	rx_pd->rx_pkt_length = cpu_to_le16(pkt_len);
 
 	cfg80211_rx_mgmt(&priv->wdev, priv->roc_cfg.chan.center_freq,
@@ -488,11 +492,7 @@ int mwifiex_recv_packet(struct mwifiex_private *priv, struct sk_buff *skb)
 	    (skb->truesize > MWIFIEX_RX_DATA_BUF_SIZE))
 		skb->truesize += (skb->len - MWIFIEX_RX_DATA_BUF_SIZE);
 
-	if (in_interrupt())
-		netif_rx(skb);
-	else
-		netif_rx_ni(skb);
-
+	netif_rx_any_context(skb);
 	return 0;
 }
 
@@ -607,12 +607,11 @@ struct mwifiex_sta_node *
 mwifiex_add_sta_entry(struct mwifiex_private *priv, const u8 *mac)
 {
 	struct mwifiex_sta_node *node;
-	unsigned long flags;
 
 	if (!mac)
 		return NULL;
 
-	spin_lock_irqsave(&priv->sta_list_spinlock, flags);
+	spin_lock_bh(&priv->sta_list_spinlock);
 	node = mwifiex_get_sta_entry(priv, mac);
 	if (node)
 		goto done;
@@ -625,7 +624,7 @@ mwifiex_add_sta_entry(struct mwifiex_private *priv, const u8 *mac)
 	list_add_tail(&node->list, &priv->sta_list);
 
 done:
-	spin_unlock_irqrestore(&priv->sta_list_spinlock, flags);
+	spin_unlock_bh(&priv->sta_list_spinlock);
 	return node;
 }
 
@@ -662,9 +661,8 @@ mwifiex_set_sta_ht_cap(struct mwifiex_private *priv, const u8 *ies,
 void mwifiex_del_sta_entry(struct mwifiex_private *priv, const u8 *mac)
 {
 	struct mwifiex_sta_node *node;
-	unsigned long flags;
 
-	spin_lock_irqsave(&priv->sta_list_spinlock, flags);
+	spin_lock_bh(&priv->sta_list_spinlock);
 
 	node = mwifiex_get_sta_entry(priv, mac);
 	if (node) {
@@ -672,7 +670,7 @@ void mwifiex_del_sta_entry(struct mwifiex_private *priv, const u8 *mac)
 		kfree(node);
 	}
 
-	spin_unlock_irqrestore(&priv->sta_list_spinlock, flags);
+	spin_unlock_bh(&priv->sta_list_spinlock);
 	return;
 }
 
@@ -680,9 +678,8 @@ void mwifiex_del_sta_entry(struct mwifiex_private *priv, const u8 *mac)
 void mwifiex_del_all_sta_list(struct mwifiex_private *priv)
 {
 	struct mwifiex_sta_node *node, *tmp;
-	unsigned long flags;
 
-	spin_lock_irqsave(&priv->sta_list_spinlock, flags);
+	spin_lock_bh(&priv->sta_list_spinlock);
 
 	list_for_each_entry_safe(node, tmp, &priv->sta_list, list) {
 		list_del(&node->list);
@@ -690,7 +687,7 @@ void mwifiex_del_all_sta_list(struct mwifiex_private *priv)
 	}
 
 	INIT_LIST_HEAD(&priv->sta_list);
-	spin_unlock_irqrestore(&priv->sta_list_spinlock, flags);
+	spin_unlock_bh(&priv->sta_list_spinlock);
 	return;
 }
 

@@ -89,7 +89,7 @@ static void tool_set_proc_name(char * procname)
     char month[4] = {0};
     int i = 0, n_month = 1, n_day = 0, n_year = 0;
     
-//    sprintf(date, "%s", __DATE__);
+    sprintf(date, "%s", __DATE__);
     
     //GTP_DEBUG("compile date: %s", date);
     
@@ -529,7 +529,6 @@ ssize_t goodix_tool_read(struct file *file, char __user *page, size_t size, loff
         //GTP_DEBUG("[HEAD]wr: %d", cmd_head.wr);
         //GTP_DEBUG("[PARAM]size: %d, *ppos: %d", size, (int)*ppos);
         //GTP_DEBUG("[TOOL_READ]ADB call again, return it.");
-        *ppos = 0;
         return 0;
     }
     

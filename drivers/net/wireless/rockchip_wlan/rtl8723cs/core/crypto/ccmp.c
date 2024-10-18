@@ -14,8 +14,8 @@
 
 
 
-static void ccmp_aad_nonce(_adapter *padapter, const struct ieee80211_hdr *hdr, const u8 *data,
- 			   u8 *aad, size_t *aad_len, u8 *nonce)
+static void ccmp_aad_nonce(const struct ieee80211_hdr *hdr, const u8 *data,
+			   u8 *aad, size_t *aad_len, u8 *nonce)
 {
 	u16 fc, stype, seq;
 	int qos = 0, addr4 = 0;
@@ -58,8 +58,7 @@ static void ccmp_aad_nonce(_adapter *padapter, const struct ieee80211_hdr *hdr, 
 	pos += addr4 * ETH_ALEN;
 	if (qos) {
 		pos[0] &= ~0x70;
-		/* only spp mode need to refer QoS bit7 */
-		if (padapter->registrypriv.amsdu_mode != RTW_AMSDU_MODE_SPP)
+		if (1 /* FIX: either device has SPP A-MSDU Capab = 0 */)
 			pos[0] &= ~0x80;
 		pos++;
 		*pos++ = 0x00;
@@ -135,9 +134,8 @@ static void ccmp_aad_nonce_pv1(const u8 *hdr, const u8 *a1, const u8 *a2,
 }
 
 
-u8 * ccmp_decrypt(_adapter *padapter, const u8 *tk, const struct ieee80211_hdr *hdr,
- 		  const u8 *data, size_t data_len, size_t *decrypted_len)
-
+u8 * ccmp_decrypt(const u8 *tk, const struct ieee80211_hdr *hdr,
+		  const u8 *data, size_t data_len, size_t *decrypted_len)
 {
 	u8 aad[30], nonce[13];
 	size_t aad_len;
@@ -154,7 +152,7 @@ u8 * ccmp_decrypt(_adapter *padapter, const u8 *tk, const struct ieee80211_hdr *
 	mlen = data_len - 8 - 8;
 
 	os_memset(aad, 0, sizeof(aad));
-	ccmp_aad_nonce(padapter, hdr, data, aad, &aad_len, nonce);
+	ccmp_aad_nonce(hdr, data, aad, &aad_len, nonce);
 	wpa_hexdump(_MSG_EXCESSIVE_, "CCMP AAD", aad, aad_len);
 	wpa_hexdump(_MSG_EXCESSIVE_, "CCMP nonce", nonce, 13);
 
@@ -188,9 +186,8 @@ void ccmp_get_pn(u8 *pn, const u8 *data)
 }
 
 
-u8 * ccmp_encrypt(_adapter *padapter, const u8 *tk, u8 *frame, size_t len, size_t hdrlen, u8 *qos,
- 		  u8 *pn, int keyid, size_t *encrypted_len)
-
+u8 * ccmp_encrypt(const u8 *tk, u8 *frame, size_t len, size_t hdrlen, u8 *qos,
+		  u8 *pn, int keyid, size_t *encrypted_len)
 {
 	u8 aad[30], nonce[13];
 	size_t aad_len, plen;
@@ -228,7 +225,7 @@ u8 * ccmp_encrypt(_adapter *padapter, const u8 *tk, u8 *frame, size_t len, size_
 	}
 
 	os_memset(aad, 0, sizeof(aad));
-	ccmp_aad_nonce(padapter, hdr, crypt + hdrlen, aad, &aad_len, nonce);
+	ccmp_aad_nonce(hdr, crypt + hdrlen, aad, &aad_len, nonce);
 	wpa_hexdump(_MSG_EXCESSIVE_, "CCMP AAD", aad, aad_len);
 	wpa_hexdump(_MSG_EXCESSIVE_, "CCMP nonce", nonce, 13);
 
@@ -288,9 +285,8 @@ u8 * ccmp_encrypt_pv1(const u8 *tk, const u8 *a1, const u8 *a2, const u8 *a3,
 }
 
 
-u8 * ccmp_256_decrypt(_adapter *padapter, const u8 *tk, const struct ieee80211_hdr *hdr,
- 		      const u8 *data, size_t data_len, size_t *decrypted_len)
-
+u8 * ccmp_256_decrypt(const u8 *tk, const struct ieee80211_hdr *hdr,
+		      const u8 *data, size_t data_len, size_t *decrypted_len)
 {
 	u8 aad[30], nonce[13];
 	size_t aad_len;
@@ -307,7 +303,7 @@ u8 * ccmp_256_decrypt(_adapter *padapter, const u8 *tk, const struct ieee80211_h
 	mlen = data_len - 8 - 16;
 
 	os_memset(aad, 0, sizeof(aad));
-	ccmp_aad_nonce(padapter, hdr, data, aad, &aad_len, nonce);
+	ccmp_aad_nonce(hdr, data, aad, &aad_len, nonce);
 	wpa_hexdump(_MSG_EXCESSIVE_, "CCMP-256 AAD", aad, aad_len);
 	wpa_hexdump(_MSG_EXCESSIVE_, "CCMP-256 nonce", nonce, 13);
 
@@ -330,9 +326,8 @@ u8 * ccmp_256_decrypt(_adapter *padapter, const u8 *tk, const struct ieee80211_h
 }
 
 
-u8 * ccmp_256_encrypt(_adapter *padapter, const u8 *tk, u8 *frame, size_t len, size_t hdrlen,
- 		      u8 *qos, u8 *pn, int keyid, size_t *encrypted_len)
-
+u8 * ccmp_256_encrypt(const u8 *tk, u8 *frame, size_t len, size_t hdrlen,
+		      u8 *qos, u8 *pn, int keyid, size_t *encrypted_len)
 {
 	u8 aad[30], nonce[13];
 	size_t aad_len, plen;
@@ -370,7 +365,7 @@ u8 * ccmp_256_encrypt(_adapter *padapter, const u8 *tk, u8 *frame, size_t len, s
 	}
 
 	os_memset(aad, 0, sizeof(aad));
-	ccmp_aad_nonce(padapter, hdr, crypt + hdrlen, aad, &aad_len, nonce);
+	ccmp_aad_nonce(hdr, crypt + hdrlen, aad, &aad_len, nonce);
 	wpa_hexdump(_MSG_EXCESSIVE_, "CCMP-256 AAD", aad, aad_len);
 	wpa_hexdump(_MSG_EXCESSIVE_, "CCMP-256 nonce", nonce, 13);
 

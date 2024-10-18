@@ -137,14 +137,6 @@ static const char * const imx334_supply_names[] = {
 
 #define IMX334_NUM_SUPPLIES ARRAY_SIZE(imx334_supply_names)
 
-enum imx334_max_pad {
-	PAD0, /* link to isp */
-	PAD1, /* link to csi wr0 | hdr x2:L x3:M */
-	PAD2, /* link to csi wr1 | hdr      x3:L */
-	PAD3, /* link to csi wr2 | hdr x2:M x3:S */
-	PAD_MAX,
-};
-
 struct regval {
 	u16 addr;
 	u8 val;
@@ -851,14 +843,12 @@ static int imx334_g_frame_interval(struct v4l2_subdev *sd,
 	struct imx334 *imx334 = to_imx334(sd);
 	const struct imx334_mode *mode = imx334->cur_mode;
 
-	mutex_lock(&imx334->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&imx334->mutex);
 
 	return 0;
 }
 
-static int imx334_g_mbus_config(struct v4l2_subdev *sd,
+static int imx334_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
 	struct imx334 *imx334 = to_imx334(sd);
@@ -870,7 +860,7 @@ static int imx334_g_mbus_config(struct v4l2_subdev *sd,
 	      V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
 
 	config->flags = (mode->hdr_mode == NO_HDR) ? val : (val | V4L2_MBUS_CSI2_CHANNEL_1);
-	config->type = V4L2_MBUS_CSI2;
+	config->type = V4L2_MBUS_CSI2_DPHY;
 	return 0;
 }
 
@@ -1474,7 +1464,6 @@ static const struct v4l2_subdev_core_ops imx334_core_ops = {
 static const struct v4l2_subdev_video_ops imx334_video_ops = {
 	.s_stream = imx334_s_stream,
 	.g_frame_interval = imx334_g_frame_interval,
-	.g_mbus_config = imx334_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops imx334_pad_ops = {
@@ -1484,6 +1473,7 @@ static const struct v4l2_subdev_pad_ops imx334_pad_ops = {
 	.get_fmt = imx334_get_fmt,
 	.set_fmt = imx334_set_fmt,
 	.get_selection = imx334_get_selection,
+	.get_mbus_config = imx334_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops imx334_subdev_ops = {

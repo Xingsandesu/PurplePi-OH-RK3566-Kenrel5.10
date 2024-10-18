@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
- * Copyright (c) 2022 Rockchip Electronics Co., Ltd.
+ * Copyright (c) 2023 Rockchip Electronics Co., Ltd.
  *
  */
 
@@ -11,18 +11,12 @@
 	memory {
 		device_type = "memory";
 		reg = <0x0 0x03880000 0x0 0x04b80000>,
-		      <0x0 0x08400000 0x0 0x77c00000>;
+		      <0x0 0x0a200000 0x0 0x75e00000>;
 	};
 };
 
-&cpu1 {
-	status = "disabled";
+&arm_pmu {
+	interrupt-affinity = <&cpu0>, <&cpu1>, <&cpu2>;
 };
 
-&cpu2 {
-	status = "disabled";
-};
-
-&cpu3 {
-	status = "disabled";
-};
+/delete-node/ &cpu3;

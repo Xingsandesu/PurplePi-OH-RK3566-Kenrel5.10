@@ -15,13 +15,6 @@
 	model = "Rockchip RK3568 EVB1 DDR4 V10 Board";
 	compatible = "rockchip,rk3568-evb1-ddr4-v10", "rockchip,rk3568";
 
-	rk_headset: rk-headset {
-		compatible = "rockchip_headset";
-		headset_gpio = <&gpio3 RK_PC2 GPIO_ACTIVE_LOW>;
-		pinctrl-names = "default";
-		pinctrl-0 = <&hp_det>;
-	};
-
 	vcc2v5_sys: vcc2v5-ddr {
 		compatible = "regulator-fixed";
 		regulator-name = "vcc2v5-sys";
@@ -280,10 +273,10 @@
 		clock-names = "xvclk";
 		pinctrl-names = "default";
 		pinctrl-0 = <&cif_clk>;
+		power-domains = <&power RK3568_PD_VI>;
 		reset-gpios = <&gpio3 RK_PB6 GPIO_ACTIVE_LOW>;
 		pwdn-gpios = <&gpio4 RK_PB4 GPIO_ACTIVE_LOW>;
 		rockchip,grf = <&grf>;
-		power-domains = <&power RK3568_PD_VI>;
 		rockchip,camera-module-index = <0>;
 		rockchip,camera-module-facing = "back";
 		rockchip,camera-module-name = "RK-CMK-8M-2-v1";
@@ -399,6 +392,10 @@
 	};
 };
 
+&rk809_sound {
+	hp-det-gpio = <&gpio3 RK_PC2 GPIO_ACTIVE_LOW>;
+};
+
 &rkisp {
 	status = "okay";
 };
@@ -437,7 +434,8 @@
 
 &sdmmc2 {
 	max-frequency = <150000000>;
-	supports-sdio;
+	no-sd;
+	no-mmc;
 	bus-width = <4>;
 	disable-wp;
 	cap-sd-highspeed;

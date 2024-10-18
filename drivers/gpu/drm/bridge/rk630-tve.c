@@ -15,7 +15,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_of.h>
-#include <drm/drmP.h>
+#include <drm/drm_probe_helper.h>
 
 #include "../rockchip/rockchip_drm_drv.h"
 
@@ -24,12 +24,12 @@ static const struct drm_display_mode rk630_tve_mode[2] = {
 		   816, 864, 0, 576, 580, 586, 625, 0,
 		   DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC |
 		   DRM_MODE_FLAG_INTERLACE | DRM_MODE_FLAG_DBLCLK),
-		   .vrefresh = 50, 0, },
+		   0, },
 	{ DRM_MODE("720x480i", DRM_MODE_TYPE_DRIVER, 13500, 720, 753,
 		   815, 858, 0, 480, 483, 489, 525, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
 		   DRM_MODE_FLAG_INTERLACE | DRM_MODE_FLAG_DBLCLK),
-		   .vrefresh = 60, 0, },
+		   0, },
 };
 
 struct rk630_tve {
@@ -59,6 +59,7 @@ struct env_config {
 };
 
 static struct env_config ntsc_bt656_config[] = {
+	{ BT656_DECODER_CTRL, 0x00000001 },
 	{ BT656_DECODER_CROP, 0x00000000 },
 	{ BT656_DECODER_SIZE, 0x01e002d0 },
 	{ BT656_DECODER_HTOTAL_HS_END, 0x035a003e },
@@ -66,7 +67,6 @@ static struct env_config ntsc_bt656_config[] = {
 	{ BT656_DECODER_VTOTAL_VS_END, 0x020d0003 },
 	{ BT656_DECODER_VS_ST_END_F1, 0x01060109 },
 	{ BT656_DECODER_DBG_REG, 0x024002d0 },
-	{ BT656_DECODER_CTRL, 0x00000001 },
 };
 
 static struct env_config ntsc_tve_config[] = {
@@ -100,6 +100,7 @@ static struct env_config ntsc_tve_config[] = {
 };
 
 static struct env_config pal_bt656_config[] = {
+	{ BT656_DECODER_CTRL, 0x00000001 },
 	{ BT656_DECODER_CROP, 0x00000000 },
 	{ BT656_DECODER_SIZE, 0x024002d0 },
 	{ BT656_DECODER_HTOTAL_HS_END, 0x0360003f },
@@ -107,7 +108,6 @@ static struct env_config pal_bt656_config[] = {
 	{ BT656_DECODER_VTOTAL_VS_END, 0x02710003 },
 	{ BT656_DECODER_VS_ST_END_F1, 0x0138013b },
 	{ BT656_DECODER_DBG_REG, 0x024002d0 },
-	{ BT656_DECODER_CTRL, 0x00000001 },
 };
 
 static struct env_config pal_tve_config[] = {
@@ -125,16 +125,16 @@ static struct env_config pal_tve_config[] = {
 	{ TVE_LUMA_FILTER7, 0x0ffa0e43 },
 	{ TVE_LUMA_FILTER8, 0x08200527 },
 	{ TVE_IMAGE_POSITION, 0x001500f6 },
-	{ TVE_ROUTING, 0x10008882 },
+	{ TVE_ROUTING, 0x1000088a },
 	{ TVE_SYNC_ADJUST, 0x00000000 },
 	{ TVE_STATUS, 0x000000b0 },
 	{ TVE_CTRL, 0x00000000 },
 	{ TVE_INTR_STATUS, 0x00000000 },
 	{ TVE_INTR_EN, 0x00000000 },
 	{ TVE_INTR_CLR, 0x00000000 },
-	{ TVE_COLOR_BUSRT_SAT, 0x00366044 },
+	{ TVE_COLOR_BUSRT_SAT, 0x002e553c },
 	{ TVE_CHROMA_BANDWIDTH, 0x00000022 },
-	{ TVE_BRIGHTNESS_CONTRAST, 0x0000a300 },
+	{ TVE_BRIGHTNESS_CONTRAST, 0x00008900 },
 	{ TVE_ID, 0x0a010000 },
 	{ TVE_REVISION, 0x00010108 },
 	{ TVE_CLAMP, 0x00000000 },
@@ -164,6 +164,7 @@ const struct regmap_config rk630_tve_regmap_config = {
 	.val_format_endian = REGMAP_ENDIAN_NATIVE,
 	.rd_table = &rk630_tve_readable_table,
 };
+EXPORT_SYMBOL_GPL(rk630_tve_regmap_config);
 
 static struct rk630_tve *bridge_to_tve(struct drm_bridge *bridge)
 {
@@ -194,7 +195,6 @@ static int rk630_tve_cfg_set(struct rk630_tve *tve)
 {
 	int ret;
 	struct env_config *bt656_cfg, *tve_cfg;
-	int upsample_en = tve->is_4x ? 1 : 0;
 
 	switch (tve->mode) {
 	case CVBS_PAL:
@@ -225,7 +225,7 @@ static int rk630_tve_cfg_set(struct rk630_tve *tve)
 				   SW_DCLK_UPSAMPLE_EN_MASK |
 				   SW_TVE_MODE_MASK | SW_TVE_EN_MASK,
 				   SW_TVE_DCLK_POL(0) | SW_TVE_DCLK_EN(1) |
-				   SW_DCLK_UPSAMPLE_EN(upsample_en) |
+				   SW_DCLK_UPSAMPLE_EN(tve->is_4x) |
 				   SW_TVE_MODE(1) | SW_TVE_EN(1));
 	else
 		regmap_update_bits(tve->grf, PLUMAGE_GRF_SOC_CON0,
@@ -234,12 +234,8 @@ static int rk630_tve_cfg_set(struct rk630_tve *tve)
 				   SW_DCLK_UPSAMPLE_EN_MASK |
 				   SW_TVE_MODE_MASK | SW_TVE_EN_MASK,
 				   SW_TVE_DCLK_POL(0) | SW_TVE_DCLK_EN(1) |
-				   SW_DCLK_UPSAMPLE_EN(upsample_en) |
+				   SW_DCLK_UPSAMPLE_EN(tve->is_4x) |
 				   SW_TVE_MODE(0) | SW_TVE_EN(1));
-
-	regmap_update_bits(tve->grf, PLUMAGE_GRF_SOC_CON3,
-			   DCLK_UPSAMPLE_2X4X_MASK,
-			   DCLK_UPSAMPLE_2X4X(tve->is_4x - 1));
 
 	ret = rk630_tve_write_block(tve, tve_cfg, 27);
 	if (ret < 0) {
@@ -260,15 +256,16 @@ static int rk630_tve_disable(struct rk630_tve *tve)
 
 static int rk630_tve_enable(struct rk630_tve *tve)
 {
-	int ret;
+	int ret, i;
+	u32 val = 0;
 
 	dev_dbg(tve->dev, "%s\n", __func__);
 
 	/* config bt656 input gpio*/
 	regmap_write(tve->grf, PLUMAGE_GRF_GPIO0A_IOMUX, 0x55555555);
 
-	regmap_update_bits(tve->grf, PLUMAGE_GRF_GPIO0B_IOMUX, PIN0_SEL_MASK,
-			   PIN0_SEL(1));
+	regmap_update_bits(tve->grf, PLUMAGE_GRF_GPIO0B_IOMUX, GPIO0B0_SEL_MASK,
+			   GPIO0B0_SEL(1));
 
 	regmap_update_bits(tve->grf, PLUMAGE_GRF_SOC_CON3, VDAC_ENDAC0_MASK,
 			   VDAC_ENDAC0(0));
@@ -279,21 +276,31 @@ static int rk630_tve_enable(struct rk630_tve *tve)
 
 	/*config clk*/
 	if (!tve->is_4x) {
-		regmap_update_bits(tve->cru, CRU_GATE_CON0,
-				   DCLK_CVBS_4X_PLL_CLK_GATE_MASK,
-				   DCLK_CVBS_4X_PLL_CLK_GATE(1));
+		regmap_update_bits(tve->cru, CRU_MODE_CON, CLK_SPLL_MODE_MASK,
+				   CLK_SPLL_MODE(2));
 	} else {
-		regmap_update_bits(tve->cru, CRU_CLKSEL_CON1,
-				   DCLK_CVBS_4X_DIV_CON_MASK,
-				   DCLK_CVBS_4X_DIV_CON(0));
+		regmap_update_bits(tve->cru, CRU_SPLL_CON1, PLLPD0_MASK,
+				   PLLPD0(1));
 
-		regmap_update_bits(tve->cru, CRU_GATE_CON0,
-				   DCLK_CVBS_4X_PLL_CLK_GATE_MASK,
-				   DCLK_CVBS_4X_PLL_CLK_GATE(0));
+		regmap_update_bits(tve->cru, CRU_MODE_CON, CLK_SPLL_MODE_MASK,
+				   CLK_SPLL_MODE(1));
+
+		regmap_update_bits(tve->cru, CRU_SPLL_CON1, PLLPD0_MASK,
+				   PLLPD0(0));
+
+		for (i = 0; i < 10; i++) {
+			usleep_range(1000, 2000);
+			regmap_read(tve->cru, CRU_SPLL_CON1, &val);
+			if (val & PLL_LOCK) {
+				dev_dbg(tve->dev, "rk630 pll locked\n");
+				break;
+			}
+		}
+		if (!(val & PLL_LOCK)) {
+			dev_err(tve->dev, "rk630 pll unlock\n");
+			return -EINVAL;
+		}
 	}
-
-	/* set vdac gain */
-	regmap_write(tve->grf, PLUMAGE_GRF_SOC_CON3, 0x003f003f);
 
 	/* enable vdac */
 	regmap_update_bits(tve->grf, PLUMAGE_GRF_SOC_CON3,
@@ -369,8 +376,8 @@ static const struct drm_connector_funcs rk630_tve_connector_funcs = {
 
 static void
 rk630_tve_bridge_mode_set(struct drm_bridge *bridge,
-		       struct drm_display_mode *mode,
-		       struct drm_display_mode *adjusted_mode)
+			  const struct drm_display_mode *mode,
+			  const struct drm_display_mode *adjusted_mode)
 {
 	struct rk630_tve *tve;
 
@@ -401,7 +408,8 @@ static void rk630_tve_bridge_disable(struct drm_bridge *bridge)
 	rk630_tve_disable(tve);
 }
 
-static int rk630_tve_bridge_attach(struct drm_bridge *bridge)
+static int rk630_tve_bridge_attach(struct drm_bridge *bridge,
+				   enum drm_bridge_attach_flags flags)
 {
 	struct rk630_tve *tve = bridge_to_tve(bridge);
 	int ret;
@@ -455,7 +463,6 @@ static int rk630_tve_probe(struct platform_device *pdev)
 	struct rk630 *rk630 = dev_get_drvdata(pdev->dev.parent);
 	struct rk630_tve *tve;
 	struct device *dev = &pdev->dev;
-	int ret;
 
 	if (!of_device_is_available(dev->of_node))
 		return -ENODEV;
@@ -473,11 +480,6 @@ static int rk630_tve_probe(struct platform_device *pdev)
 	tve->tvemap = rk630->tve;
 	if (!tve->grf | !tve->cru | !tve->tvemap)
 		return -ENODEV;
-
-	ret = device_property_read_u32(dev, "rockchip,tve-upsample",
-				       &tve->is_4x);
-	if (ret < 0)
-		tve->is_4x = 0;
 
 	tve->mode = CVBS_PAL;
 

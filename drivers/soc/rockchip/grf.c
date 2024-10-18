@@ -1,11 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Rockchip Generic Register Files setup
  *
  * Copyright (c) 2016 Heiko Stuebner <heiko@sntech.de>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/bitfield.h>
@@ -198,9 +195,11 @@ static const struct rockchip_grf_info rk3328_grf __initconst = {
 };
 
 #define RK3308_GRF_SOC_CON3		0x30c
+#define RK3308_GRF_SOC_CON13		0x608
 
 static const struct rockchip_grf_value rk3308_defaults[] __initconst = {
 	{ "uart dma mask", RK3308_GRF_SOC_CON3, HIWORD_UPDATE(0, 0x1f, 10) },
+	{ "uart2 auto switching", RK3308_GRF_SOC_CON13, HIWORD_UPDATE(0, 0x1, 12) },
 };
 
 static const struct rockchip_grf_info rk3308_grf __initconst = {
@@ -228,6 +227,17 @@ static const struct rockchip_grf_value rk3399_defaults[] __initconst = {
 static const struct rockchip_grf_info rk3399_grf __initconst = {
 	.values = rk3399_defaults,
 	.num_values = ARRAY_SIZE(rk3399_defaults),
+};
+
+#define RK3588_SYS_GRF_SOC_CON7		0x031c
+
+static const struct rockchip_grf_value rk3588_sys_grf_defaults[] __initconst = {
+	{ "Connect EDP hpd to IO", RK3588_SYS_GRF_SOC_CON7, HIWORD_UPDATE(0x3, 0x3, 14) },
+};
+
+static const struct rockchip_grf_info rk3588_sys_grf __initconst = {
+	.values = rk3588_sys_grf_defaults,
+	.num_values = ARRAY_SIZE(rk3588_sys_grf_defaults),
 };
 
 #define DELAY_ONE_SECOND		0x16E3600
@@ -285,6 +295,9 @@ static const struct of_device_id rockchip_grf_dt_match[] __initconst = {
 		.compatible = "rockchip,rk3399-grf",
 		.data = (void *)&rk3399_grf,
 	}, {
+		.compatible = "rockchip,rk3588-sys-grf",
+		.data = (void *)&rk3588_sys_grf,
+	}, {
 		.compatible = "rockchip,rv1126-grf",
 		.data = (void *)&rv1126_grf,
 	},
@@ -306,15 +319,17 @@ static int __init rockchip_grf_init(void)
 	np = of_find_matching_node_and_match(NULL, rockchip_grf_dt_match,
 					     &match);
 	if (!np)
-		return -ENODEV;
+		return 0;
 	if (!match || !match->data) {
 		pr_err("%s: missing grf data\n", __func__);
+		of_node_put(np);
 		return -EINVAL;
 	}
 
 	grf_info = match->data;
 
 	grf = syscon_node_to_regmap(np);
+	of_node_put(np);
 	if (IS_ERR(grf)) {
 		pr_err("%s: could not get grf syscon\n", __func__);
 		return PTR_ERR(grf);

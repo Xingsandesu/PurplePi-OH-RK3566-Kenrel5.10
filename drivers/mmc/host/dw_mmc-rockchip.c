@@ -1,10 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright (c) 2014, Fuzhou Rockchip Electronics Co., Ltd
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
  */
 
 #include <linux/module.h>
@@ -14,6 +10,7 @@
 #include <linux/of_address.h>
 #include <linux/mmc/slot-gpio.h>
 #include <linux/pm_runtime.h>
+#include <linux/rockchip/cpu.h>
 #include <linux/slab.h>
 
 #include "dw_mmc.h"
@@ -169,7 +166,7 @@ static int dw_mci_v2_execute_tuning(struct dw_mci_slot *slot, u32 opcode)
 	 * It's impossible all 4 fixed phase won't be able to work.
 	 */
 	for (i = 0; i < ARRAY_SIZE(degrees); i++) {
-		degree = degrees[i] + priv->last_degree;
+		degree = degrees[i] + priv->last_degree + 90;
 		degree = degree % 360;
 		clk_set_phase(priv->sample_clk, degree);
 		if (!mmc_send_tuning(mmc, opcode, NULL))
@@ -177,12 +174,12 @@ static int dw_mci_v2_execute_tuning(struct dw_mci_slot *slot, u32 opcode)
 	}
 
 	if (i == ARRAY_SIZE(degrees)) {
-		dev_warn(host->dev, "All phases bad!");
+		dev_warn(host->dev, "V2 All phases bad!");
 		return -EIO;
 	}
 
 done:
-	dev_info(host->dev, "Successfully tuned phase to %d\n", degrees[i]);
+	dev_info(host->dev, "Successfully tuned phase to %d\n", degree);
 	priv->last_degree = degree;
 	return 0;
 }
@@ -211,8 +208,7 @@ static int dw_mci_rk3288_execute_tuning(struct dw_mci_slot *slot, u32 opcode)
 	}
 
 	if (priv->use_v2_tuning) {
-		ret = dw_mci_v2_execute_tuning(slot, opcode);
-		if (!ret)
+		if (!dw_mci_v2_execute_tuning(slot, opcode))
 			return 0;
 		/* Otherwise we continue using fine tuning */
 	}
@@ -394,6 +390,19 @@ static int dw_mci_rockchip_init(struct dw_mci *host)
 				    "rockchip,rk3288-dw-mshc"))
 		host->bus_hz /= RK3288_CLKGEN_DIV;
 
+	if (of_device_is_compatible(host->dev->of_node,
+				    "rockchip,rv1106-dw-mshc") &&
+	    rockchip_get_cpu_version() == 0 &&
+	    !strcmp(dev_name(host->dev), "ffaa0000.mmc")) {
+		if (device_property_read_bool(host->dev, "no-sd")) {
+			dev_err(host->dev, "Invalid usage, should be SD card only\n");
+			return -EINVAL;
+		}
+
+		host->is_rv1106_sd = true;
+		dev_info(host->dev, "is rv1106 sd\n");
+	}
+
 	host->need_xfer_timer = true;
 	return 0;
 }
@@ -438,8 +447,10 @@ static int dw_mci_rockchip_probe(struct platform_device *pdev)
 	if (!pdev->dev.of_node)
 		return -ENODEV;
 
-	if (!device_property_read_bool(&pdev->dev, "non-removable") &&
-	    !device_property_read_bool(&pdev->dev, "cd-gpios"))
+	if ((!device_property_read_bool(&pdev->dev, "non-removable") &&
+	     !device_property_read_bool(&pdev->dev, "cd-gpios")) ||
+	    (device_property_read_bool(&pdev->dev, "no-sd") &&
+	     device_property_read_bool(&pdev->dev, "no-mmc")))
 		use_rpm = false;
 
 	match = of_match_node(dw_mci_rockchip_match, pdev->dev.of_node);
@@ -450,9 +461,9 @@ static int dw_mci_rockchip_probe(struct platform_device *pdev)
 	 * pm_runtime_force_resume calls rpm resume callback
 	 */
 	pm_runtime_get_noresume(&pdev->dev);
+	pm_runtime_set_active(&pdev->dev);
 
 	if (use_rpm) {
-		pm_runtime_set_active(&pdev->dev);
 		pm_runtime_enable(&pdev->dev);
 		pm_runtime_set_autosuspend_delay(&pdev->dev, 50);
 		pm_runtime_use_autosuspend(&pdev->dev);
@@ -496,6 +507,7 @@ static struct platform_driver dw_mci_rockchip_pltfm_driver = {
 	.remove		= dw_mci_rockchip_remove,
 	.driver		= {
 		.name		= "dwmmc_rockchip",
+		.probe_type	= PROBE_PREFER_ASYNCHRONOUS,
 		.of_match_table	= dw_mci_rockchip_match,
 		.pm		= &dw_mci_rockchip_dev_pm_ops,
 	},

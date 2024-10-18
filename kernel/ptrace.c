@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * linux/kernel/ptrace.c
  *
@@ -30,6 +31,8 @@
 #include <linux/cn_proc.h>
 #include <linux/compat.h>
 #include <linux/sched/signal.h>
+
+#include <asm/syscall.h>	/* for syscall_get_* */
 
 /*
  * Access another process' address space via ptrace.
@@ -115,6 +118,9 @@ void __ptrace_unlink(struct task_struct *child)
 	BUG_ON(!child->ptrace);
 
 	clear_tsk_thread_flag(child, TIF_SYSCALL_TRACE);
+#ifdef TIF_SYSCALL_EMU
+	clear_tsk_thread_flag(child, TIF_SYSCALL_EMU);
+#endif
 
 	child->parent = child->real_parent;
 	list_del_init(&child->ptrace_entry);
@@ -364,6 +370,26 @@ bool ptrace_may_access(struct task_struct *task, unsigned int mode)
 	return !err;
 }
 
+static int check_ptrace_options(unsigned long data)
+{
+	if (data & ~(unsigned long)PTRACE_O_MASK)
+		return -EINVAL;
+
+	if (unlikely(data & PTRACE_O_SUSPEND_SECCOMP)) {
+		if (!IS_ENABLED(CONFIG_CHECKPOINT_RESTORE) ||
+		    !IS_ENABLED(CONFIG_SECCOMP))
+			return -EINVAL;
+
+		if (!capable(CAP_SYS_ADMIN))
+			return -EPERM;
+
+		if (seccomp_mode(&current->seccomp) != SECCOMP_MODE_DISABLED ||
+		    current->ptrace & PT_SUSPEND_SECCOMP)
+			return -EPERM;
+	}
+	return 0;
+}
+
 static int ptrace_attach(struct task_struct *task, long request,
 			 unsigned long addr,
 			 unsigned long flags)
@@ -375,8 +401,16 @@ static int ptrace_attach(struct task_struct *task, long request,
 	if (seize) {
 		if (addr != 0)
 			goto out;
+		/*
+		 * This duplicates the check in check_ptrace_options() because
+		 * ptrace_attach() and ptrace_setoptions() have historically
+		 * used different error codes for unknown ptrace options.
+		 */
 		if (flags & ~(unsigned long)PTRACE_O_MASK)
 			goto out;
+		retval = check_ptrace_options(flags);
+		if (retval)
+			return retval;
 		flags = PT_PTRACED | PT_SEIZED | (flags << PT_OPT_FLAG_SHIFT);
 	} else {
 		flags = PT_PTRACED;
@@ -420,7 +454,7 @@ static int ptrace_attach(struct task_struct *task, long request,
 
 	/* SEIZE doesn't trap tracee on attach */
 	if (!seize)
-		send_sig_info(SIGSTOP, SEND_SIG_FORCED, task);
+		send_sig_info(SIGSTOP, SEND_SIG_PRIV, task);
 
 	spin_lock(&task->sighand->siglock);
 
@@ -587,7 +621,7 @@ void exit_ptrace(struct task_struct *tracer, struct list_head *dead)
 
 	list_for_each_entry_safe(p, n, &tracer->ptraced, ptrace_entry) {
 		if (unlikely(p->ptrace & PT_EXITKILL))
-			send_sig_info(SIGKILL, SEND_SIG_FORCED, p);
+			send_sig_info(SIGKILL, SEND_SIG_PRIV, p);
 
 		if (__ptrace_detach(tracer, p))
 			list_add(&p->ptrace_entry, dead);
@@ -649,22 +683,11 @@ int ptrace_writedata(struct task_struct *tsk, char __user *src, unsigned long ds
 static int ptrace_setoptions(struct task_struct *child, unsigned long data)
 {
 	unsigned flags;
+	int ret;
 
-	if (data & ~(unsigned long)PTRACE_O_MASK)
-		return -EINVAL;
-
-	if (unlikely(data & PTRACE_O_SUSPEND_SECCOMP)) {
-		if (!IS_ENABLED(CONFIG_CHECKPOINT_RESTORE) ||
-		    !IS_ENABLED(CONFIG_SECCOMP))
-			return -EINVAL;
-
-		if (!capable(CAP_SYS_ADMIN))
-			return -EPERM;
-
-		if (seccomp_mode(&current->seccomp) != SECCOMP_MODE_DISABLED ||
-		    current->ptrace & PT_SUSPEND_SECCOMP)
-			return -EPERM;
-	}
+	ret = check_ptrace_options(data);
+	if (ret)
+		return ret;
 
 	/* Avoid intermediate state when all opts are cleared */
 	flags = child->ptrace;
@@ -675,7 +698,7 @@ static int ptrace_setoptions(struct task_struct *child, unsigned long data)
 	return 0;
 }
 
-static int ptrace_getsiginfo(struct task_struct *child, siginfo_t *info)
+static int ptrace_getsiginfo(struct task_struct *child, kernel_siginfo_t *info)
 {
 	unsigned long flags;
 	int error = -ESRCH;
@@ -691,7 +714,7 @@ static int ptrace_getsiginfo(struct task_struct *child, siginfo_t *info)
 	return error;
 }
 
-static int ptrace_setsiginfo(struct task_struct *child, const siginfo_t *info)
+static int ptrace_setsiginfo(struct task_struct *child, const kernel_siginfo_t *info)
 {
 	unsigned long flags;
 	int error = -ESRCH;
@@ -737,7 +760,7 @@ static int ptrace_peek_siginfo(struct task_struct *child,
 		pending = &child->pending;
 
 	for (i = 0; i < arg.nr; ) {
-		siginfo_t info;
+		kernel_siginfo_t info;
 		unsigned long off = arg.off + i;
 		bool found = false;
 
@@ -908,14 +931,107 @@ static int ptrace_regset(struct task_struct *task, int req, unsigned int type,
  * to ensure no machine forgets it.
  */
 EXPORT_SYMBOL_GPL(task_user_regset_view);
-#endif
+
+static unsigned long
+ptrace_get_syscall_info_entry(struct task_struct *child, struct pt_regs *regs,
+			      struct ptrace_syscall_info *info)
+{
+	unsigned long args[ARRAY_SIZE(info->entry.args)];
+	int i;
+
+	info->op = PTRACE_SYSCALL_INFO_ENTRY;
+	info->entry.nr = syscall_get_nr(child, regs);
+	syscall_get_arguments(child, regs, args);
+	for (i = 0; i < ARRAY_SIZE(args); i++)
+		info->entry.args[i] = args[i];
+
+	/* args is the last field in struct ptrace_syscall_info.entry */
+	return offsetofend(struct ptrace_syscall_info, entry.args);
+}
+
+static unsigned long
+ptrace_get_syscall_info_seccomp(struct task_struct *child, struct pt_regs *regs,
+				struct ptrace_syscall_info *info)
+{
+	/*
+	 * As struct ptrace_syscall_info.entry is currently a subset
+	 * of struct ptrace_syscall_info.seccomp, it makes sense to
+	 * initialize that subset using ptrace_get_syscall_info_entry().
+	 * This can be reconsidered in the future if these structures
+	 * diverge significantly enough.
+	 */
+	ptrace_get_syscall_info_entry(child, regs, info);
+	info->op = PTRACE_SYSCALL_INFO_SECCOMP;
+	info->seccomp.ret_data = child->ptrace_message;
+
+	/* ret_data is the last field in struct ptrace_syscall_info.seccomp */
+	return offsetofend(struct ptrace_syscall_info, seccomp.ret_data);
+}
+
+static unsigned long
+ptrace_get_syscall_info_exit(struct task_struct *child, struct pt_regs *regs,
+			     struct ptrace_syscall_info *info)
+{
+	info->op = PTRACE_SYSCALL_INFO_EXIT;
+	info->exit.rval = syscall_get_error(child, regs);
+	info->exit.is_error = !!info->exit.rval;
+	if (!info->exit.is_error)
+		info->exit.rval = syscall_get_return_value(child, regs);
+
+	/* is_error is the last field in struct ptrace_syscall_info.exit */
+	return offsetofend(struct ptrace_syscall_info, exit.is_error);
+}
+
+static int
+ptrace_get_syscall_info(struct task_struct *child, unsigned long user_size,
+			void __user *datavp)
+{
+	struct pt_regs *regs = task_pt_regs(child);
+	struct ptrace_syscall_info info = {
+		.op = PTRACE_SYSCALL_INFO_NONE,
+		.arch = syscall_get_arch(child),
+		.instruction_pointer = instruction_pointer(regs),
+		.stack_pointer = user_stack_pointer(regs),
+	};
+	unsigned long actual_size = offsetof(struct ptrace_syscall_info, entry);
+	unsigned long write_size;
+
+	/*
+	 * This does not need lock_task_sighand() to access
+	 * child->last_siginfo because ptrace_freeze_traced()
+	 * called earlier by ptrace_check_attach() ensures that
+	 * the tracee cannot go away and clear its last_siginfo.
+	 */
+	switch (child->last_siginfo ? child->last_siginfo->si_code : 0) {
+	case SIGTRAP | 0x80:
+		switch (child->ptrace_message) {
+		case PTRACE_EVENTMSG_SYSCALL_ENTRY:
+			actual_size = ptrace_get_syscall_info_entry(child, regs,
+								    &info);
+			break;
+		case PTRACE_EVENTMSG_SYSCALL_EXIT:
+			actual_size = ptrace_get_syscall_info_exit(child, regs,
+								   &info);
+			break;
+		}
+		break;
+	case SIGTRAP | (PTRACE_EVENT_SECCOMP << 8):
+		actual_size = ptrace_get_syscall_info_seccomp(child, regs,
+							      &info);
+		break;
+	}
+
+	write_size = min(actual_size, user_size);
+	return copy_to_user(datavp, &info, write_size) ? -EFAULT : actual_size;
+}
+#endif /* CONFIG_HAVE_ARCH_TRACEHOOK */
 
 int ptrace_request(struct task_struct *child, long request,
 		   unsigned long addr, unsigned long data)
 {
 	bool seized = child->ptrace & PT_SEIZED;
 	int ret = -EIO;
-	siginfo_t siginfo, *si;
+	kernel_siginfo_t siginfo, *si;
 	void __user *datavp = (void __user *) data;
 	unsigned long __user *datalp = datavp;
 	unsigned long flags;
@@ -949,9 +1065,8 @@ int ptrace_request(struct task_struct *child, long request,
 		break;
 
 	case PTRACE_SETSIGINFO:
-		if (copy_from_user(&siginfo, datavp, sizeof siginfo))
-			ret = -EFAULT;
-		else
+		ret = copy_siginfo_from_user(&siginfo, datavp);
+		if (!ret)
 			ret = ptrace_setsiginfo(child, &siginfo);
 		break;
 
@@ -1104,9 +1219,8 @@ int ptrace_request(struct task_struct *child, long request,
 		return ptrace_resume(child, request, data);
 
 	case PTRACE_KILL:
-		if (child->exit_state)	/* already dead */
-			return 0;
-		return ptrace_resume(child, request, SIGKILL);
+		send_sig_info(SIGKILL, SEND_SIG_NOINFO, child);
+		return 0;
 
 #ifdef CONFIG_HAVE_ARCH_TRACEHOOK
 	case PTRACE_GETREGSET:
@@ -1114,7 +1228,7 @@ int ptrace_request(struct task_struct *child, long request,
 		struct iovec kiov;
 		struct iovec __user *uiov = datavp;
 
-		if (!access_ok(VERIFY_WRITE, uiov, sizeof(*uiov)))
+		if (!access_ok(uiov, sizeof(*uiov)))
 			return -EFAULT;
 
 		if (__get_user(kiov.iov_base, &uiov->iov_base) ||
@@ -1126,6 +1240,10 @@ int ptrace_request(struct task_struct *child, long request,
 			ret = __put_user(kiov.iov_len, &uiov->iov_len);
 		break;
 	}
+
+	case PTRACE_GET_SYSCALL_INFO:
+		ret = ptrace_get_syscall_info(child, addr, datavp);
+		break;
 #endif
 
 	case PTRACE_SECCOMP_GET_FILTER:
@@ -1221,7 +1339,7 @@ int compat_ptrace_request(struct task_struct *child, compat_long_t request,
 {
 	compat_ulong_t __user *datap = compat_ptr(data);
 	compat_ulong_t word;
-	siginfo_t siginfo;
+	kernel_siginfo_t siginfo;
 	int ret;
 
 	switch (request) {
@@ -1255,10 +1373,9 @@ int compat_ptrace_request(struct task_struct *child, compat_long_t request,
 		break;
 
 	case PTRACE_SETSIGINFO:
-		if (copy_siginfo_from_user32(
-			    &siginfo, (struct compat_siginfo __user *) datap))
-			ret = -EFAULT;
-		else
+		ret = copy_siginfo_from_user32(
+			&siginfo, (struct compat_siginfo __user *) datap);
+		if (!ret)
 			ret = ptrace_setsiginfo(child, &siginfo);
 		break;
 #ifdef CONFIG_HAVE_ARCH_TRACEHOOK
@@ -1271,7 +1388,7 @@ int compat_ptrace_request(struct task_struct *child, compat_long_t request,
 		compat_uptr_t ptr;
 		compat_size_t len;
 
-		if (!access_ok(VERIFY_WRITE, uiov, sizeof(*uiov)))
+		if (!access_ok(uiov, sizeof(*uiov)))
 			return -EFAULT;
 
 		if (__get_user(ptr, &uiov->iov_base) ||

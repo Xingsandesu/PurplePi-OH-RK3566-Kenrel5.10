@@ -1,21 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Based on arch/arm/kernel/signal.c
  *
  * Copyright (C) 1995-2009 Russell King
  * Copyright (C) 2012 ARM Ltd.
  * Modified by Will Deacon <will.deacon@arm.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #include <linux/compat.h>
@@ -234,7 +223,7 @@ static int compat_restore_sigframe(struct pt_regs *regs,
 	err |= !valid_user_regs(&regs->user_regs, current);
 
 	aux = (struct compat_aux_sigframe __user *) sf->uc.uc_regspace;
-	if (err == 0)
+	if (err == 0 && system_supports_fpsimd())
 		err |= compat_restore_vfp_context(&aux->vfp);
 
 	return err;
@@ -258,7 +247,7 @@ COMPAT_SYSCALL_DEFINE0(sigreturn)
 
 	frame = (struct compat_sigframe __user *)regs->compat_sp;
 
-	if (!access_ok(VERIFY_READ, frame, sizeof (*frame)))
+	if (!access_ok(frame, sizeof (*frame)))
 		goto badframe;
 
 	if (compat_restore_sigframe(regs, frame))
@@ -289,7 +278,7 @@ COMPAT_SYSCALL_DEFINE0(rt_sigreturn)
 
 	frame = (struct compat_rt_sigframe __user *)regs->compat_sp;
 
-	if (!access_ok(VERIFY_READ, frame, sizeof (*frame)))
+	if (!access_ok(frame, sizeof (*frame)))
 		goto badframe;
 
 	if (compat_restore_sigframe(regs, &frame->sig))
@@ -320,7 +309,7 @@ static void __user *compat_get_sigframe(struct ksignal *ksig,
 	/*
 	 * Check that we can actually write to the signal frame.
 	 */
-	if (!access_ok(VERIFY_WRITE, frame, framesize))
+	if (!access_ok(frame, framesize))
 		frame = NULL;
 
 	return frame;
@@ -353,38 +342,13 @@ static void compat_setup_return(struct pt_regs *regs, struct k_sigaction *ka,
 		retcode = ptr_to_compat(ka->sa.sa_restorer);
 	} else {
 		/* Set up sigreturn pointer */
-#ifdef CONFIG_COMPAT_VDSO
-		void *vdso_base = current->mm->context.vdso;
-		void *vdso_trampoline;
-
-		if (ka->sa.sa_flags & SA_SIGINFO) {
-			if (thumb) {
-				vdso_trampoline = VDSO_SYMBOL(vdso_base,
-							compat_rt_sigreturn_thumb);
-			} else {
-				vdso_trampoline = VDSO_SYMBOL(vdso_base,
-							compat_rt_sigreturn_arm);
-			}
-		} else {
-			if (thumb) {
-				vdso_trampoline = VDSO_SYMBOL(vdso_base,
-							compat_sigreturn_thumb);
-			} else {
-				vdso_trampoline = VDSO_SYMBOL(vdso_base,
-							compat_sigreturn_arm);
-			}
-		}
-
-		retcode = ptr_to_compat(vdso_trampoline) + thumb;
-#else
 		unsigned int idx = thumb << 1;
 
 		if (ka->sa.sa_flags & SA_SIGINFO)
 			idx += 3;
 
-		retcode = (unsigned long)current->mm->context.vdso +
+		retcode = (unsigned long)current->mm->context.sigpage +
 			  (idx << 2) + thumb;
-#endif
 	}
 
 	regs->regs[0]	= usig;
@@ -430,7 +394,7 @@ static int compat_setup_sigframe(struct compat_sigframe __user *sf,
 
 	aux = (struct compat_aux_sigframe __user *) sf->uc.uc_regspace;
 
-	if (err == 0)
+	if (err == 0 && system_supports_fpsimd())
 		err |= compat_preserve_vfp_context(&aux->vfp);
 	__put_user_error(0, &aux->end_magic, err);
 

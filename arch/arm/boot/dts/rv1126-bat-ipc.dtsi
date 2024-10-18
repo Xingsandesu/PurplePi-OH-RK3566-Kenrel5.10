@@ -156,14 +156,6 @@
 	extcon = <&u2phy0>;
 };
 
-&vepu {
-	status = "okay";
-};
-
 &vop {
-	status = "okay";
-};
-
-&vpu_mmu {
 	status = "okay";
 };

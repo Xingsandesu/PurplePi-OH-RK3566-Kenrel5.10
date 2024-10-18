@@ -17,7 +17,7 @@
 #include "inv_icm42600_buffer.h"
 
 enum inv_icm42600_chip {
-	INV_CHIP_ICM40608,
+	INV_CHIP_INVALID,
 	INV_CHIP_ICM42600,
 	INV_CHIP_ICM42602,
 	INV_CHIP_ICM42605,
@@ -299,7 +299,6 @@ struct inv_icm42600_state {
 #define INV_ICM42600_INT_SOURCE0_UI_AGC_RDY_INT1_EN	BIT(0)
 
 #define INV_ICM42600_REG_WHOAMI				0x0075
-#define INV_ICM42600_WHOAMI_ICM40608			0x39
 #define INV_ICM42600_WHOAMI_ICM42600			0x40
 #define INV_ICM42600_WHOAMI_ICM42602			0x41
 #define INV_ICM42600_WHOAMI_ICM42605			0x42
@@ -364,7 +363,7 @@ extern const struct regmap_config inv_icm42600_regmap_config;
 extern const struct dev_pm_ops inv_icm42600_pm_ops;
 
 const struct iio_mount_matrix *
-inv_icm42600_get_mount_matrix(struct iio_dev *indio_dev,
+inv_icm42600_get_mount_matrix(const struct iio_dev *indio_dev,
 			      const struct iio_chan_spec *chan);
 
 uint32_t inv_icm42600_odr_to_period(enum inv_icm42600_odr odr);

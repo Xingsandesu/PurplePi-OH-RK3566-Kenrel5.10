@@ -24,12 +24,13 @@ struct flash_blk_ops {
 	int major;
 	int minorbits;
 	int last_dev_index;
-	struct completion thread_exit;
-	int quit;
-	int flash_th_quited;
-	wait_queue_head_t thread_wq; /* thread wait queue */
 	struct request_queue *rq;
 	spinlock_t queue_lock; /* queue lock */
+
+	/* block-mq */
+	struct list_head rq_list;
+	struct blk_mq_tag_set *tag_set;
+
 	struct list_head devs;
 	struct module *owner;
 };

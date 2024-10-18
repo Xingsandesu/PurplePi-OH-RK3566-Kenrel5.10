@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Copyright (c) 2019 Fuzhou Rockchip Electronics Co., Ltd. */
 
+#include <linux/compat.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>
 #include <linux/iommu.h>
@@ -340,6 +341,7 @@ static long rkispp_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 		rkispp_reg_withstream = arg;
 		*rkispp_reg_withstream = rkispp_is_reg_withstream_global();
 		break;
+	#if IS_ENABLED(CONFIG_VIDEO_ROCKCHIP_ISPP_VERSION_V10)
 	case RKISPP_CMD_GET_TNRBUF_FD:
 		ret = rkispp_get_tnrbuf_fd(ispp_dev, (struct rkispp_buf_idxfd *)arg);
 		break;
@@ -349,6 +351,7 @@ static long rkispp_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 	case RKISPP_CMD_TRIGGER_MODE:
 		rkispp_set_trigger_mode(ispp_dev, (struct rkispp_trigger_mode *)arg);
 		break;
+	#endif
 	default:
 		ret = -ENOIOCTLCMD;
 	}
@@ -382,6 +385,7 @@ static long rkispp_compat_ioctl32(struct v4l2_subdev *sd,
 		ret = rkispp_ioctl(sd, cmd, &fecsize);
 		break;
 	case RKISPP_CMD_GET_TNRBUF_FD:
+	case RKISPP_CMD_GET_NRBUF_FD:
 		ret = rkispp_ioctl(sd, cmd, &idxfd);
 		if (!ret && copy_to_user(up, &idxfd, sizeof(idxfd)))
 			ret = -EFAULT;

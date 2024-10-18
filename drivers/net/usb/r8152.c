@@ -891,7 +891,7 @@ struct fw_block {
 struct fw_header {
 	u8 checksum[32];
 	char version[RTL_VER_SIZE];
-	struct fw_block blocks[0];
+	struct fw_block blocks[];
 } __packed;
 
 /**
@@ -930,7 +930,7 @@ struct fw_mac {
 	__le32 reserved;
 	__le16 fw_ver_reg;
 	u8 fw_ver_data;
-	char info[0];
+	char info[];
 } __packed;
 
 /**
@@ -982,7 +982,7 @@ struct fw_phy_nc {
 	__le16 bp_start;
 	__le16 bp_num;
 	__le16 bp[4];
-	char info[0];
+	char info[];
 } __packed;
 
 enum rtl_fw_type {
@@ -1504,15 +1504,19 @@ static int determine_ethernet_addr(struct r8152 *tp, struct sockaddr *sa)
 
 	sa->sa_family = dev->type;
 
-	if (tp->version == RTL_VER_01) {
-		ret = pla_ocp_read(tp, PLA_IDR, 8, sa->sa_data);
-	} else {
-		/* if device doesn't support MAC pass through this will
-		 * be expected to be non-zero
-		 */
-		ret = vendor_mac_passthru_addr_read(tp, sa);
-		if (ret < 0)
-			ret = pla_ocp_read(tp, PLA_BACKUP, 8, sa->sa_data);
+	ret = eth_platform_get_mac_address(&tp->udev->dev, sa->sa_data);
+	if (ret < 0) {
+		if (tp->version == RTL_VER_01) {
+			ret = pla_ocp_read(tp, PLA_IDR, 8, sa->sa_data);
+		} else {
+			/* if device doesn't support MAC pass through this will
+			 * be expected to be non-zero
+			 */
+			ret = vendor_mac_passthru_addr_read(tp, sa);
+			if (ret < 0)
+				ret = pla_ocp_read(tp, PLA_BACKUP, 8,
+						   sa->sa_data);
+		}
 	}
 
 	if (ret < 0) {
@@ -1678,14 +1682,16 @@ static void intr_callback(struct urb *urb)
 	case -ECONNRESET:	/* unlink */
 	case -ESHUTDOWN:
 		netif_device_detach(tp->netdev);
-		/* fall through */
+		fallthrough;
 	case -ENOENT:
 	case -EPROTO:
 		netif_info(tp, intr, tp->netdev,
 			   "Stop submitting intr, status %d\n", status);
 		return;
 	case -EOVERFLOW:
-		netif_info(tp, intr, tp->netdev, "intr status -EOVERFLOW\n");
+		if (net_ratelimit())
+			netif_info(tp, intr, tp->netdev,
+				   "intr status -EOVERFLOW\n");
 		goto resubmit;
 	/* -EPIPE:  should clear the halt */
 	default:
@@ -1916,8 +1922,8 @@ static void r8152_csum_workaround(struct r8152 *tp, struct sk_buff *skb,
 {
 	if (skb_shinfo(skb)->gso_size) {
 		netdev_features_t features = tp->netdev->features;
+		struct sk_buff *segs, *seg, *next;
 		struct sk_buff_head seg_list;
-		struct sk_buff *segs, *nskb;
 
 		features &= ~(NETIF_F_SG | NETIF_F_IPV6_CSUM | NETIF_F_TSO6);
 		segs = skb_gso_segment(skb, features);
@@ -1926,12 +1932,10 @@ static void r8152_csum_workaround(struct r8152 *tp, struct sk_buff *skb,
 
 		__skb_queue_head_init(&seg_list);
 
-		do {
-			nskb = segs;
-			segs = segs->next;
-			nskb->next = NULL;
-			__skb_queue_tail(&seg_list, nskb);
-		} while (segs);
+		skb_list_walk_safe(segs, seg, next) {
+			skb_mark_not_on_list(seg);
+			__skb_queue_tail(&seg_list, seg);
+		}
 
 		skb_queue_splice(&seg_list, list);
 		dev_kfree_skb(skb);
@@ -1948,29 +1952,6 @@ drop:
 		stats->tx_dropped++;
 		dev_kfree_skb(skb);
 	}
-}
-
-/* msdn_giant_send_check()
- * According to the document of microsoft, the TCP Pseudo Header excludes the
- * packet length for IPv6 TCP large packets.
- */
-static int msdn_giant_send_check(struct sk_buff *skb)
-{
-	const struct ipv6hdr *ipv6h;
-	struct tcphdr *th;
-	int ret;
-
-	ret = skb_cow_head(skb, 0);
-	if (ret)
-		return ret;
-
-	ipv6h = ipv6_hdr(skb);
-	th = tcp_hdr(skb);
-
-	th->check = 0;
-	th->check = ~tcp_v6_check(0, &ipv6h->saddr, &ipv6h->daddr, 0);
-
-	return ret;
 }
 
 static inline void rtl_tx_vlan_tag(struct tx_desc *desc, struct sk_buff *skb)
@@ -2018,10 +1999,11 @@ static int r8152_tx_csum(struct r8152 *tp, struct tx_desc *desc,
 			break;
 
 		case htons(ETH_P_IPV6):
-			if (msdn_giant_send_check(skb)) {
+			if (skb_cow_head(skb, 0)) {
 				ret = TX_CSUM_TSO;
 				goto unavailable;
 			}
+			tcp_v6_gso_csum_prep(skb);
 			opts1 |= GTSENDV6;
 			break;
 
@@ -2457,6 +2439,9 @@ static int r8152_poll(struct napi_struct *napi, int budget)
 	struct r8152 *tp = container_of(napi, struct r8152, napi);
 	int work_done;
 
+	if (!budget)
+		return 0;
+
 	work_done = rx_bottom(tp, budget);
 
 	if (work_done < budget) {
@@ -2526,7 +2511,7 @@ static void rtl_drop_queued_tx(struct r8152 *tp)
 	}
 }
 
-static void rtl8152_tx_timeout(struct net_device *netdev)
+static void rtl8152_tx_timeout(struct net_device *netdev, unsigned int txqueue)
 {
 	struct r8152 *tp = netdev_priv(netdev);
 
@@ -3248,7 +3233,7 @@ static void r8153b_ups_en(struct r8152 *tp, bool enable)
 			r8152_mdio_write(tp, MII_BMCR, data);
 
 			data = r8153_phy_status(tp, PHY_STAT_LAN_ON);
-			/* fall through */
+			fallthrough;
 
 		default:
 			if (data != PHY_STAT_LAN_ON)
@@ -3452,7 +3437,7 @@ static void rtl_clear_bp(struct r8152 *tp, u16 type)
 	case RTL_VER_09:
 	default:
 		if (type == MCU_TYPE_USB) {
-			ocp_write_byte(tp, MCU_TYPE_USB, USB_BP2_EN, 0);
+			ocp_write_word(tp, MCU_TYPE_USB, USB_BP2_EN, 0);
 
 			ocp_write_word(tp, MCU_TYPE_USB, USB_BP_8, 0);
 			ocp_write_word(tp, MCU_TYPE_USB, USB_BP_9, 0);
@@ -4841,7 +4826,7 @@ static int rtl8152_set_speed(struct r8152 *tp, u8 autoneg, u32 speed, u8 duplex,
 				tp->ups_info.speed_duplex = NWAY_1000M_FULL;
 				break;
 			}
-			/* fall through */
+			fallthrough;
 		default:
 			ret = -EINVAL;
 			goto out;
@@ -5634,7 +5619,7 @@ static int rtl8152_post_reset(struct usb_interface *intf)
 	/* reset the MAC adddress in case of policy change */
 	if (determine_ethernet_addr(tp, &sa) >= 0) {
 		rtnl_lock();
-		dev_set_mac_address (tp->netdev, &sa);
+		dev_set_mac_address (tp->netdev, &sa, NULL);
 		rtnl_unlock();
 	}
 
@@ -6355,6 +6340,7 @@ static int rtl8152_set_ringparam(struct net_device *netdev,
 }
 
 static const struct ethtool_ops ops = {
+	.supported_coalesce_params = ETHTOOL_COALESCE_USECS,
 	.get_drvinfo = rtl8152_get_drvinfo,
 	.get_link = ethtool_op_get_link,
 	.nway_reset = rtl8152_nway_reset,
@@ -6539,7 +6525,10 @@ static int rtl_ops_init(struct r8152 *tp)
 		ops->in_nway		= rtl8153_in_nway;
 		ops->hw_phy_cfg		= r8153_hw_phy_cfg;
 		ops->autosuspend_en	= rtl8153_runtime_enable;
-		tp->rx_buf_sz		= 32 * 1024;
+		if (tp->udev->speed < USB_SPEED_SUPER)
+			tp->rx_buf_sz	= 16 * 1024;
+		else
+			tp->rx_buf_sz	= 32 * 1024;
 		tp->eee_en		= true;
 		tp->eee_adv		= MDIO_EEE_1000T | MDIO_EEE_100TX;
 		break;
@@ -6884,6 +6873,7 @@ static const struct usb_device_id rtl8152_table[] = {
 	{REALTEK_USB_DEVICE(VENDOR_ID_MICROSOFT, 0x0927)},
 	{REALTEK_USB_DEVICE(VENDOR_ID_SAMSUNG, 0xa101)},
 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x304f)},
+	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x3054)},
 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x3062)},
 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x3069)},
 	{REALTEK_USB_DEVICE(VENDOR_ID_LENOVO,  0x3082)},

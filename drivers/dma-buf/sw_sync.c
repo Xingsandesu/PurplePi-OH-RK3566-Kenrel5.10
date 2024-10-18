@@ -1,17 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Sync File validation framework
  *
  * Copyright (C) 2012 Google, Inc.
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
  */
 
 #include <linux/file.h>
@@ -160,7 +151,7 @@ static bool timeline_fence_signaled(struct dma_fence *fence)
 {
 	struct sync_timeline *parent = dma_fence_parent(fence);
 
-	return !__dma_fence_is_later(fence->seqno, parent->value);
+	return !__dma_fence_is_later(fence->seqno, parent->value, fence->ops);
 }
 
 static bool timeline_fence_enable_signaling(struct dma_fence *fence)
@@ -171,7 +162,7 @@ static bool timeline_fence_enable_signaling(struct dma_fence *fence)
 static void timeline_fence_value_str(struct dma_fence *fence,
 				    char *str, int size)
 {
-	snprintf(str, size, "%d", fence->seqno);
+	snprintf(str, size, "%lld", fence->seqno);
 }
 
 static void timeline_fence_timeline_value_str(struct dma_fence *fence,
@@ -200,12 +191,10 @@ static const struct dma_fence_ops timeline_fence_ops = {
  * A sync implementation should call this any time one of it's fences
  * has signaled or has an error condition.
  */
-void sync_timeline_signal(struct sync_timeline *obj, unsigned int inc)
+static void sync_timeline_signal(struct sync_timeline *obj, unsigned int inc)
 {
+	LIST_HEAD(signalled);
 	struct sync_pt *pt, *next;
-
-	if (WARN_ON(!obj))
-		return;
 
 	trace_sync_timeline(obj);
 
@@ -217,23 +206,21 @@ void sync_timeline_signal(struct sync_timeline *obj, unsigned int inc)
 		if (!timeline_fence_signaled(&pt->base))
 			break;
 
-		list_del_init(&pt->link);
+		dma_fence_get(&pt->base);
+
+		list_move_tail(&pt->link, &signalled);
 		rb_erase(&pt->node, &obj->pt_tree);
 
-		/*
-		 * A signal callback may release the last reference to this
-		 * fence, causing it to be freed. That operation has to be
-		 * last to avoid a use after free inside this loop, and must
-		 * be after we remove the fence from the timeline in order to
-		 * prevent deadlocking on timeline->lock inside
-		 * timeline_fence_release().
-		 */
 		dma_fence_signal_locked(&pt->base);
 	}
 
 	spin_unlock_irq(&obj->lock);
+
+	list_for_each_entry_safe(pt, next, &signalled, link) {
+		list_del_init(&pt->link);
+		dma_fence_put(&pt->base);
+	}
 }
-EXPORT_SYMBOL(sync_timeline_signal);
 
 /**
  * sync_pt_create() - creates a sync pt
@@ -423,7 +410,7 @@ const struct file_operations sw_sync_debugfs_fops = {
 	.open           = sw_sync_debugfs_open,
 	.release        = sw_sync_debugfs_release,
 	.unlocked_ioctl = sw_sync_ioctl,
-	.compat_ioctl	= sw_sync_ioctl,
+	.compat_ioctl	= compat_ptr_ioctl,
 };
 
 static struct miscdevice sw_sync_dev = {

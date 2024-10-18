@@ -101,14 +101,6 @@ static const char * const OS02G10_supply_names[] = {
 
 #define OS02G10_NUM_SUPPLIES ARRAY_SIZE(OS02G10_supply_names)
 
-enum os02g10_max_pad {
-	PAD0,
-	PAD1,
-	PAD2,
-	PAD3,
-	PAD_MAX,
-};
-
 struct regval {
 	u8 addr;
 	u8 val;
@@ -533,14 +525,12 @@ static int os02g10_g_frame_interval(struct v4l2_subdev *sd,
 	struct os02g10 *os02g10 = to_os02g10(sd);
 	const struct os02g10_mode *mode = os02g10->cur_mode;
 
-	mutex_lock(&os02g10->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&os02g10->mutex);
 
 	return 0;
 }
 
-static int os02g10_g_mbus_config(struct v4l2_subdev *sd,
+static int os02g10_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad,
                                  struct v4l2_mbus_config *config)
 {
 	struct os02g10 *os02g10 = to_os02g10(sd);
@@ -552,7 +542,7 @@ static int os02g10_g_mbus_config(struct v4l2_subdev *sd,
 		      V4L2_MBUS_CSI2_CHANNEL_0 |
 		      V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
 
-	config->type = V4L2_MBUS_CSI2;
+	config->type = V4L2_MBUS_CSI2_DPHY;
 	config->flags = val;
 
 	return 0;
@@ -942,7 +932,6 @@ static const struct v4l2_subdev_core_ops os02g10_core_ops = {
 static const struct v4l2_subdev_video_ops os02g10_video_ops = {
 	.s_stream = os02g10_s_stream,
 	.g_frame_interval = os02g10_g_frame_interval,
-	.g_mbus_config = os02g10_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops os02g10_pad_ops = {
@@ -951,6 +940,7 @@ static const struct v4l2_subdev_pad_ops os02g10_pad_ops = {
 	.enum_frame_interval = os02g10_enum_frame_interval,
 	.get_fmt = os02g10_get_fmt,
 	.set_fmt = os02g10_set_fmt,
+	.get_mbus_config = os02g10_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops os02g10_subdev_ops = {

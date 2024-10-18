@@ -91,7 +91,7 @@ static int rkcif_luma_fh_open(struct file *filp)
 
 	ret = v4l2_fh_open(filp);
 	if (!ret) {
-		ret = v4l2_pipeline_pm_use(&params->vnode.vdev.entity, 1);
+		ret = v4l2_pipeline_pm_get(&params->vnode.vdev.entity);
 		if (ret < 0)
 			vb2_fop_release(filp);
 	}
@@ -105,12 +105,8 @@ static int rkcif_luma_fop_release(struct file *file)
 	int ret;
 
 	ret = vb2_fop_release(file);
-	if (!ret) {
-		ret = v4l2_pipeline_pm_use(&luma->vnode.vdev.entity, 0);
-		if (ret < 0)
-			v4l2_err(&luma->cifdev->v4l2_dev,
-				 "set pipeline power failed %d\n", ret);
-	}
+	if (!ret)
+		v4l2_pipeline_pm_put(&luma->vnode.vdev.entity);
 	return ret;
 }
 
@@ -293,7 +289,7 @@ static void rkcif_luma_readout_task(unsigned long data)
 
 void rkcif_luma_isr(struct rkcif_luma_vdev *luma_vdev, int mipi_id, u32 frame_id)
 {
-	u8 hdr_mode = luma_vdev->cifdev->hdr.mode;
+	u8 hdr_mode = luma_vdev->cifdev->hdr.hdr_mode;
 	enum rkcif_luma_frm_mode frm_mode;
 	bool send_task;
 	u32 i, value;
@@ -365,7 +361,7 @@ void rkcif_luma_isr(struct rkcif_luma_vdev *luma_vdev, int mipi_id, u32 frame_id
 
 	if (send_task) {
 		luma_vdev->work.readout = RKCIF_READOUT_LUMA;
-		luma_vdev->work.timestamp = ktime_get_ns();
+		luma_vdev->work.timestamp = rkcif_time_get_ns(luma_vdev->cifdev);
 		luma_vdev->work.frame_id = frame_id;
 
 		if (frm_mode == RKCIF_LUMA_THREEFRM)
@@ -478,7 +474,7 @@ int rkcif_register_luma_vdev(struct rkcif_luma_vdev *luma_vdev,
 	if (ret < 0)
 		goto err_release_queue;
 
-	ret = video_register_device(vdev, VFL_TYPE_GRABBER, -1);
+	ret = video_register_device(vdev, VFL_TYPE_VIDEO, -1);
 	if (ret < 0) {
 		dev_err(&vdev->dev,
 			"could not register Video for Linux device\n");

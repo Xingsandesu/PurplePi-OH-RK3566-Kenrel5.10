@@ -76,6 +76,10 @@
 #define GC4653_MIRROR_BIT_MASK		BIT(0)
 #define GC4653_FLIP_BIT_MASK		BIT(1)
 
+#define GC4653_FRAME_BUFFER_REG         0x031d
+#define GC4653_FRAME_BUFFER_START       0x2d
+#define GC4653_FRAME_BUFFER_END         0x28
+
 #define REG_NULL			0xFFFF
 
 #define GC4653_REG_VALUE_08BIT		1
@@ -94,14 +98,6 @@ static const char * const gc4653_supply_names[] = {
 };
 
 #define GC4653_NUM_SUPPLIES ARRAY_SIZE(gc4653_supply_names)
-
-enum gc4653_max_pad {
-	PAD0, /* link to isp */
-	PAD1, /* link to csi wr0 | hdr x2:L x3:M */
-	PAD2, /* link to csi wr1 | hdr      x3:L */
-	PAD3, /* link to csi wr2 | hdr x2:M x3:S */
-	PAD_MAX,
-};
 
 struct regval {
 	u16 addr;
@@ -672,14 +668,12 @@ static int gc4653_g_frame_interval(struct v4l2_subdev *sd,
 	struct gc4653 *gc4653 = to_gc4653(sd);
 	const struct gc4653_mode *mode = gc4653->cur_mode;
 
-	mutex_lock(&gc4653->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&gc4653->mutex);
 
 	return 0;
 }
 
-static int gc4653_g_mbus_config(struct v4l2_subdev *sd,
+static int gc4653_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
 	struct gc4653 *gc4653 = to_gc4653(sd);
@@ -691,7 +685,7 @@ static int gc4653_g_mbus_config(struct v4l2_subdev *sd,
 		V4L2_MBUS_CSI2_CHANNEL_0 |
 		V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
 
-	config->type = V4L2_MBUS_CSI2;
+	config->type = V4L2_MBUS_CSI2_DPHY;
 	config->flags = val;
 
 	return 0;
@@ -707,6 +701,17 @@ static void gc4653_get_module_inf(struct gc4653 *gc4653,
 	strscpy(inf->base.lens, gc4653->len_name, sizeof(inf->base.lens));
 }
 
+static int gc4653_get_channel_info(struct gc4653 *gc4653, struct rkmodule_channel_info *ch_info)
+{
+	if (ch_info->index < PAD0 || ch_info->index >= PAD_MAX)
+		return -EINVAL;
+	ch_info->vc = gc4653->cur_mode->vc[ch_info->index];
+	ch_info->width = gc4653->cur_mode->width;
+	ch_info->height = gc4653->cur_mode->height;
+	ch_info->bus_fmt = gc4653->cur_mode->bus_fmt;
+	return 0;
+}
+
 static long gc4653_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 {
 	struct gc4653 *gc4653 = to_gc4653(sd);
@@ -714,6 +719,7 @@ static long gc4653_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 	u32 i, h, w;
 	long ret = 0;
 	u32 stream = 0;
+	struct rkmodule_channel_info *ch_info;
 
 	switch (cmd) {
 	case RKMODULE_GET_MODULE_INFO:
@@ -772,6 +778,10 @@ static long gc4653_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 			ret = gc4653_write_reg(gc4653->client, GC4653_REG_CTRL_MODE,
 				GC4653_REG_VALUE_08BIT, GC4653_MODE_SW_STANDBY);
 		break;
+	case RKMODULE_GET_CHANNEL_INFO:
+		ch_info = (struct rkmodule_channel_info *)arg;
+		ret = gc4653_get_channel_info(gc4653, ch_info);
+		break;
 	default:
 		ret = -ENOIOCTLCMD;
 		break;
@@ -791,6 +801,7 @@ static long gc4653_compat_ioctl32(struct v4l2_subdev *sd,
 	struct preisp_hdrae_exp_s *hdrae;
 	long ret;
 	u32 stream = 0;
+	struct rkmodule_channel_info *ch_info;
 
 	switch (cmd) {
 	case RKMODULE_GET_MODULE_INFO:
@@ -871,6 +882,21 @@ static long gc4653_compat_ioctl32(struct v4l2_subdev *sd,
 			ret = gc4653_ioctl(sd, cmd, &stream);
 		else
 			ret = -EFAULT;
+		break;
+	case RKMODULE_GET_CHANNEL_INFO:
+		ch_info = kzalloc(sizeof(*ch_info), GFP_KERNEL);
+		if (!ch_info) {
+			ret = -ENOMEM;
+			return ret;
+		}
+
+		ret = gc4653_ioctl(sd, cmd, ch_info);
+		if (!ret) {
+			ret = copy_to_user(up, ch_info, sizeof(*ch_info));
+			if (ret)
+				ret = -EFAULT;
+		}
+		kfree(ch_info);
 		break;
 	default:
 		ret = -ENOIOCTLCMD;
@@ -1158,7 +1184,6 @@ static const struct v4l2_subdev_core_ops gc4653_core_ops = {
 static const struct v4l2_subdev_video_ops gc4653_video_ops = {
 	.s_stream = gc4653_s_stream,
 	.g_frame_interval = gc4653_g_frame_interval,
-	.g_mbus_config = gc4653_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops gc4653_pad_ops = {
@@ -1167,6 +1192,7 @@ static const struct v4l2_subdev_pad_ops gc4653_pad_ops = {
 	.enum_frame_interval = gc4653_enum_frame_interval,
 	.get_fmt = gc4653_get_fmt,
 	.set_fmt = gc4653_set_fmt,
+	.get_mbus_config = gc4653_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops gc4653_subdev_ops = {
@@ -1232,8 +1258,12 @@ static int gc4653_set_ctrl(struct v4l2_ctrl *ctrl)
 			val |= GC4653_MIRROR_BIT_MASK;
 		else
 			val &= ~GC4653_MIRROR_BIT_MASK;
+		ret |= gc4653_write_reg(gc4653->client, GC4653_FRAME_BUFFER_REG,
+					GC4653_REG_VALUE_08BIT, GC4653_FRAME_BUFFER_START);
 		ret |= gc4653_write_reg(gc4653->client, GC4653_FLIP_MIRROR_REG,
 					GC4653_REG_VALUE_08BIT, val);
+		ret |= gc4653_write_reg(gc4653->client, GC4653_FRAME_BUFFER_REG,
+					GC4653_REG_VALUE_08BIT, GC4653_FRAME_BUFFER_END);
 		break;
 	case V4L2_CID_VFLIP:
 		ret = gc4653_read_reg(gc4653->client, GC4653_FLIP_MIRROR_REG,
@@ -1242,8 +1272,12 @@ static int gc4653_set_ctrl(struct v4l2_ctrl *ctrl)
 			val |= GC4653_FLIP_BIT_MASK;
 		else
 			val &= ~GC4653_FLIP_BIT_MASK;
+		ret |= gc4653_write_reg(gc4653->client, GC4653_FRAME_BUFFER_REG,
+					GC4653_REG_VALUE_08BIT, GC4653_FRAME_BUFFER_START);
 		ret |= gc4653_write_reg(gc4653->client, GC4653_FLIP_MIRROR_REG,
 					GC4653_REG_VALUE_08BIT, val);
+		ret |= gc4653_write_reg(gc4653->client, GC4653_FRAME_BUFFER_REG,
+					GC4653_REG_VALUE_08BIT, GC4653_FRAME_BUFFER_END);
 		break;
 	default:
 		dev_warn(&client->dev, "%s Unhandled id:0x%x, val:0x%x\n",

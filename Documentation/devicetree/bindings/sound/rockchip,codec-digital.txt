@@ -5,6 +5,8 @@ Required properties:
 - compatible: should be one of the following
    - "rockchip,codec-digital-v1"
    - "rockchip,rk3568-codec-digital"
+   - "rockchip,rk3588-codec-digital"
+   - "rockchip,rv1106-codec-digital"
    - "rockchip,rv1126-codec-digital"
 - reg: physical base address of the controller and length of memory mapped
   region.
@@ -20,9 +22,6 @@ Optional properties:
   sync mode.
 - rockchip,pwm-output-mode: This is a boolean property, if present, output pwm
   to drive spk.
-- rockchip,pa-ctl-delay-ms: The unsigned inter property, if present, will delay
-  enable power amplifier with specified milliseconds.
-- pa-ctl-gpios: The gpio of Power Amplifier Controller.
 
 Example:
 

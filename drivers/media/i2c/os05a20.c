@@ -106,14 +106,6 @@ static const char * const os05a20_supply_names[] = {
 #define MIRROR_BIT_MASK			BIT(2)
 #define FLIP_BIT_MASK			BIT(2)
 
-enum os05a20_max_pad {
-	PAD0,
-	PAD1,
-	PAD2,
-	PAD3,
-	PAD_MAX,
-};
-
 struct regval {
 	u16 addr;
 	u8 val;
@@ -682,7 +674,7 @@ static const struct os05a20_mode supported_modes[] = {
 		.vc[PAD0] = V4L2_MBUS_CSI2_CHANNEL_1,
 		.vc[PAD1] = V4L2_MBUS_CSI2_CHANNEL_0,//L->csi wr0
 		.vc[PAD2] = V4L2_MBUS_CSI2_CHANNEL_1,
-		.vc[PAD3] = V4L2_MBUS_CSI2_CHANNEL_1,//M->csi wr2 //Á½Õë¹Ì¶¨¶ÌÖ¡
+		.vc[PAD3] = V4L2_MBUS_CSI2_CHANNEL_1,//M->csi wr2
 	},
 };
 
@@ -928,14 +920,12 @@ static int os05a20_g_frame_interval(struct v4l2_subdev *sd,
 	struct os05a20 *os05a20 = to_os05a20(sd);
 	const struct os05a20_mode *mode = os05a20->cur_mode;
 
-	mutex_lock(&os05a20->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&os05a20->mutex);
 
 	return 0;
 }
 
-static int os05a20_g_mbus_config(struct v4l2_subdev *sd,
+static int os05a20_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
 	struct os05a20 *os05a20 = to_os05a20(sd);
@@ -952,7 +942,7 @@ static int os05a20_g_mbus_config(struct v4l2_subdev *sd,
 		V4L2_MBUS_CSI2_CONTINUOUS_CLOCK |
 		V4L2_MBUS_CSI2_CHANNEL_1;
 
-	config->type = V4L2_MBUS_CSI2;
+	config->type = V4L2_MBUS_CSI2_DPHY;
 	config->flags = val;
 
 	return 0;
@@ -1526,7 +1516,6 @@ static const struct v4l2_subdev_core_ops os05a20_core_ops = {
 static const struct v4l2_subdev_video_ops os05a20_video_ops = {
 	.s_stream = os05a20_s_stream,
 	.g_frame_interval = os05a20_g_frame_interval,
-	.g_mbus_config = os05a20_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops os05a20_pad_ops = {
@@ -1535,6 +1524,7 @@ static const struct v4l2_subdev_pad_ops os05a20_pad_ops = {
 	.enum_frame_interval = os05a20_enum_frame_interval,
 	.get_fmt = os05a20_get_fmt,
 	.set_fmt = os05a20_set_fmt,
+	.get_mbus_config = os05a20_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops os05a20_subdev_ops = {
@@ -1573,7 +1563,7 @@ static int os05a20_set_ctrl(struct v4l2_ctrl *ctrl)
 	switch (ctrl->id) {
 	case V4L2_CID_EXPOSURE:
 		if (os05a20->cur_mode->hdr_mode != NO_HDR)
-			return 0;
+			goto ctrl_end;
 		ret = os05a20_write_reg(os05a20->client,
 					OS05A20_REG_EXP_LONG_H,
 					OS05A20_REG_VALUE_16BIT,
@@ -1583,7 +1573,7 @@ static int os05a20_set_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	case V4L2_CID_ANALOGUE_GAIN:
 		if (os05a20->cur_mode->hdr_mode != NO_HDR)
-			return 0;
+			goto ctrl_end;
 		if (ctrl->val > 1984) {// >15.5x
 			dgain = ctrl->val * 10 / 155;
 			again = 1984;
@@ -1642,6 +1632,7 @@ static int os05a20_set_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	}
 
+ctrl_end:
 	pm_runtime_put(&client->dev);
 
 	return ret;

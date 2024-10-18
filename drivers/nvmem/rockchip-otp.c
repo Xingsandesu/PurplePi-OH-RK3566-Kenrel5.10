@@ -77,6 +77,18 @@
 #define OTPC_TIMEOUT_PROG		100000
 #define RK3568_NBYTES			2
 
+#define RK3588_OTPC_AUTO_CTRL		0x04
+#define RK3588_OTPC_AUTO_EN		0x08
+#define RK3588_OTPC_INT_ST		0x84
+#define RK3588_OTPC_DOUT0		0x20
+#define RK3588_NO_SECURE_OFFSET		0x300
+#define RK3588_NBYTES			4
+#define RK3588_BURST_NUM		1
+#define RK3588_BURST_SHIFT		8
+#define RK3588_ADDR_SHIFT		16
+#define RK3588_AUTO_EN			BIT(0)
+#define RK3588_RD_DONE			BIT(1)
+
 #define RV1126_OTP_NVM_CEB		0x00
 #define RV1126_OTP_NVM_RSTB		0x04
 #define RV1126_OTP_NVM_ST		0x18
@@ -144,7 +156,7 @@ struct rockchip_data;
 struct rockchip_otp {
 	struct device *dev;
 	void __iomem *base;
-	struct clk_bulk_data *clks;
+	struct clk_bulk_data	*clks;
 	int num_clks;
 	struct reset_control *rst;
 	struct nvmem_config *config;
@@ -302,7 +314,7 @@ static int px30s_otp_active(struct rockchip_otp *otp)
 			dev_err(otp->dev, "timeout during wait dp2stb\n");
 			return ret;
 		}
-		/* fall through */
+		fallthrough;
 	case OTPC_STANDBY:
 		writel(OTPC_ACTIVE, otp->base + OTPC_MODE_CTRL);
 		ret = px30s_otp_wait_status(otp, OTPC_STB2ACT_IRQ_ST);
@@ -333,7 +345,7 @@ static int px30s_otp_standby(struct rockchip_otp *otp)
 			dev_err(otp->dev, "timeout during wait act2stb\n");
 			return ret;
 		}
-		/* fall through */
+		fallthrough;
 	case OTPC_STANDBY:
 		writel(OTPC_DEEP_STANDBY, otp->base + OTPC_MODE_CTRL);
 		ret = px30s_otp_wait_status(otp, OTPC_STB2DP_IRQ_ST);
@@ -481,6 +493,80 @@ static int rk3568_otp_read(void *context, unsigned int offset, void *val,
 read_end:
 	writel(0x0 | OTPC_USE_USER_MASK, otp->base + OTPC_USER_CTRL);
 disable_clks:
+	clk_bulk_disable_unprepare(otp->num_clks, otp->clks);
+out:
+	kfree(buf);
+
+	return ret;
+}
+
+static int rk3588_otp_wait_status(struct rockchip_otp *otp, u32 flag)
+{
+	u32 status = 0;
+	int ret;
+
+	ret = readl_poll_timeout_atomic(otp->base + RK3588_OTPC_INT_ST, status,
+					(status & flag), 1, OTPC_TIMEOUT);
+	if (ret)
+		return ret;
+
+	/* clean int status */
+	writel(flag, otp->base + RK3588_OTPC_INT_ST);
+
+	return 0;
+}
+
+static int rk3588_otp_read(void *context, unsigned int offset, void *val,
+			   size_t bytes)
+{
+	struct rockchip_otp *otp = context;
+	unsigned int addr_start, addr_end, addr_offset, addr_len;
+	int ret = 0, i = 0;
+	u32 out_value;
+	u8 *buf;
+
+	if (offset >= otp->data->size)
+		return -ENOMEM;
+	if (offset + bytes > otp->data->size)
+		bytes = otp->data->size - offset;
+
+	addr_start = rounddown(offset, RK3588_NBYTES) / RK3588_NBYTES;
+	addr_end = roundup(offset + bytes, RK3588_NBYTES) / RK3588_NBYTES;
+	addr_offset = offset % RK3588_NBYTES;
+	addr_len = addr_end - addr_start;
+	addr_start += RK3588_NO_SECURE_OFFSET;
+
+	buf = kzalloc(array3_size(addr_len, RK3588_NBYTES, sizeof(*buf)),
+		      GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	ret = clk_bulk_prepare_enable(otp->num_clks, otp->clks);
+	if (ret < 0) {
+		dev_err(otp->dev, "failed to prepare/enable clks\n");
+		goto out;
+	}
+
+	while (addr_len--) {
+		writel((addr_start << RK3588_ADDR_SHIFT) |
+		       (RK3588_BURST_NUM << RK3588_BURST_SHIFT),
+		       otp->base + RK3588_OTPC_AUTO_CTRL);
+		writel(RK3588_AUTO_EN, otp->base + RK3588_OTPC_AUTO_EN);
+		ret = rk3588_otp_wait_status(otp, RK3588_RD_DONE);
+		if (ret < 0) {
+			dev_err(otp->dev, "timeout during read setup\n");
+			goto read_end;
+		}
+
+		out_value = readl(otp->base + RK3588_OTPC_DOUT0);
+		memcpy(&buf[i], &out_value, RK3588_NBYTES);
+		i += RK3588_NBYTES;
+		addr_start++;
+	}
+
+	memcpy(val, buf + addr_offset, bytes);
+
+read_end:
 	clk_bulk_disable_unprepare(otp->num_clks, otp->clks);
 out:
 	kfree(buf);
@@ -675,6 +761,28 @@ static const struct rockchip_data px30s_data = {
 	.reg_read = px30s_otp_read,
 };
 
+static const char * const rk3528_otp_clocks[] = {
+	"usr", "sbpi", "apb",
+};
+
+static const struct rockchip_data rk3528_data = {
+	.size = 0x80,
+	.clocks = rk3528_otp_clocks,
+	.num_clks = ARRAY_SIZE(rk3528_otp_clocks),
+	.reg_read = rk3568_otp_read,
+};
+
+static const char * const rk3562_otp_clocks[] = {
+	"usr", "sbpi", "apb", "arb", "phy",
+};
+
+static const struct rockchip_data rk3562_data = {
+	.size = 0x80,
+	.clocks = rk3562_otp_clocks,
+	.num_clks = ARRAY_SIZE(rk3562_otp_clocks),
+	.reg_read = rk3568_otp_read,
+};
+
 static const char * const rk3568_otp_clocks[] = {
 	"usr", "sbpi", "apb", "phy",
 };
@@ -683,6 +791,28 @@ static const struct rockchip_data rk3568_data = {
 	.size = 0x80,
 	.clocks = rk3568_otp_clocks,
 	.num_clks = ARRAY_SIZE(rk3568_otp_clocks),
+	.reg_read = rk3568_otp_read,
+};
+
+static const char * const rk3588_otp_clocks[] = {
+	"otpc", "apb", "arb", "phy",
+};
+
+static const struct rockchip_data rk3588_data = {
+	.size = 0x400,
+	.clocks = rk3588_otp_clocks,
+	.num_clks = ARRAY_SIZE(rk3588_otp_clocks),
+	.reg_read = rk3588_otp_read,
+};
+
+static const char * const rv1106_otp_clocks[] = {
+	"usr", "sbpi", "apb", "phy", "arb", "pmc",
+};
+
+static const struct rockchip_data rv1106_data = {
+	.size = 0x80,
+	.clocks = rv1106_otp_clocks,
+	.num_clks = ARRAY_SIZE(rv1106_otp_clocks),
 	.reg_read = rk3568_otp_read,
 };
 
@@ -715,11 +845,39 @@ static const struct of_device_id rockchip_otp_match[] = {
 		.compatible = "rockchip,rk3308-otp",
 		.data = (void *)&px30_data,
 	},
+	{
+		.compatible = "rockchip,rk3308bs-otp",
+		.data = (void *)&px30s_data,
+	},
+#endif
+#ifdef CONFIG_CPU_RK3528
+	{
+		.compatible = "rockchip,rk3528-otp",
+		.data = (void *)&rk3528_data,
+	},
+#endif
+#ifdef CONFIG_CPU_RK3562
+	{
+		.compatible = "rockchip,rk3562-otp",
+		.data = (void *)&rk3562_data,
+	},
 #endif
 #ifdef CONFIG_CPU_RK3568
 	{
 		.compatible = "rockchip,rk3568-otp",
 		.data = (void *)&rk3568_data,
+	},
+#endif
+#ifdef CONFIG_CPU_RK3588
+	{
+		.compatible = "rockchip,rk3588-otp",
+		.data = (void *)&rk3588_data,
+	},
+#endif
+#ifdef CONFIG_CPU_RV1106
+	{
+		.compatible = "rockchip,rv1106-otp",
+		.data = (void *)&rv1106_data,
 	},
 #endif
 #ifdef CONFIG_CPU_RV1126
@@ -732,7 +890,7 @@ static const struct of_device_id rockchip_otp_match[] = {
 };
 MODULE_DEVICE_TABLE(of, rockchip_otp_match);
 
-static int __init rockchip_otp_probe(struct platform_device *pdev)
+static int rockchip_otp_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct rockchip_otp *otp;
@@ -745,7 +903,7 @@ static int __init rockchip_otp_probe(struct platform_device *pdev)
 		dev_err(dev, "failed to get match data\n");
 		return -EINVAL;
 	}
-	if (soc_is_px30s())
+	if (soc_is_px30s() || soc_is_rk3308bs())
 		data = &px30s_data;
 
 	otp = devm_kzalloc(&pdev->dev, sizeof(struct rockchip_otp),
@@ -794,19 +952,33 @@ static int __init rockchip_otp_probe(struct platform_device *pdev)
 }
 
 static struct platform_driver rockchip_otp_driver = {
+	.probe = rockchip_otp_probe,
 	.driver = {
 		.name = "rockchip-otp",
 		.of_match_table = rockchip_otp_match,
 	},
 };
 
-static int __init rockchip_otp_module_init(void)
+static int __init rockchip_otp_init(void)
 {
-	return platform_driver_probe(&rockchip_otp_driver,
-				     rockchip_otp_probe);
+	int ret;
+
+	ret = platform_driver_register(&rockchip_otp_driver);
+	if (ret) {
+		pr_err("failed to register otp driver\n");
+		return ret;
+	}
+
+	return 0;
 }
 
-subsys_initcall(rockchip_otp_module_init);
+static void __exit rockchip_otp_exit(void)
+{
+	return platform_driver_unregister(&rockchip_otp_driver);
+}
+
+subsys_initcall(rockchip_otp_init);
+module_exit(rockchip_otp_exit);
 
 MODULE_DESCRIPTION("Rockchip OTP driver");
 MODULE_LICENSE("GPL v2");

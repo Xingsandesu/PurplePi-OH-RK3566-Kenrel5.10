@@ -6,6 +6,7 @@
 #include <linux/of_platform.h>
 #include <linux/slab.h>
 #include "dev.h"
+#include "hw.h"
 #include "isp_ispp.h"
 #include "regs.h"
 
@@ -18,7 +19,27 @@ void rkisp_write(struct rkisp_device *dev, u32 reg, u32 val, bool is_direct)
 	*flag = SW_REG_CACHE;
 	if (dev->hw_dev->is_single || is_direct) {
 		*flag = SW_REG_CACHE_SYNC;
+		if (dev->isp_ver == ISP_V32 && reg <= 0x200)
+			rv1106_sdmmc_get_lock();
 		writel(val, dev->hw_dev->base_addr + reg);
+		if (dev->isp_ver == ISP_V32 && reg <= 0x200)
+			rv1106_sdmmc_put_lock();
+	}
+}
+
+void rkisp_next_write(struct rkisp_device *dev, u32 reg, u32 val, bool is_direct)
+{
+	u32 offset = RKISP_ISP_SW_MAX_SIZE + reg;
+	u32 *mem = dev->sw_base_addr + offset;
+	u32 *flag = dev->sw_base_addr + offset + RKISP_ISP_SW_REG_SIZE;
+
+	*mem = val;
+	*flag = SW_REG_CACHE;
+	if (dev->hw_dev->is_single || is_direct) {
+		*flag = SW_REG_CACHE_SYNC;
+		if (dev->hw_dev->unite == ISP_UNITE_ONE)
+			return;
+		writel(val, dev->hw_dev->base_next_addr + reg);
 	}
 }
 
@@ -33,9 +54,15 @@ u32 rkisp_read(struct rkisp_device *dev, u32 reg, bool is_direct)
 	return val;
 }
 
-u32 rkisp_read_reg_cache(struct rkisp_device *dev, u32 reg)
+u32 rkisp_next_read(struct rkisp_device *dev, u32 reg, bool is_direct)
 {
-	return *(u32 *)(dev->sw_base_addr + reg);
+	u32 val;
+
+	if (dev->hw_dev->is_single || is_direct)
+		val = readl(dev->hw_dev->base_next_addr + reg);
+	else
+		val = *(u32 *)(dev->sw_base_addr + RKISP_ISP_SW_MAX_SIZE + reg);
+	return val;
 }
 
 void rkisp_set_bits(struct rkisp_device *dev, u32 reg, u32 mask, u32 val, bool is_direct)
@@ -45,6 +72,13 @@ void rkisp_set_bits(struct rkisp_device *dev, u32 reg, u32 mask, u32 val, bool i
 	rkisp_write(dev, reg, val | tmp, is_direct);
 }
 
+void rkisp_next_set_bits(struct rkisp_device *dev, u32 reg, u32 mask, u32 val, bool is_direct)
+{
+	u32 tmp = rkisp_next_read(dev, reg, is_direct) & ~mask;
+
+	rkisp_next_write(dev, reg, val | tmp, is_direct);
+}
+
 void rkisp_clear_bits(struct rkisp_device *dev, u32 reg, u32 mask, bool is_direct)
 {
 	u32 tmp = rkisp_read(dev, reg, is_direct);
@@ -52,9 +86,70 @@ void rkisp_clear_bits(struct rkisp_device *dev, u32 reg, u32 mask, bool is_direc
 	rkisp_write(dev, reg, tmp & ~mask, is_direct);
 }
 
+void rkisp_next_clear_bits(struct rkisp_device *dev, u32 reg, u32 mask, bool is_direct)
+{
+	u32 tmp = rkisp_next_read(dev, reg, is_direct);
+
+	rkisp_next_write(dev, reg, tmp & ~mask, is_direct);
+}
+
+void rkisp_write_reg_cache(struct rkisp_device *dev, u32 reg, u32 val)
+{
+	u32 *mem = dev->sw_base_addr + reg;
+
+	*mem = val;
+}
+
+void rkisp_next_write_reg_cache(struct rkisp_device *dev, u32 reg, u32 val)
+{
+	u32 offset = RKISP_ISP_SW_MAX_SIZE + reg;
+	u32 *mem = dev->sw_base_addr + offset;
+
+	*mem = val;
+}
+
+u32 rkisp_read_reg_cache(struct rkisp_device *dev, u32 reg)
+{
+	return *(u32 *)(dev->sw_base_addr + reg);
+}
+
+u32 rkisp_next_read_reg_cache(struct rkisp_device *dev, u32 reg)
+{
+	return *(u32 *)(dev->sw_base_addr + RKISP_ISP_SW_MAX_SIZE + reg);
+}
+
+void rkisp_set_reg_cache_bits(struct rkisp_device *dev, u32 reg, u32 mask, u32 val)
+{
+	u32 tmp = rkisp_read_reg_cache(dev, reg) & ~mask;
+
+	rkisp_write_reg_cache(dev, reg, val | tmp);
+}
+
+void rkisp_next_set_reg_cache_bits(struct rkisp_device *dev, u32 reg, u32 mask, u32 val)
+{
+	u32 tmp = rkisp_next_read_reg_cache(dev, reg) & ~mask;
+
+	rkisp_next_write_reg_cache(dev, reg, val | tmp);
+}
+
+void rkisp_clear_reg_cache_bits(struct rkisp_device *dev, u32 reg, u32 mask)
+{
+	u32 tmp = rkisp_read_reg_cache(dev, reg);
+
+	rkisp_write_reg_cache(dev, reg, tmp & ~mask);
+}
+
+void rkisp_next_clear_reg_cache_bits(struct rkisp_device *dev, u32 reg, u32 mask)
+{
+	u32 tmp = rkisp_next_read_reg_cache(dev, reg);
+
+	rkisp_next_write_reg_cache(dev, reg, tmp & ~mask);
+}
+
 void rkisp_update_regs(struct rkisp_device *dev, u32 start, u32 end)
 {
-	void __iomem *base = dev->hw_dev->base_addr;
+	struct rkisp_hw_dev *hw = dev->hw_dev;
+	void __iomem *base = hw->base_addr;
 	u32 i;
 
 	if (end > RKISP_ISP_SW_REG_SIZE - 4) {
@@ -65,8 +160,35 @@ void rkisp_update_regs(struct rkisp_device *dev, u32 start, u32 end)
 		u32 *val = dev->sw_base_addr + i;
 		u32 *flag = dev->sw_base_addr + i + RKISP_ISP_SW_REG_SIZE;
 
-		if (*flag == SW_REG_CACHE)
+		if (dev->procfs.mode & RKISP_PROCFS_FIL_SW) {
+			if (!((i >= ISP3X_ISP_ACQ_H_OFFS && i <= ISP3X_ISP_ACQ_V_SIZE) ||
+			      (i >= ISP3X_ISP_OUT_H_OFFS && i <= ISP3X_ISP_OUT_V_SIZE) ||
+			      (i >= ISP3X_DUAL_CROP_BASE && i < ISP3X_DUAL_CROP_FBC_V_SIZE_SHD) ||
+			      (i >= ISP3X_MAIN_RESIZE_BASE && i < ISP3X_CSI2RX_VERSION) ||
+			      (i >= CIF_ISP_IS_BASE && i < CIF_ISP_IS_V_SIZE_SHD)))
+				continue;
+		}
+
+		if (hw->unite == ISP_UNITE_ONE && dev->unite_index == ISP_UNITE_RIGHT) {
+			val = dev->sw_base_addr + i + RKISP_ISP_SW_MAX_SIZE;
+			flag = dev->sw_base_addr + i + RKISP_ISP_SW_MAX_SIZE + RKISP_ISP_SW_REG_SIZE;
+		}
+
+		if (*flag == SW_REG_CACHE) {
+			if ((i == ISP3X_MAIN_RESIZE_CTRL ||
+			     i == ISP32_BP_RESIZE_CTRL ||
+			     i == ISP3X_SELF_RESIZE_CTRL) && *val == 0)
+				*val = CIF_RSZ_CTRL_CFG_UPD;
 			writel(*val, base + i);
+			if (hw->unite == ISP_UNITE_TWO) {
+				val = dev->sw_base_addr + i + RKISP_ISP_SW_MAX_SIZE;
+				if ((i == ISP3X_MAIN_RESIZE_CTRL ||
+				     i == ISP32_BP_RESIZE_CTRL ||
+				     i == ISP3X_SELF_RESIZE_CTRL) && *val == 0)
+					*val = CIF_RSZ_CTRL_CFG_UPD;
+				writel(*val, hw->base_next_addr + i);
+			}
+		}
 	}
 }
 
@@ -78,6 +200,8 @@ int rkisp_alloc_buffer(struct rkisp_device *dev,
 	struct sg_table	 *sg_tbl;
 	void *mem_priv;
 	int ret = 0;
+
+	mutex_lock(&dev->buf_lock);
 
 	if (!buf->size) {
 		ret = -EINVAL;
@@ -119,8 +243,10 @@ int rkisp_alloc_buffer(struct rkisp_device *dev,
 	v4l2_dbg(1, rkisp_debug, &dev->v4l2_dev,
 		 "%s buf:0x%x~0x%x size:%d\n", __func__,
 		 (u32)buf->dma_addr, (u32)buf->dma_addr + buf->size, buf->size);
+	mutex_unlock(&dev->buf_lock);
 	return ret;
 err:
+	mutex_unlock(&dev->buf_lock);
 	dev_err(dev->dev, "%s failed ret:%d\n", __func__, ret);
 	return ret;
 }
@@ -130,6 +256,7 @@ void rkisp_free_buffer(struct rkisp_device *dev,
 {
 	const struct vb2_mem_ops *g_ops = dev->hw_dev->mem_ops;
 
+	mutex_lock(&dev->buf_lock);
 	if (buf && buf->mem_priv) {
 		v4l2_dbg(1, rkisp_debug, &dev->v4l2_dev,
 			 "%s buf:0x%x~0x%x\n", __func__,
@@ -145,6 +272,7 @@ void rkisp_free_buffer(struct rkisp_device *dev,
 		buf->is_need_vaddr = false;
 		buf->is_need_dmafd = false;
 	}
+	mutex_unlock(&dev->buf_lock);
 }
 
 void rkisp_prepare_buffer(struct rkisp_device *dev,
@@ -190,8 +318,11 @@ int rkisp_attach_hw(struct rkisp_device *isp)
 		return -EINVAL;
 	}
 
-	if (hw->dev_num)
-		hw->is_single = false;
+	if (hw->dev_num >= DEV_MAX) {
+		dev_err(isp->dev, "failed attach isp hw, max dev:%d\n", DEV_MAX);
+		return -EINVAL;
+	}
+
 	isp->dev_id = hw->dev_num;
 	hw->isp[hw->dev_num] = isp;
 	hw->dev_num++;
@@ -269,7 +400,7 @@ int rkisp_alloc_common_dummy_buf(struct rkisp_device *dev)
 	struct rkisp_dummy_buffer *dummy_buf = &hw->dummy_buf;
 	struct rkisp_stream *stream;
 	struct rkisp_device *isp;
-	u32 i, j, size = 0;
+	u32 i, j, val, size = 0;
 	int ret = 0;
 
 	if (dummy_buf->mem_priv)
@@ -279,13 +410,17 @@ int rkisp_alloc_common_dummy_buf(struct rkisp_device *dev)
 		size = hw->max_in.w * hw->max_in.h * 2;
 	for (i = 0; i < hw->dev_num; i++) {
 		isp = hw->isp[i];
+		if (!isp || (isp && !isp->is_hw_link))
+			continue;
 		for (j = 0; j < RKISP_MAX_STREAM; j++) {
 			stream = &isp->cap_dev.stream[j];
 			if (!stream->linked)
 				continue;
-			size = max(size,
-				   stream->out_fmt.plane_fmt[0].bytesperline *
-				   stream->out_fmt.height);
+			val = stream->out_isp_fmt.fmt_type == FMT_FBC ?
+				stream->out_fmt.plane_fmt[1].sizeimage :
+				stream->out_fmt.plane_fmt[0].bytesperline *
+				stream->out_fmt.height;
+			size = max(size, val);
 		}
 	}
 	if (size == 0)
@@ -320,4 +455,15 @@ void rkisp_free_common_dummy_buf(struct rkisp_device *dev)
 		rkisp_free_page_dummy_buf(dev);
 	else
 		rkisp_free_buffer(dev, &hw->dummy_buf);
+}
+
+u64 rkisp_time_get_ns(struct rkisp_device *dev)
+{
+	u64 ns;
+
+	if (dev->isp_ver == ISP_V32)
+		ns = ktime_get_boottime_ns();
+	else
+		ns = ktime_get_ns();
+	return ns;
 }

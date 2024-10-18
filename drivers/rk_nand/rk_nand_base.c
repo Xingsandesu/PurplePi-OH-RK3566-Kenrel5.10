@@ -8,7 +8,6 @@
  */
 
 #include <asm/cacheflush.h>
-#include <linux/bootmem.h>
 #include <linux/clk.h>
 #include <linux/debugfs.h>
 #include <linux/dma-mapping.h>
@@ -51,7 +50,7 @@ static int rk_timer_add;
 
 void *ftl_malloc(int size)
 {
-	return kmalloc(size, GFP_KERNEL | GFP_DMA32);
+	return kmalloc(size, GFP_KERNEL | GFP_DMA);
 }
 
 void ftl_free(void *buf)
@@ -59,40 +58,11 @@ void ftl_free(void *buf)
 	kfree(buf);
 }
 
-char rknand_get_sn(char *pbuf)
-{
-	memcpy(pbuf, &nand_idb_data[0x600], 0x200);
-	return 0;
-}
-
-char rknand_get_vendor0(char *pbuf)
-{
-	memcpy(pbuf, &nand_idb_data[0x400 + 8], 504);
-	return 0;
-}
-
-char *rknand_get_idb_data(void)
-{
-	return nand_idb_data;
-}
-EXPORT_SYMBOL(rknand_get_idb_data);
-
 int rknand_get_clk_rate(int nandc_id)
 {
 	return g_nandc_info[nandc_id].clk_rate;
 }
 EXPORT_SYMBOL(rknand_get_clk_rate);
-
-unsigned long rknand_dma_flush_dcache(unsigned long ptr, int size, int dir)
-{
-#ifdef CONFIG_ARM64
-	__flush_dcache_area((void *)ptr, size + 63);
-#else
-	__cpuc_flush_dcache_area((void *)ptr, size + 63);
-#endif
-	return ((unsigned long)virt_to_phys((void *)ptr));
-}
-EXPORT_SYMBOL(rknand_dma_flush_dcache);
 
 unsigned long rknand_dma_map_single(unsigned long ptr, int size, int dir)
 {
@@ -482,4 +452,5 @@ static int __init rknand_driver_init(void)
 
 module_init(rknand_driver_init);
 module_exit(rknand_driver_exit);
-MODULE_ALIAS(DRIVER_NAME);
+MODULE_ALIAS("rknand");
+MODULE_LICENSE("GPL v2");

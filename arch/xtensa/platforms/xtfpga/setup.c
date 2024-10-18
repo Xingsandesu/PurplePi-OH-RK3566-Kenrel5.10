@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  *
  * arch/xtensa/platform/xtavnet/setup.c
@@ -8,16 +9,11 @@
  *		Joe Taylor <joe@tensilica.com>
  *
  * Copyright 2001 - 2006 Tensilica Inc.
- *
- * This program is free software; you can redistribute  it and/or modify it
- * under  the terms of  the GNU General  Public License as published by the
- * Free Software Foundation;  either version 2 of the  License, or (at your
- * option) any later version.
- *
  */
 #include <linux/stddef.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
+#include <linux/io.h>
 #include <linux/errno.h>
 #include <linux/reboot.h>
 #include <linux/kdev_t.h>
@@ -28,6 +24,7 @@
 #include <linux/of.h>
 #include <linux/clk-provider.h>
 #include <linux/of_address.h>
+#include <linux/slab.h>
 
 #include <asm/timex.h>
 #include <asm/processor.h>
@@ -64,22 +61,6 @@ void platform_restart(void)
 	/* control never gets here */
 }
 
-void __init platform_setup(char **cmdline)
-{
-}
-
-/* early initialization */
-
-void __init platform_init(bp_tag_t *first)
-{
-}
-
-/* Heartbeat. */
-
-void platform_heartbeat(void)
-{
-}
-
 #ifdef CONFIG_XTENSA_CALIBRATE_CCOUNT
 
 void __init platform_calibrate_ccount(void)
@@ -98,7 +79,7 @@ static void __init xtfpga_clk_setup(struct device_node *np)
 	u32 freq;
 
 	if (!base) {
-		pr_err("%s: invalid address\n", np->name);
+		pr_err("%pOFn: invalid address\n", np);
 		return;
 	}
 
@@ -107,12 +88,12 @@ static void __init xtfpga_clk_setup(struct device_node *np)
 	clk = clk_register_fixed_rate(NULL, np->name, NULL, 0, freq);
 
 	if (IS_ERR(clk)) {
-		pr_err("%s: clk registration failed\n", np->name);
+		pr_err("%pOFn: clk registration failed\n", np);
 		return;
 	}
 
 	if (of_clk_add_provider(np, of_clk_src_simple_get, clk)) {
-		pr_err("%s: clk provider registration failed\n", np->name);
+		pr_err("%pOFn: clk provider registration failed\n", np);
 		return;
 	}
 }
@@ -152,6 +133,7 @@ static int __init machine_setup(void)
 
 	if ((eth = of_find_compatible_node(eth, NULL, "opencores,ethoc")))
 		update_local_mac(eth);
+	of_node_put(eth);
 	return 0;
 }
 arch_initcall(machine_setup);

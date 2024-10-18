@@ -29,8 +29,10 @@
 /********************************************************************
  *  external api
  ********************************************************************/
-extern void nvp6158_audio_init(unsigned char recmaster, unsigned char pbmaster, unsigned char ch_num, unsigned char samplerate, unsigned char bits);
-extern void nvp6168_audio_init(unsigned char recmaster, unsigned char pbmaster, unsigned char ch_num, unsigned char samplerate, unsigned char bits);
+extern void nvp6158_audio_init(unsigned char recmaster, unsigned char pbmaster,
+                              unsigned char ch_num, unsigned char samplerate, unsigned char bits);
+extern void nvp6168_audio_init(unsigned char recmaster, unsigned char pbmaster,
+                              unsigned char ch_num, unsigned char samplerate, unsigned char bits);
 extern void nvp6158_audio_powerdown(unsigned char chip);
 // Add for Raptor4
 void nvp6158_audio_in_type_set(int type);

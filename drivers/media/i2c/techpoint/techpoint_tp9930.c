@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * techpoint techpoint lib
+ * techpoint lib
  *
- * Copyright (C) 2021 Rockchip Electronics Co., Ltd.
+ * Copyright (C) 2023 Rockchip Electronics Co., Ltd.
  */
 
 #include "techpoint_tp9930.h"
@@ -355,7 +355,7 @@ static struct techpoint_video_modes supported_modes[] = {
 	 .link_freq_value = TP9930_LINK_FREQ_297M,
 	 .common_reg_list = common_setting_148M_1080p_25fps_regs,
 	 .common_reg_size = ARRAY_SIZE(common_setting_148M_1080p_25fps_regs),
-	  },
+	 },
 	{
 	 .bus_fmt = MEDIA_BUS_FMT_UYVY8_2X8,
 	 .width = 1920,
@@ -367,7 +367,7 @@ static struct techpoint_video_modes supported_modes[] = {
 	 .link_freq_value = TP9930_LINK_FREQ_297M,
 	 .common_reg_list = common_setting_148M_1080p_30fps_regs,
 	 .common_reg_size = ARRAY_SIZE(common_setting_148M_1080p_30fps_regs),
-	  },
+	 },
 #endif
 	{
 	 .bus_fmt = MEDIA_BUS_FMT_UYVY8_2X8,
@@ -380,7 +380,7 @@ static struct techpoint_video_modes supported_modes[] = {
 	 .link_freq_value = TP9930_LINK_FREQ_148M5,
 	 .common_reg_list = common_setting_148M_720p_25fps_regs,
 	 .common_reg_size = ARRAY_SIZE(common_setting_148M_720p_25fps_regs),
-	  },
+	 },
 	{
 	 .bus_fmt = MEDIA_BUS_FMT_UYVY8_2X8,
 	 .width = 1280,
@@ -392,7 +392,7 @@ static struct techpoint_video_modes supported_modes[] = {
 	 .link_freq_value = TP9930_LINK_FREQ_148M5,
 	 .common_reg_list = common_setting_148M_720p_30fps_regs,
 	 .common_reg_size = ARRAY_SIZE(common_setting_148M_720p_30fps_regs),
-	  }
+	}
 };
 
 int tp9930_initialize(struct techpoint *techpoint)
@@ -423,7 +423,7 @@ int tp9930_do_reset_pll(struct i2c_client *client)
 
 	techpoint_read_reg(client, 0xf4, &val_0xf4);
 	techpoint_write_reg(client, 0xf4, val_0xf4 | 0x80);
-	msleep(10);
+	usleep_range(10000, 12000);
 
 	techpoint_write_reg(client, 0x43, val_0x43);
 	techpoint_write_reg(client, 0x44, val_0x44);
@@ -453,16 +453,11 @@ int tp9930_pll_reset(struct i2c_client *client)
 	techpoint_write_reg(client, 0x40, 0x00);
 
 #if DEF_1080P
-#if 1				// 25FPS
+// 25FPS
 	techpoint_write_reg(client, 0x44, 0x07);
 	techpoint_write_reg(client, 0x43, 0x17);
 	techpoint_write_reg(client, 0x45, 0x09);
 	techpoint_write_reg(client, 0xf4, 0xa0);
-#else
-	techpoint_write_reg(client, 0x44, 0x17);
-	techpoint_write_reg(client, 0x43, 0x12);
-	techpoint_write_reg(client, 0x45, 0x09);
-#endif
 #else
 	techpoint_write_reg(client, 0x44, 0x17);
 	techpoint_write_reg(client, 0x43, 0x17);
@@ -498,11 +493,8 @@ int tp9930_get_channel_input_status(struct techpoint *techpoint, u8 ch)
 	mutex_unlock(&techpoint->mutex);
 	dev_dbg(&client->dev, "input_status ch %d : %x\n", ch, val);
 
-#if 0				// inaccuracy
-	return (val & INPUT_STATUS_MASK) ? 0 : 1;
-#else
+// inaccuracy
 	return (val == INPUT_STATUS_MATCH) ? 1 : 0;
-#endif
 }
 
 int tp9930_get_all_input_status(struct techpoint *techpoint, u8 *detect_status)
@@ -540,10 +532,10 @@ int tp9930_set_channel_reso(struct i2c_client *client, int ch,
 	default:
 #if DEF_1080P
 		dev_err(&client->dev,
-			"set channel %d UNSUPPORT, default 1080P_25, TBD", ch);
+			"set channel %d is not supported, default 1080P_25, TBD", ch);
 #else
 		dev_err(&client->dev,
-			"set channel %d UNSUPPORT, default 720P_25, TBD", ch);
+			"set channel %d is not supported, default 720P_25, TBD", ch);
 #endif
 		break;
 	}
@@ -564,32 +556,27 @@ int tp9930_get_channel_reso(struct i2c_client *client, int ch)
 	case TP9930_CVSTD_1080P_30:
 		dev_err(&client->dev, "detect channel %d 1080P_30", ch);
 		return TECHPOINT_S_RESO_1080P_30;
-		break;
 	case TP9930_CVSTD_1080P_25:
 		dev_err(&client->dev, "detect channel %d 1080P_25", ch);
 		return TECHPOINT_S_RESO_1080P_25;
-		break;
 	case TP9930_CVSTD_720P_30:
 		dev_err(&client->dev, "detect channel %d 720P_30", ch);
 		return TECHPOINT_S_RESO_720P_30;
-		break;
 	case TP9930_CVSTD_720P_25:
 		dev_err(&client->dev, "detect channel %d 720P_25", ch);
 		return TECHPOINT_S_RESO_720P_25;
-		break;
 	case TP9930_CVSTD_720P_60:
 	case TP9930_CVSTD_720P_50:
 	default:
 #if DEF_1080P
 		dev_err(&client->dev,
-			"detect channel %d UNSUPPORT, default 1080P_25", ch);
+			"detect channel %d is not supported, default 1080P_25", ch);
 		return TECHPOINT_S_RESO_1080P_25;
 #else
 		dev_err(&client->dev,
-			"detect channel %d UNSUPPORT, default 720P_25", ch);
+			"detect channel %d is not supported, default 720P_25", ch);
 		return TECHPOINT_S_RESO_720P_25;
 #endif
-		break;
 	}
 
 	return reso;

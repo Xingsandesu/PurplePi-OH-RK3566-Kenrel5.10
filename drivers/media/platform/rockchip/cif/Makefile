@@ -6,4 +6,8 @@ video_rkcif-objs += dev.o \
 			cif-luma.o \
 			hw.o \
 			subdev-itf.o \
-			procfs.o
+			procfs.o \
+			cif-scale.o \
+			common.o \
+			cif-tools.o \
+			cif-rockit.o

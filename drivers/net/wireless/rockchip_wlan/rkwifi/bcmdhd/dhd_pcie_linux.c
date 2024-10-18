@@ -47,6 +47,9 @@
 #include <pcicfg.h>
 #include <dhd_pcie.h>
 #include <dhd_linux.h>
+#ifdef CUSTOMER_HW_ROCKCHIP
+#include <rk_dhd_pcie_linux.h>
+#endif /* CUSTOMER_HW_ROCKCHIP */
 #ifdef OEM_ANDROID
 #ifdef CONFIG_ARCH_MSM
 #if defined(CONFIG_PCI_MSM) || defined(CONFIG_ARCH_MSM8996)
@@ -268,7 +271,7 @@ static const struct dev_pm_ops dhdpcie_pm_ops = {
 
 static struct pci_driver dhdpcie_driver = {
 	node:		{&dhdpcie_driver.node, &dhdpcie_driver.node},
-	name:		"pcieh"BUS_TYPE,
+	name:		"pcieh",
 	id_table:	dhdpcie_pci_devid,
 	probe:		dhdpcie_pci_probe,
 	remove:		dhdpcie_pci_remove,
@@ -617,6 +620,10 @@ dhd_bus_is_rc_ep_l1ss_capable(dhd_bus_t *bus)
 	uint32 rc_l1ss_cap;
 	uint32 ep_l1ss_cap;
 
+#ifdef CUSTOMER_HW_ROCKCHIP
+	if (IS_ENABLED(CONFIG_PCIEASPM_ROCKCHIP_WIFI_EXTENSION))
+		return rk_dhd_bus_is_rc_ep_l1ss_capable(bus);
+#endif
 	/* RC Extendend Capacility */
 	rc_l1ss_cap = dhdpcie_access_cap(bus->rc_dev, PCIE_EXTCAP_ID_L1SS,
 		PCIE_EXTCAP_L1SS_CONTROL_OFFSET, TRUE, FALSE, 0);
@@ -1737,7 +1744,7 @@ dhdpcie_request_irq(dhdpcie_info_t *dhdpcie_info)
 {
 	dhd_bus_t *bus = dhdpcie_info->bus;
 	struct pci_dev *pdev = dhdpcie_info->bus->dev;
-	int host_irq_disabled, err = 0;
+	int host_irq_disabled;
 
 	if (!bus->irq_registered) {
 		snprintf(dhdpcie_info->pciname, sizeof(dhdpcie_info->pciname),
@@ -1752,14 +1759,13 @@ dhdpcie_request_irq(dhdpcie_info_t *dhdpcie_info)
 		}
 
 		if (bus->d2h_intr_method == PCIE_MSI)
-			printf("%s: MSI enabled, irq=%d\n", __FUNCTION__, pdev->irq);
+			printf("%s: MSI enabled\n", __FUNCTION__);
 		else
-			printf("%s: INTx enabled, irq=%d\n", __FUNCTION__, pdev->irq);
+			printf("%s: INTx enabled\n", __FUNCTION__);
 
-		err = request_irq(pdev->irq, dhdpcie_isr, IRQF_SHARED,
-			dhdpcie_info->pciname, bus);
-		if (err < 0) {
-			DHD_ERROR(("%s: request_irq() failed with %d\n", __FUNCTION__, err));
+		if (request_irq(pdev->irq, dhdpcie_isr, IRQF_SHARED,
+			dhdpcie_info->pciname, bus) < 0) {
+			DHD_ERROR(("%s: request_irq() failed\n", __FUNCTION__));
 			if (bus->d2h_intr_method == PCIE_MSI) {
 				dhdpcie_disable_msi(pdev);
 			}
@@ -2051,12 +2057,8 @@ int dhdpcie_init(struct pci_dev *pdev)
 			adapter->bus_num = pdev->bus->number;
 			adapter->slot_num = PCI_SLOT(pdev->devfn);
 			adapter->pci_dev = pdev;
-		} else {
+		} else
 			DHD_ERROR(("%s: can't find adapter info for this chip\n", __FUNCTION__));
-#ifdef ADAPTER_IDX
-			break;
-#endif
-		}
 		osl_static_mem_init(osh, adapter);
 
 		/*  allocate linux spcific pcie structure here */
@@ -2291,8 +2293,7 @@ int dhdpcie_init(struct pci_dev *pdev)
 
 	if (dhdpcie_info)
 		dhdpcie_detach(dhdpcie_info);
-	if (adapter)
-		pci_disable_device(pdev);
+	pci_disable_device(pdev);
 	if (osh)
 		osl_detach(osh);
 	if (adapter != NULL) {
@@ -3357,9 +3358,7 @@ dhd_dongle_mem_dump(void)
 	dhd_bus_mem_dump(g_dhd_bus->dhd);
 	return 0;
 }
-#ifndef BCMDHD_MDRIVER
 EXPORT_SYMBOL(dhd_dongle_mem_dump);
-#endif
 #endif /* DHD_FW_COREDUMP */
 
 #ifdef CONFIG_ARCH_MSM
@@ -3390,6 +3389,4 @@ dhd_bus_check_driver_up(void)
 
 	return isup;
 }
-#ifndef BCMDHD_MDRIVER
 EXPORT_SYMBOL(dhd_bus_check_driver_up);
-#endif

@@ -5,12 +5,15 @@
 #include <media/v4l2-common.h>
 #include <media/v4l2-ioctl.h>
 #include <media/videobuf2-core.h>
+#include <media/videobuf2-dma-sg.h>
 #include <media/videobuf2-vmalloc.h>	/* for ISP statistics */
 #include "dev.h"
 #include "isp_stats.h"
 #include "isp_stats_v1x.h"
 #include "isp_stats_v2x.h"
 #include "isp_stats_v21.h"
+#include "isp_stats_v3x.h"
+#include "isp_stats_v32.h"
 
 #define STATS_NAME DRIVER_NAME "-statistics"
 #define RKISP_ISP_STATS_REQ_BUFS_MIN 2
@@ -85,9 +88,12 @@ static int rkisp_stats_fh_open(struct file *filp)
 	struct rkisp_isp_stats_vdev *stats = video_drvdata(filp);
 	int ret;
 
+	if (!stats->dev->is_probe_end)
+		return -EINVAL;
+
 	ret = v4l2_fh_open(filp);
 	if (!ret) {
-		ret = v4l2_pipeline_pm_use(&stats->vnode.vdev.entity, 1);
+		ret = v4l2_pipeline_pm_get(&stats->vnode.vdev.entity);
 		if (ret < 0)
 			vb2_fop_release(filp);
 	}
@@ -101,12 +107,8 @@ static int rkisp_stats_fop_release(struct file *file)
 	int ret;
 
 	ret = vb2_fop_release(file);
-	if (!ret) {
-		ret = v4l2_pipeline_pm_use(&stats->vnode.vdev.entity, 0);
-		if (ret < 0)
-			v4l2_err(&stats->dev->v4l2_dev,
-				 "set pipeline power failed %d\n", ret);
-	}
+	if (!ret)
+		v4l2_pipeline_pm_put(&stats->vnode.vdev.entity);
 	return ret;
 }
 
@@ -131,13 +133,7 @@ static int rkisp_stats_vb2_queue_setup(struct vb2_queue *vq,
 	*num_buffers = clamp_t(u32, *num_buffers, RKISP_ISP_STATS_REQ_BUFS_MIN,
 			       RKISP_ISP_STATS_REQ_BUFS_MAX);
 
-	if (stats_vdev->dev->isp_ver <= ISP_V13)
-		sizes[0] = sizeof(struct rkisp1_stat_buffer);
-	else if (stats_vdev->dev->isp_ver == ISP_V21)
-		sizes[0] = sizeof(struct isp21_stat);
-	else
-		sizes[0] = sizeof(struct isp2x_stat);
-
+	sizes[0] = stats_vdev->vdev_fmt.fmt.meta.buffersize;
 	INIT_LIST_HEAD(&stats_vdev->stat);
 
 	return 0;
@@ -149,11 +145,34 @@ static void rkisp_stats_vb2_buf_queue(struct vb2_buffer *vb)
 	struct rkisp_buffer *stats_buf = to_rkisp_buffer(vbuf);
 	struct vb2_queue *vq = vb->vb2_queue;
 	struct rkisp_isp_stats_vdev *stats_dev = vq->drv_priv;
+	u32 size = stats_dev->vdev_fmt.fmt.meta.buffersize;
 	unsigned long flags;
 
 	stats_buf->vaddr[0] = vb2_plane_vaddr(vb, 0);
+	if (stats_dev->dev->isp_ver == ISP_V32) {
+		struct sg_table *sgt = vb2_dma_sg_plane_desc(vb, 0);
 
+		stats_buf->buff_addr[0] = sg_dma_address(sgt->sgl);
+	}
+	if (stats_buf->vaddr[0])
+		memset(stats_buf->vaddr[0], 0, size);
 	spin_lock_irqsave(&stats_dev->rd_lock, flags);
+	if (stats_dev->dev->isp_ver == ISP_V32 && stats_dev->dev->is_pre_on) {
+		struct rkisp32_isp_stat_buffer *buf = stats_dev->stats_buf[0].vaddr;
+
+		if (buf && !buf->frame_id && buf->meas_type && stats_buf->vaddr[0]) {
+			dev_info(stats_dev->dev->dev,
+				 "tb stat seq:%d meas_type:0x%x\n",
+				 buf->frame_id, buf->meas_type);
+			memcpy(stats_buf->vaddr[0], buf, sizeof(struct rkisp32_isp_stat_buffer));
+			buf->meas_type = 0;
+			vb2_set_plane_payload(vb, 0, sizeof(struct rkisp32_isp_stat_buffer));
+			vbuf->sequence = buf->frame_id;
+			spin_unlock_irqrestore(&stats_dev->rd_lock, flags);
+			vb2_buffer_done(vb, VB2_BUF_STATE_DONE);
+			return;
+		}
+	}
 	list_add_tail(&stats_buf->queue, &stats_dev->stat);
 	spin_unlock_irqrestore(&stats_dev->rd_lock, flags);
 }
@@ -181,9 +200,20 @@ static void rkisp_stats_vb2_stop_streaming(struct vb2_queue *vq)
 		list_del(&buf->queue);
 		vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
 	}
-	if (stats_vdev->cur_buf)
+	if (stats_vdev->cur_buf) {
 		vb2_buffer_done(&stats_vdev->cur_buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
+		if (stats_vdev->cur_buf == stats_vdev->nxt_buf)
+			stats_vdev->nxt_buf = NULL;
+		stats_vdev->cur_buf = NULL;
+	}
+	if (stats_vdev->nxt_buf) {
+		vb2_buffer_done(&stats_vdev->nxt_buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
+		stats_vdev->nxt_buf = NULL;
+	}
 	spin_unlock_irqrestore(&stats_vdev->rd_lock, flags);
+
+	stats_vdev->ae_meas_done_next = false;
+	stats_vdev->af_meas_done_next = false;
 }
 
 static int
@@ -217,12 +247,17 @@ static int rkisp_stats_init_vb2_queue(struct vb2_queue *q,
 	q->io_modes = VB2_MMAP | VB2_USERPTR;
 	q->drv_priv = stats_vdev;
 	q->ops = &rkisp_stats_vb2_ops;
-	q->mem_ops = &vb2_vmalloc_memops;
+	if (stats_vdev->dev->isp_ver == ISP_V32) {
+		q->mem_ops = stats_vdev->dev->hw_dev->mem_ops;
+		if (stats_vdev->dev->hw_dev->is_dma_contig)
+			q->dma_attrs = DMA_ATTR_FORCE_CONTIGUOUS;
+	} else {
+		q->mem_ops = &vb2_vmalloc_memops;
+	}
 	q->buf_struct_size = sizeof(struct rkisp_buffer);
 	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 	q->lock = &stats_vdev->dev->iqlock;
 	q->dev = stats_vdev->dev->dev;
-
 	return vb2_queue_init(q);
 }
 
@@ -250,17 +285,16 @@ static void rkisp_init_stats_vdev(struct rkisp_isp_stats_vdev *stats_vdev)
 	stats_vdev->wr_buf_idx = 0;
 	memset(stats_vdev->stats_buf, 0, sizeof(stats_vdev->stats_buf));
 
-	stats_vdev->vdev_fmt.fmt.meta.dataformat =
-		V4L2_META_FMT_RK_ISP1_STAT_3A;
-	stats_vdev->vdev_fmt.fmt.meta.buffersize =
-		sizeof(struct rkisp1_stat_buffer);
-
 	if (stats_vdev->dev->isp_ver <= ISP_V13)
 		rkisp_init_stats_vdev_v1x(stats_vdev);
 	else if (stats_vdev->dev->isp_ver == ISP_V21)
 		rkisp_init_stats_vdev_v21(stats_vdev);
-	else
+	else if (stats_vdev->dev->isp_ver == ISP_V20)
 		rkisp_init_stats_vdev_v2x(stats_vdev);
+	else if (stats_vdev->dev->isp_ver == ISP_V30)
+		rkisp_init_stats_vdev_v3x(stats_vdev);
+	else
+		rkisp_init_stats_vdev_v32(stats_vdev);
 }
 
 static void rkisp_uninit_stats_vdev(struct rkisp_isp_stats_vdev *stats_vdev)
@@ -269,8 +303,12 @@ static void rkisp_uninit_stats_vdev(struct rkisp_isp_stats_vdev *stats_vdev)
 		rkisp_uninit_stats_vdev_v1x(stats_vdev);
 	else if (stats_vdev->dev->isp_ver == ISP_V21)
 		rkisp_uninit_stats_vdev_v21(stats_vdev);
-	else
+	else if (stats_vdev->dev->isp_ver == ISP_V20)
 		rkisp_uninit_stats_vdev_v2x(stats_vdev);
+	else if (stats_vdev->dev->isp_ver == ISP_V30)
+		rkisp_uninit_stats_vdev_v3x(stats_vdev);
+	else
+		rkisp_uninit_stats_vdev_v32(stats_vdev);
 }
 
 void rkisp_stats_rdbk_enable(struct rkisp_isp_stats_vdev *stats_vdev, bool en)
@@ -284,6 +322,16 @@ void rkisp_stats_first_ddr_config(struct rkisp_isp_stats_vdev *stats_vdev)
 		rkisp_stats_first_ddr_config_v2x(stats_vdev);
 	else if (stats_vdev->dev->isp_ver == ISP_V21)
 		rkisp_stats_first_ddr_config_v21(stats_vdev);
+	else if (stats_vdev->dev->isp_ver == ISP_V30)
+		rkisp_stats_first_ddr_config_v3x(stats_vdev);
+	else if (stats_vdev->dev->isp_ver == ISP_V32)
+		rkisp_stats_first_ddr_config_v32(stats_vdev);
+}
+
+void rkisp_stats_next_ddr_config(struct rkisp_isp_stats_vdev *stats_vdev)
+{
+	if (stats_vdev->dev->isp_ver == ISP_V32)
+		rkisp_stats_next_ddr_config_v32(stats_vdev);
 }
 
 void rkisp_stats_isr(struct rkisp_isp_stats_vdev *stats_vdev,
@@ -325,7 +373,7 @@ int rkisp_register_stats_vdev(struct rkisp_isp_stats_vdev *stats_vdev,
 	if (ret < 0)
 		goto err_release_queue;
 
-	ret = video_register_device(vdev, VFL_TYPE_GRABBER, -1);
+	ret = video_register_device(vdev, VFL_TYPE_VIDEO, -1);
 	if (ret < 0) {
 		dev_err(&vdev->dev,
 			"could not register Video for Linux device\n");

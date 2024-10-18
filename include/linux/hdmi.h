@@ -27,6 +27,21 @@
 #include <linux/types.h>
 #include <linux/device.h>
 
+enum hdmi_packet_type {
+	HDMI_PACKET_TYPE_NULL = 0x00,
+	HDMI_PACKET_TYPE_AUDIO_CLOCK_REGEN = 0x01,
+	HDMI_PACKET_TYPE_AUDIO_SAMPLE = 0x02,
+	HDMI_PACKET_TYPE_GENERAL_CONTROL = 0x03,
+	HDMI_PACKET_TYPE_ACP = 0x04,
+	HDMI_PACKET_TYPE_ISRC1 = 0x05,
+	HDMI_PACKET_TYPE_ISRC2 = 0x06,
+	HDMI_PACKET_TYPE_ONE_BIT_AUDIO_SAMPLE = 0x07,
+	HDMI_PACKET_TYPE_DST_AUDIO = 0x08,
+	HDMI_PACKET_TYPE_HBR_AUDIO_STREAM = 0x09,
+	HDMI_PACKET_TYPE_GAMUT_METADATA = 0x0a,
+	/* + enum hdmi_infoframe_type */
+};
+
 enum hdmi_infoframe_type {
 	HDMI_INFOFRAME_TYPE_VENDOR = 0x81,
 	HDMI_INFOFRAME_TYPE_AVI = 0x82,
@@ -42,6 +57,7 @@ enum hdmi_infoframe_type {
 #define HDMI_SPD_INFOFRAME_SIZE    25
 #define HDMI_AUDIO_INFOFRAME_SIZE  10
 #define HDMI_DRM_INFOFRAME_SIZE    26
+#define HDMI_VENDOR_INFOFRAME_SIZE  4
 
 #define HDMI_INFOFRAME_SIZE(type)	\
 	(HDMI_INFOFRAME_HEADER_SIZE + HDMI_ ## type ## _INFOFRAME_SIZE)
@@ -192,7 +208,7 @@ struct hdmi_drm_infoframe {
 	u16 max_fall;
 };
 
-int hdmi_avi_infoframe_init(struct hdmi_avi_infoframe *frame);
+void hdmi_avi_infoframe_init(struct hdmi_avi_infoframe *frame);
 ssize_t hdmi_avi_infoframe_pack(struct hdmi_avi_infoframe *frame, void *buffer,
 				size_t size);
 ssize_t hdmi_avi_infoframe_pack_only(const struct hdmi_avi_infoframe *frame,
@@ -204,6 +220,8 @@ ssize_t hdmi_drm_infoframe_pack(struct hdmi_drm_infoframe *frame, void *buffer,
 ssize_t hdmi_drm_infoframe_pack_only(const struct hdmi_drm_infoframe *frame,
 				     void *buffer, size_t size);
 int hdmi_drm_infoframe_check(struct hdmi_drm_infoframe *frame);
+int hdmi_drm_infoframe_unpack_only(struct hdmi_drm_infoframe *frame,
+				   const void *buffer, size_t size);
 
 enum hdmi_spd_sdi {
 	HDMI_SPD_SDI_UNKNOWN,
@@ -352,8 +370,19 @@ struct hdr_static_metadata {
 	__u16 min_cll;
 };
 
+/**
+ * struct hdr_sink_metadata - HDR sink metadata
+ *
+ * Metadata Information read from Sink's EDID
+ */
 struct hdr_sink_metadata {
+	/**
+	 * @metadata_type: Static_Metadata_Descriptor_ID.
+	 */
 	__u32 metadata_type;
+	/**
+	 * @hdmi_type1: HDR Metadata Infoframe.
+	 */
 	union {
 		struct hdr_static_metadata hdmi_type1;
 	};
@@ -383,6 +412,7 @@ union hdmi_vendor_any_infoframe {
  * @spd: spd infoframe
  * @vendor: union of all vendor infoframes
  * @audio: audio infoframe
+ * @drm: Dynamic Range and Mastering infoframe
  *
  * This is used by the generic pack function. This works since all infoframes
  * have the same header which also indicates which type of infoframe should be
@@ -405,6 +435,6 @@ int hdmi_infoframe_check(union hdmi_infoframe *frame);
 int hdmi_infoframe_unpack(union hdmi_infoframe *frame,
 			  const void *buffer, size_t size);
 void hdmi_infoframe_log(const char *level, struct device *dev,
-			union hdmi_infoframe *frame);
+			const union hdmi_infoframe *frame);
 
 #endif /* _DRM_HDMI_H */

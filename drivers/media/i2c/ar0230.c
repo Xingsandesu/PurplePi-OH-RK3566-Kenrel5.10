@@ -141,9 +141,9 @@ struct ar0230 {
 static const struct regval ar0230_regs[] = {
 #ifdef USE_HDR_MODE
 	{0x301A, 0x0001},
-	{REG_DELAY, 2000},
+	{REG_DELAY, 20000},
 	{0x301A, 0x10D8},
-	{REG_DELAY, 2000},
+	{REG_DELAY, 20000},
 	{0x3088, 0x8000},
 	{0x3086, 0x4558},
 	{0x3086, 0x729B},
@@ -1144,9 +1144,7 @@ static int ar0230_g_frame_interval(struct v4l2_subdev *sd,
 	struct ar0230 *ar0230 = to_ar0230(sd);
 	const struct ar0230_mode *mode = ar0230->cur_mode;
 
-	mutex_lock(&ar0230->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&ar0230->mutex);
 
 	return 0;
 }
@@ -1292,7 +1290,7 @@ static int ar0230_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 }
 #endif
 
-static int ar0230_g_mbus_config(struct v4l2_subdev *sd,
+static int ar0230_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
 	config->type = V4L2_MBUS_PARALLEL;
@@ -1309,9 +1307,7 @@ static int ar0230_enum_frame_interval(struct v4l2_subdev *sd,
 	if (fie->index >= ARRAY_SIZE(supported_modes))
 		return -EINVAL;
 
-	if (fie->code != PIX_FORMAT)
-		return -EINVAL;
-
+	fie->code = PIX_FORMAT;
 	fie->width = supported_modes[fie->index].width;
 	fie->height = supported_modes[fie->index].height;
 	fie->interval = supported_modes[fie->index].max_fps;
@@ -1339,7 +1335,6 @@ static const struct v4l2_subdev_core_ops ar0230_core_ops = {
 
 static const struct v4l2_subdev_video_ops ar0230_video_ops = {
 	.s_stream = ar0230_s_stream,
-	.g_mbus_config = ar0230_g_mbus_config,
 	.g_frame_interval = ar0230_g_frame_interval,
 };
 
@@ -1349,6 +1344,7 @@ static const struct v4l2_subdev_pad_ops ar0230_pad_ops = {
 	.enum_frame_interval = ar0230_enum_frame_interval,
 	.get_fmt = ar0230_get_fmt,
 	.set_fmt = ar0230_set_fmt,
+	.get_mbus_config = ar0230_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops ar0230_subdev_ops = {

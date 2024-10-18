@@ -355,7 +355,7 @@ void __nvp6158_eq_color_set_value( video_equalizer_info_s *pvin_eq_set, video_eq
 
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0c + ch, 0x00 );
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x3c + ch, 0x80 );
-	}	
+	}
 
 #if 0
 	printk("ch[%d]: COLOR, dist:%d, contrast[%02x]\n", ch, dist, pcolor->contrast[dist] );
@@ -632,13 +632,13 @@ int nvp6158_set_equalizer(video_equalizer_info_s *pvin_eq_set)
 	unsigned char val_13x31;
 	unsigned char val_13x32;
 	unsigned char val_0x54;
-	//unsigned char val_5678x69;	
+	//unsigned char val_5678x69;
 	unsigned char val_9x44;
-	
+
 	unsigned char ch = pvin_eq_set->Ch;
 	unsigned char devnum = pvin_eq_set->devnum;
 	video_equalizer_value_table_s eq_value;
-	
+
 	/* cable type => 0:coaxial, 1:utp, 2:reserved1, 3:reserved2 */
 	//video_equalizer_value_table_s eq_value = (video_equalizer_value_table_s)nvp6158_equalizer_value_fmtdef[pvin_eq_set->FmtDef];
 	memset(&eq_value, 0xFF,sizeof(video_equalizer_value_table_s));
@@ -655,7 +655,7 @@ int nvp6158_set_equalizer(video_equalizer_info_s *pvin_eq_set)
 		val_13x31 = gpio_i2c_read(nvp6158_iic_addr[pvin_eq_set->devnum], 0x31);
 		val_13x31 |= (0x11 << pvin_eq_set->Ch);
 		gpio_i2c_write(nvp6158_iic_addr[pvin_eq_set->devnum], 0x31, val_13x31 );
-		
+
 		val_13x32 = gpio_i2c_read(nvp6158_iic_addr[pvin_eq_set->devnum], 0x32);
 		val_13x32 |= (0x01 << pvin_eq_set->Ch);
 		gpio_i2c_write(nvp6158_iic_addr[pvin_eq_set->devnum], 0x32, val_13x32 );
@@ -756,7 +756,7 @@ int nvp6158_set_equalizer(video_equalizer_info_s *pvin_eq_set)
 		{
 			gpio_i2c_write( nvp6158_iic_addr[devnum], 0x6E, 0x00 );    //VBLK default setting
 			gpio_i2c_write( nvp6158_iic_addr[devnum], 0x6F, 0x00 ); 
-		}	
+		}
 	}
 
 	/* Auto Mode Off */
@@ -882,7 +882,7 @@ int nvp6158_set_equalizer(video_equalizer_info_s *pvin_eq_set)
 				gpio_i2c_write(nvp6158_iic_addr[devnum], 0x15 + ( ch * 0x20 ), 0x3c);
 				gpio_i2c_write(nvp6158_iic_addr[devnum], 0x00 + ( ch * 0x20 ), 0x0d);
 
-				
+
 				gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x05+ch%4);
 				gpio_i2c_write(nvp6158_iic_addr[devnum], 0x25, 0xda);
 				msleep(100);
@@ -918,7 +918,7 @@ int nvp6158_set_equalizer(video_equalizer_info_s *pvin_eq_set)
 		{
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x11);
 
-			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x01 + ( ch * 0x20 ), 0x01);			
+			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x01 + ( ch * 0x20 ), 0x01);	
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x02 + ( ch * 0x20 ), 0x30);
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x03 + ( ch * 0x20 ), 0x0a);
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x04 + ( ch * 0x20 ), 0x20);
@@ -946,7 +946,7 @@ int nvp6158_set_equalizer(video_equalizer_info_s *pvin_eq_set)
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x04 + ( ch * 0x20 ), 0x00);
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x00 + ( ch * 0x20 ), 0x00);
 		}
-	
+
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF,0x09);
 		val_9x44 = gpio_i2c_read(nvp6158_iic_addr[devnum], 0x44);
 		val_9x44 &= ~(1 << ch);
@@ -1080,7 +1080,7 @@ void __nvp6168_set_eq_ext_val(video_equalizer_info_s *pvin_eq_set)
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x77, 0xff);
 			break;
 		case AHD20_1080P_30P :
-		case AHD20_1080P_15P_EX :	
+		case AHD20_1080P_15P_EX :
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x00);
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x22+(ch*4), 0x02);
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x30 + ch, 0x17);
@@ -1097,7 +1097,7 @@ void __nvp6168_set_eq_ext_val(video_equalizer_info_s *pvin_eq_set)
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x77, 0xff);
 			break;
 		case AHD20_1080P_25P :
-		case AHD20_1080P_12_5P_EX :	
+		case AHD20_1080P_12_5P_EX :
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x00);
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x22+(ch*4), 0x02);
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x30 + ch, 0x17);
@@ -1394,7 +1394,7 @@ void __nvp6168_set_eq_ext_val(video_equalizer_info_s *pvin_eq_set)
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x75, 0xff);
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x77, 0xff);
 			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x79, 0xff);
-			break;	
+			break;
 
 		// TVI
 		case TVI_FHD_30P :
@@ -1899,7 +1899,7 @@ int nvp6168_set_equalizer(video_equalizer_info_s *pvin_eq_set)
 	decoder_dev_ch_info_s pDecoder_info;
 
 	video_equalizer_value_table_s eq_value;// = (video_equalizer_value_table_s)nvp6168_equalizer_value_fmtdef[pvin_eq_set->FmtDef];
-	
+
 	/* cable type => 0:coaxial, 1:utp, 2:reserved1, 3:reserved2 */
 	//video_equalizer_value_table_s eq_value = (video_equalizer_value_table_s)nvp6158_equalizer_value_fmtdef[pvin_eq_set->FmtDef];
 	memset(&eq_value, 0xFF,sizeof(video_equalizer_value_table_s));
@@ -1935,12 +1935,12 @@ int nvp6168_set_equalizer(video_equalizer_info_s *pvin_eq_set)
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x00 + ( ch * 0x20 ) + ii, 0x00);   //first set bank11 to default values.
 	}
 
-	
+
 	if( pvin_eq_set->FmtDef == CVI_5M_20P)
 	{
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x11);
 
-		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x01 + ( ch * 0x20 ), 0x01);			
+		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x01 + ( ch * 0x20 ), 0x01);
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x02 + ( ch * 0x20 ), 0x30);
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x03 + ( ch * 0x20 ), 0x0a);
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x04 + ( ch * 0x20 ), 0x20);
@@ -1977,13 +1977,13 @@ int nvp6168_set_equalizer(video_equalizer_info_s *pvin_eq_set)
 	{
 		gpio_i2c_write( nvp6158_iic_addr[devnum], 0xFF, 0x05 + ch );
 		gpio_i2c_write( nvp6158_iic_addr[devnum], 0x6E, 0x10 );    //VBLK setting
-		gpio_i2c_write( nvp6158_iic_addr[devnum], 0x6F, 0x7e ); 
+		gpio_i2c_write( nvp6158_iic_addr[devnum], 0x6F, 0x7e );
 	}
 	else
 	{
 		gpio_i2c_write( nvp6158_iic_addr[devnum], 0xFF, 0x05 + ch );
 		gpio_i2c_write( nvp6158_iic_addr[devnum], 0x6E, 0x00 );    //VBLK default setting
-		gpio_i2c_write( nvp6158_iic_addr[devnum], 0x6F, 0x00 ); 
+		gpio_i2c_write( nvp6158_iic_addr[devnum], 0x6F, 0x00 );
 	}
 
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x05 + ch);

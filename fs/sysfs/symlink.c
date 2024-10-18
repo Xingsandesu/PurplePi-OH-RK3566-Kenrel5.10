@@ -6,7 +6,7 @@
  * Copyright (c) 2007 SUSE Linux Products GmbH
  * Copyright (c) 2007 Tejun Heo <teheo@suse.de>
  *
- * Please see Documentation/filesystems/sysfs.txt for more information.
+ * Please see Documentation/filesystems/sysfs.rst for more information.
  */
 
 #include <linux/fs.h>
@@ -23,7 +23,8 @@ static int sysfs_do_create_link_sd(struct kernfs_node *parent,
 {
 	struct kernfs_node *kn, *target = NULL;
 
-	BUG_ON(!name || !parent);
+	if (WARN_ON(!name || !parent))
+		return -EINVAL;
 
 	/*
 	 * We don't own @target_kobj and it may be removed at any time.
@@ -133,7 +134,6 @@ void sysfs_delete_link(struct kobject *kobj, struct kobject *targ,
 	spin_unlock(&sysfs_symlink_target_lock);
 	kernfs_remove_by_name_ns(kobj->sd, name, ns);
 }
-EXPORT_SYMBOL_GPL(sysfs_delete_link);
 
 /**
  *	sysfs_remove_link - remove symlink in object's directory.

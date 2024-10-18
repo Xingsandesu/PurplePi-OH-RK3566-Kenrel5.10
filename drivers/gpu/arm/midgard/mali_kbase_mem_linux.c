@@ -58,7 +58,7 @@ static int kbase_tracking_page_setup(struct kbase_context *kctx, struct vm_area_
  * Shrink (or completely remove) all CPU mappings which reference the shrunk
  * part of the allocation.
  *
- * Note: Caller must be holding the processes mmap_sem lock.
+ * Note: Caller must be holding the processes mmap_lock lock.
  */
 static void kbase_mem_shrink_cpu_mapping(struct kbase_context *kctx,
 		struct kbase_va_region *reg,
@@ -611,7 +611,7 @@ int kbase_mem_flags_change(struct kbase_context *kctx, u64 gpu_addr, unsigned in
 		real_flags |= KBASE_REG_SHARE_IN;
 
 	/* now we can lock down the context, and find the region */
-	down_write(&current->mm->mmap_sem);
+	down_write(&current->mm->mmap_lock);
 	kbase_gpu_vm_lock(kctx);
 
 	/* Validate the region */
@@ -683,7 +683,7 @@ int kbase_mem_flags_change(struct kbase_context *kctx, u64 gpu_addr, unsigned in
 
 out_unlock:
 	kbase_gpu_vm_unlock(kctx);
-	up_write(&current->mm->mmap_sem);
+	up_write(&current->mm->mmap_lock);
 out:
 	return ret;
 }
@@ -1019,7 +1019,7 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 		*flags |= KBASE_MEM_IMPORT_HAVE_PAGES;
 	}
 
-	down_read(&current->mm->mmap_sem);
+	down_read(&current->mm->mmap_lock);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 6, 0)
 	faulted_pages = get_user_pages(current, current->mm, address, *va_pages,
@@ -1033,7 +1033,7 @@ static struct kbase_va_region *kbase_mem_from_user_buffer(
 			pages, NULL);
 #endif
 
-	up_read(&current->mm->mmap_sem);
+	up_read(&current->mm->mmap_lock);
 
 	if (faulted_pages != *va_pages)
 		goto fault_mismatch;
@@ -1498,7 +1498,7 @@ int kbase_mem_commit(struct kbase_context *kctx, u64 gpu_addr, u64 new_pages)
 		return -EINVAL;
 	}
 
-	down_write(&current->mm->mmap_sem);
+	down_write(&current->mm->mmap_lock);
 	kbase_gpu_vm_lock(kctx);
 
 	/* Validate the region */
@@ -1540,7 +1540,7 @@ int kbase_mem_commit(struct kbase_context *kctx, u64 gpu_addr, u64 new_pages)
 		 * No update to the mm so downgrade the writer lock to a read
 		 * lock so other readers aren't blocked after this point.
 		 */
-		downgrade_write(&current->mm->mmap_sem);
+		downgrade_write(&current->mm->mmap_lock);
 		read_locked = true;
 
 		/* Allocate some more pages */
@@ -1596,9 +1596,9 @@ int kbase_mem_commit(struct kbase_context *kctx, u64 gpu_addr, u64 new_pages)
 out_unlock:
 	kbase_gpu_vm_unlock(kctx);
 	if (read_locked)
-		up_read(&current->mm->mmap_sem);
+		up_read(&current->mm->mmap_lock);
 	else
-		up_write(&current->mm->mmap_sem);
+		up_write(&current->mm->mmap_lock);
 
 	return res;
 }
@@ -1651,10 +1651,10 @@ KBASE_EXPORT_TEST_API(kbase_cpu_vm_close);
 
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(4, 11, 0))
-static int kbase_cpu_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
+static vm_fault_t kbase_cpu_vm_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
 {
 #else
-static int kbase_cpu_vm_fault(struct vm_fault *vmf)
+static vm_fault_t kbase_cpu_vm_fault(struct vm_fault *vmf)
 {
 	struct vm_area_struct *vma = vmf->vma;
 #endif
@@ -1662,6 +1662,7 @@ static int kbase_cpu_vm_fault(struct vm_fault *vmf)
 	pgoff_t rel_pgoff;
 	size_t i;
 	pgoff_t addr;
+	vm_fault_t ret = VM_FAULT_SIGBUS;
 
 	KBASE_DEBUG_ASSERT(map);
 	KBASE_DEBUG_ASSERT(map->count > 0);
@@ -1686,9 +1687,9 @@ static int kbase_cpu_vm_fault(struct vm_fault *vmf)
 	addr = (pgoff_t)(vmf->address >> PAGE_SHIFT);
 #endif
 	while (i < map->alloc->nents && (addr < vma->vm_end >> PAGE_SHIFT)) {
-		int ret = vm_insert_pfn(vma, addr << PAGE_SHIFT,
+		ret = vmf_insert_pfn(vma, addr << PAGE_SHIFT,
 		    PFN_DOWN(map->alloc->pages[i]));
-		if (ret < 0 && ret != -EBUSY)
+		if (ret != VM_FAULT_NOPAGE)
 			goto locked_bad_fault;
 
 		i++; addr++;
@@ -1700,7 +1701,7 @@ static int kbase_cpu_vm_fault(struct vm_fault *vmf)
 
 locked_bad_fault:
 	kbase_gpu_vm_unlock(map->kctx);
-	return VM_FAULT_SIGBUS;
+	return ret;
 }
 
 const struct vm_operations_struct kbase_vm_ops = {
@@ -1767,10 +1768,16 @@ static int kbase_cpu_mmap(struct kbase_va_region *reg, struct vm_area_struct *vm
 		vma->vm_flags |= VM_PFNMAP;
 		for (i = 0; i < nr_pages; i++) {
 			unsigned long pfn = PFN_DOWN(page_array[i + start_off]);
+			vm_fault_t ret;
 
-			err = vm_insert_pfn(vma, addr, pfn);
-			if (WARN_ON(err))
+			ret = vmf_insert_pfn(vma, addr, pfn);
+			if (WARN_ON(ret != VM_FAULT_NOPAGE)) {
+				if (ret == VM_FAULT_OOM)
+					err = -ENOMEM;
+				else
+					err = -EFAULT;
 				break;
+			}
 
 			addr += PAGE_SIZE;
 		}
@@ -1950,14 +1957,14 @@ void kbase_os_mem_map_lock(struct kbase_context *kctx)
 {
 	struct mm_struct *mm = current->mm;
 	(void)kctx;
-	down_read(&mm->mmap_sem);
+	down_read(&mm->mmap_lock);
 }
 
 void kbase_os_mem_map_unlock(struct kbase_context *kctx)
 {
 	struct mm_struct *mm = current->mm;
 	(void)kctx;
-	up_read(&mm->mmap_sem);
+	up_read(&mm->mmap_lock);
 }
 
 static int kbasep_reg_mmap(struct kbase_context *kctx,

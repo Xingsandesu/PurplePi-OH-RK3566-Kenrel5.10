@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright (C) 2018 Renesas Electronics
  *
@@ -8,18 +9,7 @@
  *		      Boris Brezillon <boris.brezillon@free-electrons.com>
  *		      Wu, Songjun <Songjun.Wu@atmel.com>
  *
- *
  * Copyright (C) 2010-2011 Freescale Semiconductor, Inc. All Rights Reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/gpio/consumer.h>
@@ -27,13 +17,16 @@
 #include <linux/i2c.h>
 #include <linux/module.h>
 #include <linux/regmap.h>
+#include <linux/regulator/consumer.h>
 #include <linux/clk.h>
 
-#include <drm/drmP.h>
 #include <drm/drm_atomic_helper.h>
-#include <drm/drm_crtc_helper.h>
+#include <drm/drm_bridge.h>
+#include <drm/drm_drv.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_modes.h>
+#include <drm/drm_print.h>
+#include <drm/drm_probe_helper.h>
 
 #include <sound/hdmi-codec.h>
 #include <video/videomode.h>
@@ -185,6 +178,7 @@ struct sii902x {
 	struct gpio_desc *reset_gpio;
 	struct gpio_desc *enable_gpio;
 	struct i2c_mux_core *i2cmux;
+	struct regulator_bulk_data supplies[2];
 	/*
 	 * Mutex protects audio and video functions from interfering
 	 * each other, by keeping their i2c command sequences atomic.
@@ -298,38 +292,42 @@ static const struct drm_display_mode sii902x_default_modes[] = {
 	{ DRM_MODE("1280x720", DRM_MODE_TYPE_DRIVER, 74250, 1280, 1390,
 		   1430, 1650, 0, 720, 725, 730, 750, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
-	  .vrefresh = 60, .picture_aspect_ratio = HDMI_PICTURE_ASPECT_16_9, },
+	  .picture_aspect_ratio = HDMI_PICTURE_ASPECT_16_9, },
 	/* 16 - 1920x1080@60Hz 16:9 */
 	{ DRM_MODE("1920x1080", DRM_MODE_TYPE_DRIVER, 148500, 1920, 2008,
 		   2052, 2200, 0, 1080, 1084, 1089, 1125, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
-	  .vrefresh = 60, .picture_aspect_ratio = HDMI_PICTURE_ASPECT_16_9, },
+	  .picture_aspect_ratio = HDMI_PICTURE_ASPECT_16_9, },
 	/* 5 - 1920x1080i@60Hz 16:9 */
 	{ DRM_MODE("1920x1080i", DRM_MODE_TYPE_DRIVER, 74250, 1920, 2008,
 		   2052, 2200, 0, 1080, 1084, 1094, 1125, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
 		   DRM_MODE_FLAG_INTERLACE),
-	  .vrefresh = 60, .picture_aspect_ratio = HDMI_PICTURE_ASPECT_16_9, },
-	/* 62 - 1280x720@30Hz 16:9 */
-	{ DRM_MODE("1280x720", DRM_MODE_TYPE_DRIVER, 74250, 1280, 3040,
-		   3080, 3300, 0, 720, 725, 730, 750, 0,
+	  .picture_aspect_ratio = HDMI_PICTURE_ASPECT_16_9, },
+	/* 31 - 1920x1080@50Hz 16:9 */
+	{ DRM_MODE("1920x1080", DRM_MODE_TYPE_DRIVER, 148500, 1920, 2448,
+		   2492, 2640, 0, 1080, 1084, 1089, 1125, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
-	  .vrefresh = 30, .picture_aspect_ratio = HDMI_PICTURE_ASPECT_16_9, },
+	  .picture_aspect_ratio = HDMI_PICTURE_ASPECT_16_9, },
 	/* 19 - 1280x720@50Hz 16:9 */
 	{ DRM_MODE("1280x720", DRM_MODE_TYPE_DRIVER, 74250, 1280, 1720,
 		   1760, 1980, 0, 720, 725, 730, 750, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
-	  .vrefresh = 50, .picture_aspect_ratio = HDMI_PICTURE_ASPECT_16_9, },
+	  .picture_aspect_ratio = HDMI_PICTURE_ASPECT_16_9, },
+	/* 0x10 - 1024x768@60Hz */
+	{ DRM_MODE("1024x768", DRM_MODE_TYPE_DRIVER, 65000, 1024, 1048,
+		   1184, 1344, 0,  768, 771, 777, 806, 0,
+		   DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC) },
 	/* 17 - 720x576@50Hz 4:3 */
 	{ DRM_MODE("720x576", DRM_MODE_TYPE_DRIVER, 27000, 720, 732,
 		   796, 864, 0, 576, 581, 586, 625, 0,
 		   DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC),
-	  .vrefresh = 50, .picture_aspect_ratio = HDMI_PICTURE_ASPECT_4_3, },
+	  .picture_aspect_ratio = HDMI_PICTURE_ASPECT_4_3, },
 	/* 2 - 720x480@60Hz 4:3 */
 	{ DRM_MODE("720x480", DRM_MODE_TYPE_DRIVER, 27000, 720, 736,
 		   798, 858, 0, 480, 489, 495, 525, 0,
 		   DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC),
-	  .vrefresh = 60, .picture_aspect_ratio = HDMI_PICTURE_ASPECT_4_3, },
+	  .picture_aspect_ratio = HDMI_PICTURE_ASPECT_4_3, },
 };
 
 static int sii902x_get_modes(struct drm_connector *connector)
@@ -428,13 +426,42 @@ static void sii902x_bridge_enable(struct drm_bridge *bridge)
 	mutex_unlock(&sii902x->mutex);
 }
 
+static bool sii902x_check_embedded_format(uint32_t bus_format)
+{
+	switch (bus_format) {
+	case MEDIA_BUS_FMT_YUYV8_2X8:
+	case MEDIA_BUS_FMT_YVYU8_2X8:
+	case MEDIA_BUS_FMT_UYVY8_2X8:
+	case MEDIA_BUS_FMT_VYUY8_2X8:
+	case MEDIA_BUS_FMT_YUYV8_1X16:
+	case MEDIA_BUS_FMT_YVYU8_1X16:
+	case MEDIA_BUS_FMT_UYVY8_1X16:
+	case MEDIA_BUS_FMT_VYUY8_1X16:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static void sii902x_set_embedded_sync(struct sii902x *sii902x)
 {
 	unsigned char data[8];
 	struct videomode vm;
 
-	if (sii902x->bus_format == MEDIA_BUS_FMT_RGB888_1X24)
+	if (!sii902x_check_embedded_format(sii902x->bus_format))
 		return;
+
+	switch (sii902x->bus_format) {
+	case MEDIA_BUS_FMT_YUYV8_2X8:
+	case MEDIA_BUS_FMT_YVYU8_2X8:
+	case MEDIA_BUS_FMT_UYVY8_2X8:
+	case MEDIA_BUS_FMT_VYUY8_2X8:
+		sii902x_update_bits_unlocked(sii902x->i2c, SII902X_TPI_SYNC_GEN_CTRL,
+					     0x20, 0x20);
+		break;
+	default:
+		break;
+	}
 
 	sii902x_update_bits_unlocked(sii902x->i2c, SII902X_TPI_SYNC_GEN_CTRL,
 				     0x80,  0x00);
@@ -446,8 +473,13 @@ static void sii902x_set_embedded_sync(struct sii902x *sii902x)
 	drm_display_mode_to_videomode(&sii902x->mode, &vm);
 	data[0] = vm.hfront_porch & 0xff;
 	data[1] = (vm.hfront_porch >> 8) & 0x03;
-	data[2] = 0;
-	data[3] = 0;
+	if (sii902x->mode.flags & DRM_MODE_FLAG_INTERLACE) {
+		data[2] = (sii902x->mode.vtotal >> 1) & 0xff;
+		data[3] = ((sii902x->mode.vtotal >> 1) >> 8) & 0x1f;
+	} else {
+		data[2] = 0;
+		data[3] = 0;
+	}
 	data[4] = vm.hsync_len & 0xff;
 	data[5] = (vm.hsync_len >> 8) & 0x03;
 	data[6] = vm.vfront_porch;
@@ -475,6 +507,10 @@ static void sii902x_set_format(struct sii902x *sii902x)
 	case MEDIA_BUS_FMT_YVYU8_1X16:
 	case MEDIA_BUS_FMT_UYVY8_1X16:
 	case MEDIA_BUS_FMT_VYUY8_1X16:
+	case MEDIA_BUS_FMT_YUYV8_2X8:
+	case MEDIA_BUS_FMT_YVYU8_2X8:
+	case MEDIA_BUS_FMT_UYVY8_2X8:
+	case MEDIA_BUS_FMT_VYUY8_2X8:
 		val = SII902X_TPI_AVI_INPUT_COLORSPACE_YUV422;
 		break;
 	case MEDIA_BUS_FMT_YUV8_1X24:
@@ -496,8 +532,8 @@ static void sii902x_set_format(struct sii902x *sii902x)
 }
 
 static void sii902x_bridge_mode_set(struct drm_bridge *bridge,
-				    struct drm_display_mode *mode,
-				    struct drm_display_mode *adj)
+				    const struct drm_display_mode *mode,
+				    const struct drm_display_mode *adj)
 {
 	struct sii902x *sii902x = bridge_to_sii902x(bridge);
 	struct regmap *regmap = sii902x->regmap;
@@ -523,6 +559,10 @@ static void sii902x_bridge_mode_set(struct drm_bridge *bridge,
 	case MEDIA_BUS_FMT_YVYU8_1X16:
 	case MEDIA_BUS_FMT_UYVY8_1X16:
 	case MEDIA_BUS_FMT_VYUY8_1X16:
+	case MEDIA_BUS_FMT_YUYV8_2X8:
+	case MEDIA_BUS_FMT_YVYU8_2X8:
+	case MEDIA_BUS_FMT_UYVY8_2X8:
+	case MEDIA_BUS_FMT_VYUY8_2X8:
 		buf[8] |= SII902X_TPI_AVI_PIXEL_REP_RISING_EDGE;
 		break;
 	default:
@@ -535,6 +575,10 @@ static void sii902x_bridge_mode_set(struct drm_bridge *bridge,
 	case MEDIA_BUS_FMT_YVYU8_1X16:
 	case MEDIA_BUS_FMT_UYVY8_1X16:
 	case MEDIA_BUS_FMT_VYUY8_1X16:
+	case MEDIA_BUS_FMT_YUYV8_2X8:
+	case MEDIA_BUS_FMT_YVYU8_2X8:
+	case MEDIA_BUS_FMT_UYVY8_2X8:
+	case MEDIA_BUS_FMT_VYUY8_2X8:
 		buf[9] |= SII902X_TPI_AVI_INPUT_COLORSPACE_YUV422;
 		break;
 	case MEDIA_BUS_FMT_YUV8_1X24:
@@ -553,7 +597,8 @@ static void sii902x_bridge_mode_set(struct drm_bridge *bridge,
 	if (ret)
 		goto out;
 
-	ret = drm_hdmi_avi_infoframe_from_display_mode(&frame, adj, false);
+	ret = drm_hdmi_avi_infoframe_from_display_mode(&frame,
+						       &sii902x->connector, adj);
 	if (ret < 0) {
 		DRM_ERROR("couldn't fill AVI infoframe\n");
 		goto out;
@@ -569,17 +614,22 @@ static void sii902x_bridge_mode_set(struct drm_bridge *bridge,
 	regmap_bulk_write(regmap, SII902X_TPI_AVI_INFOFRAME,
 			  buf + HDMI_INFOFRAME_HEADER_SIZE - 1,
 			  HDMI_AVI_INFOFRAME_SIZE + 1);
-
 	sii902x_set_format(sii902x);
 out:
 	mutex_unlock(&sii902x->mutex);
 }
 
-static int sii902x_bridge_attach(struct drm_bridge *bridge)
+static int sii902x_bridge_attach(struct drm_bridge *bridge,
+				 enum drm_bridge_attach_flags flags)
 {
 	struct sii902x *sii902x = bridge_to_sii902x(bridge);
 	struct drm_device *drm = bridge->dev;
 	int ret;
+
+	if (flags & DRM_BRIDGE_ATTACH_NO_CONNECTOR) {
+		DRM_ERROR("Fix bridge driver to make connector optional!");
+		return -EINVAL;
+	}
 
 	sii902x->connector.interlace_allowed = true;
 	drm_connector_helper_add(&sii902x->connector,
@@ -843,8 +893,8 @@ static void sii902x_audio_shutdown(struct device *dev, void *data)
 	clk_disable_unprepare(sii902x->audio.mclk);
 }
 
-static int sii902x_audio_digital_mute(struct device *dev,
-				      void *data, bool enable)
+static int sii902x_audio_mute(struct device *dev, void *data,
+			      bool enable, int direction)
 {
 	struct sii902x *sii902x = dev_get_drvdata(dev);
 
@@ -895,9 +945,10 @@ static int sii902x_audio_get_dai_id(struct snd_soc_component *component,
 static const struct hdmi_codec_ops sii902x_audio_codec_ops = {
 	.hw_params = sii902x_audio_hw_params,
 	.audio_shutdown = sii902x_audio_shutdown,
-	.digital_mute = sii902x_audio_digital_mute,
+	.mute_stream = sii902x_audio_mute,
 	.get_eld = sii902x_audio_get_eld,
 	.get_dai_id = sii902x_audio_get_dai_id,
+	.no_capture_mute = 1,
 };
 
 static int sii902x_audio_codec_init(struct sii902x *sii902x,
@@ -1118,13 +1169,82 @@ static int sii902x_i2c_bypass_deselect(struct i2c_mux_core *mux, u32 chan_id)
 	return 0;
 }
 
+static const struct drm_bridge_timings default_sii902x_timings = {
+	.input_bus_flags = DRM_BUS_FLAG_PIXDATA_SAMPLE_NEGEDGE
+		 | DRM_BUS_FLAG_SYNC_SAMPLE_NEGEDGE
+		 | DRM_BUS_FLAG_DE_HIGH,
+};
+
+static int sii902x_init(struct sii902x *sii902x)
+{
+	struct device *dev = &sii902x->i2c->dev;
+	unsigned int status = 0;
+	u8 chipid[4];
+	int ret;
+
+	sii902x_reset(sii902x);
+
+	ret = regmap_write(sii902x->regmap, SII902X_REG_TPI_RQB, 0x0);
+	if (ret) {
+		dev_err(dev, "enable TPI mode failed %d\n", ret);
+		return ret;
+	}
+
+	ret = regmap_bulk_read(sii902x->regmap, SII902X_REG_CHIPID(0),
+			       &chipid, 4);
+	if (ret) {
+		dev_err(dev, "regmap_read failed %d\n", ret);
+		return ret;
+	}
+
+	if (chipid[0] != 0xb0) {
+		dev_err(dev, "Invalid chipid: %02x (expecting 0xb0)\n",
+			chipid[0]);
+		return -EINVAL;
+	}
+
+	/* Clear all pending interrupts */
+	regmap_read(sii902x->regmap, SII902X_INT_STATUS, &status);
+	regmap_write(sii902x->regmap, SII902X_INT_STATUS, status);
+
+	if (sii902x->i2c->irq > 0) {
+		regmap_write(sii902x->regmap, SII902X_INT_ENABLE,
+			     SII902X_HOTPLUG_EVENT);
+
+		ret = devm_request_threaded_irq(dev, sii902x->i2c->irq, NULL,
+						sii902x_interrupt,
+						IRQF_TRIGGER_FALLING |
+						IRQF_ONESHOT, dev_name(dev),
+						sii902x);
+		if (ret)
+			return ret;
+	}
+
+	sii902x->bridge.funcs = &sii902x_bridge_funcs;
+	sii902x->bridge.of_node = dev->of_node;
+	sii902x->bridge.timings = &default_sii902x_timings;
+	drm_bridge_add(&sii902x->bridge);
+
+	sii902x_audio_codec_init(sii902x, dev);
+
+	i2c_set_clientdata(sii902x->i2c, sii902x);
+
+	sii902x->i2cmux = i2c_mux_alloc(sii902x->i2c->adapter, dev,
+					1, 0, I2C_MUX_GATE,
+					sii902x_i2c_bypass_select,
+					sii902x_i2c_bypass_deselect);
+	if (!sii902x->i2cmux)
+		return -ENOMEM;
+
+	sii902x->i2cmux->priv = sii902x;
+	return i2c_mux_add_adapter(sii902x->i2cmux, 0, 0, 0);
+}
+
 static int sii902x_probe(struct i2c_client *client,
 			 const struct i2c_device_id *id)
 {
 	struct device *dev = &client->dev;
-	unsigned int status = 0;
 	struct sii902x *sii902x;
-	u8 chipid[4];
 	int ret;
 	u32 val;
 
@@ -1185,59 +1305,28 @@ static int sii902x_probe(struct i2c_client *client,
 
 	mutex_init(&sii902x->mutex);
 
-	sii902x_reset(sii902x);
-
-	ret = regmap_write(sii902x->regmap, SII902X_REG_TPI_RQB, 0x0);
-	if (ret)
+	sii902x->supplies[0].supply = "iovcc";
+	sii902x->supplies[1].supply = "cvcc12";
+	ret = devm_regulator_bulk_get(dev, ARRAY_SIZE(sii902x->supplies),
+				      sii902x->supplies);
+	if (ret < 0)
 		return ret;
 
-	ret = regmap_bulk_read(sii902x->regmap, SII902X_REG_CHIPID(0),
-			       &chipid, 4);
-	if (ret) {
-		dev_err(dev, "regmap_read failed %d\n", ret);
+	ret = regulator_bulk_enable(ARRAY_SIZE(sii902x->supplies),
+				    sii902x->supplies);
+	if (ret < 0) {
+		dev_err_probe(dev, ret, "Failed to enable supplies");
 		return ret;
 	}
 
-	if (chipid[0] != 0xb0) {
-		dev_err(dev, "Invalid chipid: %02x (expecting 0xb0)\n",
-			chipid[0]);
-		return -EINVAL;
+	ret = sii902x_init(sii902x);
+	if (ret < 0) {
+		dev_err(dev, "Failed to init sii902x %d\n", ret);
+		regulator_bulk_disable(ARRAY_SIZE(sii902x->supplies),
+				       sii902x->supplies);
 	}
 
-	/* Clear all pending interrupts */
-	regmap_read(sii902x->regmap, SII902X_INT_STATUS, &status);
-	regmap_write(sii902x->regmap, SII902X_INT_STATUS, status);
-
-	if (client->irq > 0) {
-		regmap_write(sii902x->regmap, SII902X_INT_ENABLE,
-			     SII902X_HOTPLUG_EVENT);
-
-		ret = devm_request_threaded_irq(dev, client->irq, NULL,
-						sii902x_interrupt,
-						IRQF_TRIGGER_FALLING |
-						IRQF_ONESHOT, dev_name(dev),
-						sii902x);
-		if (ret)
-			return ret;
-	}
-
-	sii902x->bridge.funcs = &sii902x_bridge_funcs;
-	sii902x->bridge.of_node = dev->of_node;
-	drm_bridge_add(&sii902x->bridge);
-
-	sii902x_audio_codec_init(sii902x, dev);
-
-	i2c_set_clientdata(client, sii902x);
-
-	sii902x->i2cmux = i2c_mux_alloc(client->adapter, dev,
-					1, 0, I2C_MUX_GATE,
-					sii902x_i2c_bypass_select,
-					sii902x_i2c_bypass_deselect);
-	if (!sii902x->i2cmux)
-		return -ENOMEM;
-
-	sii902x->i2cmux->priv = sii902x;
-	return i2c_mux_add_adapter(sii902x->i2cmux, 0, 0, 0);
+	return ret;
 }
 
 static int sii902x_remove(struct i2c_client *client)
@@ -1247,6 +1336,8 @@ static int sii902x_remove(struct i2c_client *client)
 
 	i2c_mux_del_adapters(sii902x->i2cmux);
 	drm_bridge_remove(&sii902x->bridge);
+	regulator_bulk_disable(ARRAY_SIZE(sii902x->supplies),
+			       sii902x->supplies);
 
 	return 0;
 }

@@ -2105,7 +2105,7 @@ static void gc2145_set_streaming(struct gc2145 *gc2145, int on)
 
 	dev_dbg(&client->dev, "%s: on: %d\n", __func__, on);
 
-	if (gc2145->bus_cfg.bus_type == V4L2_MBUS_CSI2) {
+	if (gc2145->bus_cfg.bus_type == V4L2_MBUS_CSI2_DPHY) {
 		val = on ? 0x94 : 0x84;
 		ret = gc2145_write(client, 0xfe, 0x03);
 		ret |= gc2145_write(client, 0x10, val);
@@ -2458,13 +2458,13 @@ static int gc2145_open(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh)
 }
 #endif
 
-static int gc2145_g_mbus_config(struct v4l2_subdev *sd,
+static int gc2145_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
 	struct gc2145 *gc2145 = to_gc2145(sd);
 
-	if (gc2145->bus_cfg.bus_type == V4L2_MBUS_CSI2) {
-		config->type = V4L2_MBUS_CSI2;
+	if (gc2145->bus_cfg.bus_type == V4L2_MBUS_CSI2_DPHY) {
+		config->type = V4L2_MBUS_CSI2_DPHY;
 		config->flags = V4L2_MBUS_CSI2_1_LANE |
 						V4L2_MBUS_CSI2_CHANNEL_0 |
 						V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
@@ -2483,9 +2483,7 @@ static int gc2145_g_frame_interval(struct v4l2_subdev *sd,
 {
 	struct gc2145 *gc2145 = to_gc2145(sd);
 
-	mutex_lock(&gc2145->lock);
 	fi->interval = gc2145->frame_size->max_fps;
-	mutex_unlock(&gc2145->lock);
 
 	return 0;
 }
@@ -2583,8 +2581,11 @@ static long gc2145_compat_ioctl32(struct v4l2_subdev *sd,
 		}
 
 		ret = gc2145_ioctl(sd, cmd, inf);
-		if (!ret)
+		if (!ret) {
 			ret = copy_to_user(up, inf, sizeof(*inf));
+			if (ret)
+				ret = -EFAULT;
+		}
 		kfree(inf);
 		break;
 	case RKMODULE_AWB_CFG:
@@ -2597,12 +2598,16 @@ static long gc2145_compat_ioctl32(struct v4l2_subdev *sd,
 		ret = copy_from_user(cfg, up, sizeof(*cfg));
 		if (!ret)
 			ret = gc2145_ioctl(sd, cmd, cfg);
+		else
+			ret = -EFAULT;
 		kfree(cfg);
 		break;
 	case RKMODULE_SET_QUICK_STREAM:
 		ret = copy_from_user(&stream, up, sizeof(u32));
 		if (!ret)
 			ret = gc2145_ioctl(sd, cmd, &stream);
+		else
+			ret = -EFAULT;
 		break;
 	default:
 		ret = -ENOIOCTLCMD;
@@ -2621,7 +2626,7 @@ static int gc2145_init(struct v4l2_subdev *sd, u32 val)
 
 	dev_info(&client->dev, "%s(%d)\n", __func__, __LINE__);
 
-	if (gc2145->bus_cfg.bus_type == V4L2_MBUS_CSI2)
+	if (gc2145->bus_cfg.bus_type == V4L2_MBUS_CSI2_DPHY)
 		ret = gc2145_write_array(client, gc2145_mipi_init_regs);
 	else
 		ret = gc2145_write_array(client, gc2145_dvp_init_regs);
@@ -2665,9 +2670,7 @@ static int gc2145_enum_frame_interval(struct v4l2_subdev *sd,
 	if (fie->index >= gc2145->cfg_num)
 		return -EINVAL;
 
-	if (fie->code != MEDIA_BUS_FMT_UYVY8_2X8)
-		return -EINVAL;
-
+	fie->code = MEDIA_BUS_FMT_UYVY8_2X8;
 	fie->width = gc2145->framesize_cfg[fie->index].width;
 	fie->height = gc2145->framesize_cfg[fie->index].height;
 	fie->interval = gc2145->framesize_cfg[fie->index].max_fps;
@@ -2687,7 +2690,6 @@ static const struct v4l2_subdev_core_ops gc2145_subdev_core_ops = {
 
 static const struct v4l2_subdev_video_ops gc2145_subdev_video_ops = {
 	.s_stream = gc2145_s_stream,
-	.g_mbus_config = gc2145_g_mbus_config,
 	.g_frame_interval = gc2145_g_frame_interval,
 	.s_frame_interval = gc2145_s_frame_interval,
 };
@@ -2698,6 +2700,7 @@ static const struct v4l2_subdev_pad_ops gc2145_subdev_pad_ops = {
 	.enum_frame_interval = gc2145_enum_frame_interval,
 	.get_fmt = gc2145_get_fmt,
 	.set_fmt = gc2145_set_fmt,
+	.get_mbus_config = gc2145_g_mbus_config,
 };
 
 #ifdef CONFIG_VIDEO_V4L2_SUBDEV_API
@@ -2849,7 +2852,7 @@ static int gc2145_parse_of(struct gc2145 *gc2145)
 		of_node_put(endpoint);
 		return ret;
 	}
-	if (gc2145->bus_cfg.bus_type == V4L2_MBUS_CSI2) {
+	if (gc2145->bus_cfg.bus_type == V4L2_MBUS_CSI2_DPHY) {
 		gc2145->framesize_cfg = gc2145_mipi_framesizes;
 		gc2145->cfg_num = ARRAY_SIZE(gc2145_mipi_framesizes);
 	} else {
@@ -2871,7 +2874,7 @@ static int gc2145_parse_of(struct gc2145 *gc2145)
 	if (ret)
 		dev_info(dev, "Failed to get power regulators\n");
 
-	return __gc2145_power_on(gc2145);
+	return ret;
 }
 
 static int gc2145_probe(struct i2c_client *client,
@@ -2915,11 +2918,6 @@ static int gc2145_probe(struct i2c_client *client,
 
 	ret = gc2145_parse_of(gc2145);
 	if (ret != 0)
-		return -EINVAL;
-
-	gc2145->xvclk_frequency = clk_get_rate(gc2145->xvclk);
-	if (gc2145->xvclk_frequency < 6000000 ||
-	    gc2145->xvclk_frequency > 27000000)
 		return -EINVAL;
 
 	v4l2_ctrl_handler_init(&gc2145->ctrls, 3);
@@ -2971,6 +2969,12 @@ static int gc2145_probe(struct i2c_client *client,
 	gc2145->format.height = gc2145->framesize_cfg[0].height;
 	gc2145->fps = DIV_ROUND_CLOSEST(gc2145->framesize_cfg[0].max_fps.denominator,
 			gc2145->framesize_cfg[0].max_fps.numerator);
+
+	__gc2145_power_on(gc2145);
+	gc2145->xvclk_frequency = clk_get_rate(gc2145->xvclk);
+	if (gc2145->xvclk_frequency < 6000000 ||
+	    gc2145->xvclk_frequency > 27000000)
+		goto error;
 
 	ret = gc2145_detect(gc2145);
 	if (ret < 0) {

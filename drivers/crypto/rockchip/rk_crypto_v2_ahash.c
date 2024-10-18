@@ -51,13 +51,17 @@ static void rk_hash_reset(struct rk_crypto_dev *rk_dev)
 	CRYPTO_WRITE(rk_dev, CRYPTO_RST_CTL, tmp | tmp_mask);
 
 	/* This is usually done in 20 clock cycles */
-	ret = readl_poll_timeout_atomic(rk_dev->reg + CRYPTO_RST_CTL,
-					tmp, !tmp, 0, pool_timeout_us);
+	ret = read_poll_timeout_atomic(CRYPTO_READ, tmp, !tmp, 0, pool_timeout_us,
+				       false, rk_dev, CRYPTO_RST_CTL);
 	if (ret)
 		dev_err(rk_dev->dev, "cipher reset pool timeout %ums.",
 			pool_timeout_us);
 
 	CRYPTO_WRITE(rk_dev, CRYPTO_HASH_CTL, 0xffff0000);
+
+	/* clear dma int status */
+	tmp = CRYPTO_READ(rk_dev, CRYPTO_DMA_INT_ST);
+	CRYPTO_WRITE(rk_dev, CRYPTO_DMA_INT_ST, tmp);
 }
 
 static int rk_crypto_irq_handle(int irq, void *dev_id)
@@ -285,11 +289,11 @@ static int rk_ahash_get_result(struct rk_crypto_dev *rk_dev,
 	int ret = 0;
 	u32 reg_ctrl = 0;
 
-	ret = readl_poll_timeout_atomic(rk_dev->reg + CRYPTO_HASH_VALID,
-					reg_ctrl,
-					reg_ctrl & CRYPTO_HASH_IS_VALID,
-					RK_POLL_PERIOD_US,
-					RK_POLL_TIMEOUT_US);
+	ret = read_poll_timeout_atomic(CRYPTO_READ, reg_ctrl,
+				       reg_ctrl & CRYPTO_HASH_IS_VALID,
+				       RK_POLL_PERIOD_US,
+				       RK_POLL_TIMEOUT_US, false,
+				       rk_dev, CRYPTO_HASH_VALID);
 	if (ret)
 		goto exit;
 

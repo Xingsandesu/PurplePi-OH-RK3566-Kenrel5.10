@@ -1,18 +1,12 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright(c) 2017 Icenowy Zheng <icenowy@aosc.io>
- *
- * Based on analogix-anx78xx.h, which is:
- *   Copyright(c) 2016, Analogix Semiconductor. All rights reserved.
+ * Copyright(c) 2016, Analogix Semiconductor. All rights reserved.
  */
-
 #ifndef _ANALOGIX_I2C_TXCOMMON_H_
 #define _ANALOGIX_I2C_TXCOMMON_H_
 
-#define ANALOGIX_I2C_TXCOMMON		0x72
-
 /***************************************************************/
-/* Register definition of device address 0x72                  */
+/* Register definitions for TX_P2                              */
 /***************************************************************/
 
 /*

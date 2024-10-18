@@ -2131,9 +2131,7 @@ static int ov8858_g_frame_interval(struct v4l2_subdev *sd,
 	struct ov8858 *ov8858 = to_ov8858(sd);
 	const struct ov8858_mode *mode = ov8858->cur_mode;
 
-	mutex_lock(&ov8858->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&ov8858->mutex);
 
 	return 0;
 }
@@ -2803,7 +2801,7 @@ static void __ov8858_power_off(struct ov8858 *ov8858)
 	regulator_bulk_disable(OV8858_NUM_SUPPLIES, ov8858->supplies);
 }
 
-static int ov8858_runtime_resume(struct device *dev)
+static int __maybe_unused ov8858_runtime_resume(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
@@ -2812,7 +2810,7 @@ static int ov8858_runtime_resume(struct device *dev)
 	return __ov8858_power_on(ov8858);
 }
 
-static int ov8858_runtime_suspend(struct device *dev)
+static int __maybe_unused ov8858_runtime_suspend(struct device *dev)
 {
 	struct i2c_client *client = to_i2c_client(dev);
 	struct v4l2_subdev *sd = i2c_get_clientdata(client);
@@ -2854,16 +2852,14 @@ static int ov8858_enum_frame_interval(struct v4l2_subdev *sd,
 	if (fie->index >= ov8858->cfg_num)
 		return -EINVAL;
 
-	if (fie->code != OV8858_MEDIA_BUS_FMT)
-		return -EINVAL;
-
+	fie->code = OV8858_MEDIA_BUS_FMT;
 	fie->width = supported_modes[fie->index].width;
 	fie->height = supported_modes[fie->index].height;
 	fie->interval = supported_modes[fie->index].max_fps;
 	return 0;
 }
 
-static int ov8858_g_mbus_config(struct v4l2_subdev *sd,
+static int ov8858_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
 	struct ov8858  *sensor = to_ov8858 (sd);
@@ -2872,12 +2868,12 @@ static int ov8858_g_mbus_config(struct v4l2_subdev *sd,
 	dev_info(dev, "%s(%d) enter!\n", __func__, __LINE__);
 
 	if (2 == sensor->lane_num) {
-		config->type = V4L2_MBUS_CSI2;
+		config->type = V4L2_MBUS_CSI2_DPHY;
 		config->flags = V4L2_MBUS_CSI2_2_LANE |
 				V4L2_MBUS_CSI2_CHANNEL_0 |
 				V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
 	} else if (4 == sensor->lane_num) {
-		config->type = V4L2_MBUS_CSI2;
+		config->type = V4L2_MBUS_CSI2_DPHY;
 		config->flags = V4L2_MBUS_CSI2_4_LANE |
 				V4L2_MBUS_CSI2_CHANNEL_0 |
 				V4L2_MBUS_CSI2_CONTINUOUS_CLOCK;
@@ -2910,7 +2906,6 @@ static const struct v4l2_subdev_core_ops ov8858_core_ops = {
 static const struct v4l2_subdev_video_ops ov8858_video_ops = {
 	.s_stream = ov8858_s_stream,
 	.g_frame_interval = ov8858_g_frame_interval,
-	.g_mbus_config = ov8858_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops ov8858_pad_ops = {
@@ -2919,6 +2914,7 @@ static const struct v4l2_subdev_pad_ops ov8858_pad_ops = {
 	.enum_frame_interval = ov8858_enum_frame_interval,
 	.get_fmt = ov8858_get_fmt,
 	.set_fmt = ov8858_set_fmt,
+	.get_mbus_config = ov8858_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops ov8858_subdev_ops = {

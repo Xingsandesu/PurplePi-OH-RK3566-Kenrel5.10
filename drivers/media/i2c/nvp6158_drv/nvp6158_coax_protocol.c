@@ -56,42 +56,38 @@ extern unsigned int nvp6158_iic_addr[4];
 *
 * ioctl : IOC_VDEC_COAX_TX_INIT
 ***************************************************************************************/
-static NC_VD_ACP_CMDDEF_STR *__NC_VD_ACP_Get_CommandFormat_Get( NC_COAX_CMD_DEF def )
+static NC_VD_ACP_CMDDEF_STR *__NC_VD_ACP_Get_CommandFormat_Get(NC_COAX_CMD_DEF def)
 {
 	NC_VD_ACP_CMDDEF_STR *pRet = &nvp6158_coax_cmd_lists[def];
-	if( pRet == NULL )
-	{
+	if( pRet == NULL ) {
 		printk("Not Supported format Yet!!!(%d)\n",def);
 	}
 	return  pRet;
 }
 
-static NC_VD_COAX_Init_STR *__NC_VD_COAX_InitFormat_Get( NC_VIVO_CH_FORMATDEF def )
+static NC_VD_COAX_Init_STR *__NC_VD_COAX_InitFormat_Get(NC_VIVO_CH_FORMATDEF def)
 {
 	NC_VD_COAX_Init_STR *pRet = &nvp6158_coax_init_lists[def];
-	if( pRet == NULL )
-	{
+	if( pRet == NULL ) {
 		printk("Not Supported format Yet!!!(%d)\n",def);
 	}
 	return  pRet;
 }
 
-static NC_VD_COAX_Init_STR *__NC_VD_COAX_16bit_InitFormat_Get( NC_VIVO_CH_FORMATDEF def )
+static NC_VD_COAX_Init_STR *__NC_VD_COAX_16bit_InitFormat_Get(NC_VIVO_CH_FORMATDEF def)
 {
 	NC_VD_COAX_Init_STR *pRet = &nvp6158_coax_acp_16bit_init_lists[def];
-	if( pRet == NULL )
-	{
+	if( pRet == NULL ) {
 		printk("Not Supported format Yet!!!(%d)\n",def);
 	}
 	return  pRet;
 }
 
-static int __NC_VD_COAX_Command_Each_Copy( unsigned char *Dst, int *Src )
+static int __NC_VD_COAX_Command_Each_Copy(unsigned char *Dst, int *Src)
 {
 	int items = 0;
 
-	while( Src[items] != EOD )
-	{
+	while( Src[items] != EOD ) {
 		Dst[items] = Src[items];
 		items++;
 	}
@@ -99,62 +95,52 @@ static int __NC_VD_COAX_Command_Each_Copy( unsigned char *Dst, int *Src )
 	return items;
 }
 
-static int __NC_VD_COAX_Command_Copy( NC_FORMAT_STANDARD format, NC_VIVO_CH_FORMATDEF vivofmt, unsigned char *Dst, NC_VD_ACP_CMDDEF_STR *pCMD )
+static int __NC_VD_COAX_Command_Copy(NC_FORMAT_STANDARD format, NC_VIVO_CH_FORMATDEF vivofmt,
+					unsigned char *Dst, NC_VD_ACP_CMDDEF_STR *pCMD)
 {
 	int cmd_cnt = 0;
 
-	if( format == FMT_SD )
-	{
-		cmd_cnt = __NC_VD_COAX_Command_Each_Copy( Dst, pCMD->sd );
-	}
-	else if( (format == FMT_AHD20) || (format == FMT_AHD30) )
-	{
-		if( 	vivofmt == AHD30_4M_30P 		|| vivofmt == AHD30_4M_25P 		|| vivofmt == AHD30_4M_15P		||
-			vivofmt == AHD30_5M_20P 		|| vivofmt == AHD30_5M_12_5P 	|| vivofmt == AHD30_5_3M_20P   	|| 
-			vivofmt == AHD30_8M_12_5P 	|| vivofmt == AHD30_8M_15P	)
-			cmd_cnt = __NC_VD_COAX_Command_Each_Copy( Dst, pCMD->ahd_4_5m );
+	if( format == FMT_SD ) {
+		cmd_cnt = __NC_VD_COAX_Command_Each_Copy(Dst, pCMD->sd);
+	} else if((format == FMT_AHD20) || (format == FMT_AHD30)) {
+		if(vivofmt == AHD30_4M_30P || vivofmt == AHD30_4M_25P 	|| vivofmt == AHD30_4M_15P ||
+			vivofmt == AHD30_5M_20P || vivofmt == AHD30_5M_12_5P || vivofmt == AHD30_5_3M_20P ||
+			vivofmt == AHD30_8M_12_5P || vivofmt == AHD30_8M_15P)
+			cmd_cnt = __NC_VD_COAX_Command_Each_Copy(Dst, pCMD->ahd_4_5m);
+			//cmd_cnt = __NC_VD_COAX_Command_Each_Copy( Dst, pCMD->ahd_4_5m );
 		//else if( vivofmt == AHD30_4M_30P || vivofmt == AHD30_4M_25P || vivofmt == AHD30_4M_15P )
 			//cmd_cnt = __NC_VD_COAX_Command_Each_Copy( Dst, pCMD->ahd_4_5m );
 		else
-			cmd_cnt = __NC_VD_COAX_Command_Each_Copy( Dst, pCMD->ahd_8bit );
-	}
-	else if( format == FMT_CVI )
-	{
-		cmd_cnt= __NC_VD_COAX_Command_Each_Copy( Dst, pCMD->cvi_cmd );
-	}
-	else if( format == FMT_TVI )
-	{
-		if( (vivofmt == TVI_4M_30P) || (vivofmt == TVI_4M_25P) || (vivofmt == TVI_4M_15P) ||
-		     (vivofmt == TVI_5M_20P) || (vivofmt == TVI_5M_12_5P) || (vivofmt == TVI_8M_12_5P) || (vivofmt == TVI_8M_15P) )
-			cmd_cnt = __NC_VD_COAX_Command_Each_Copy( Dst, pCMD->tvi_v2_0 );
+			cmd_cnt = __NC_VD_COAX_Command_Each_Copy(Dst, pCMD->ahd_8bit);
+	} else if(format == FMT_CVI) {
+		cmd_cnt= __NC_VD_COAX_Command_Each_Copy(Dst, pCMD->cvi_cmd);
+	} else if(format == FMT_TVI) {
+		if((vivofmt == TVI_4M_30P) || (vivofmt == TVI_4M_25P) || (vivofmt == TVI_4M_15P) ||
+		     (vivofmt == TVI_5M_20P) || (vivofmt == TVI_5M_12_5P) || (vivofmt == TVI_8M_12_5P) || (vivofmt == TVI_8M_15P))
+			cmd_cnt = __NC_VD_COAX_Command_Each_Copy(Dst, pCMD->tvi_v2_0);
 		else
-			cmd_cnt = __NC_VD_COAX_Command_Each_Copy( Dst, pCMD->tvi_v1_0 );
-	}
-	else
+			cmd_cnt = __NC_VD_COAX_Command_Each_Copy(Dst, pCMD->tvi_v1_0);
+	} else {
 		printk("NC_VD_COAX_Tx_Command_Send::Command Copy Error!!\n");
-
+	}		
 
 	return cmd_cnt;
 }
 
-static int __NC_VD_COAX_16bit_Command_Copy( NC_FORMAT_STANDARD format, NC_VIVO_CH_FORMATDEF vivofmt, unsigned char *Dst, NC_VD_ACP_CMDDEF_STR *pCMD )
+static int __NC_VD_COAX_16bit_Command_Copy(NC_FORMAT_STANDARD format, NC_VIVO_CH_FORMATDEF vivofmt,
+					unsigned char *Dst, NC_VD_ACP_CMDDEF_STR *pCMD)
 {
 	int cmd_cnt = 0;
 
-	if( (vivofmt == AHD20_720P_25P) || (vivofmt == AHD20_720P_30P) ||\
+	if((vivofmt == AHD20_720P_25P) || (vivofmt == AHD20_720P_30P) ||\
 		(vivofmt == AHD20_720P_25P_EX) || (vivofmt == AHD20_720P_30P_EX) ||\
-		(vivofmt == AHD20_720P_25P_EX_Btype) || (vivofmt == AHD20_720P_30P_EX_Btype) )
-	{
+		(vivofmt == AHD20_720P_25P_EX_Btype) || (vivofmt == AHD20_720P_30P_EX_Btype)) {
 		cmd_cnt = __NC_VD_COAX_Command_Each_Copy( Dst, pCMD->ahd_16bit );
-	}
-	else if( (vivofmt == CVI_4M_25P) || (vivofmt == CVI_4M_30P) ||\
-			 (vivofmt == CVI_5M_20P) || (vivofmt == CVI_8M_15P) || (vivofmt == CVI_8M_12_5P) )
-	{
-		cmd_cnt = __NC_VD_COAX_Command_Each_Copy( Dst, pCMD->cvi_new_cmd );
-	}
-	else
-	{
-		printk("[drv_coax] Can not send commands!! Unsupported format!!\n" );
+	} else if((vivofmt == CVI_4M_25P) || (vivofmt == CVI_4M_30P) ||\
+			 (vivofmt == CVI_5M_20P) || (vivofmt == CVI_8M_15P) || (vivofmt == CVI_8M_12_5P)) {
+		cmd_cnt = __NC_VD_COAX_Command_Each_Copy(Dst, pCMD->cvi_new_cmd);
+	} else {
+		printk("[drv_coax] Can not send commands!! Unsupported format!!\n");
 		return 0;
 	}
 
@@ -171,10 +157,10 @@ static int __NC_VD_COAX_16bit_Command_Copy( NC_FORMAT_STANDARD format, NC_VIVO_C
 *
 * ioctl : IOC_VDEC_COAX_TX_INIT
 ***************************************************************************************/
-void nvp6158_coax_tx_init( nvp6158_coax_str *ps_coax_str )
+void nvp6158_coax_tx_init(nvp6158_coax_str *ps_coax_str)
 {
-	unsigned char ch = ps_coax_str->ch%4;
-	unsigned char devnum = ps_coax_str->ch/4;
+	unsigned char ch = ps_coax_str->ch % 4;
+	unsigned char devnum = ps_coax_str->ch / 4;
 	unsigned char distance = 0;
 	NC_VD_COAX_Init_STR *CoaxVal = __NC_VD_COAX_InitFormat_Get( ps_coax_str->fmt_def);
 	printk("[drv_coax]Ch: %d Format >>>>> %s\n", ch, CoaxVal->name );
@@ -184,7 +170,7 @@ void nvp6158_coax_tx_init( nvp6158_coax_str *ps_coax_str )
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xA8+ch, 0x08+ch);  // MPP_TST_SEL1
 
 	// Coaxial each mode set
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x05+ch%4);  // BANK 5
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x05 + ch % 4);  // BANK 5
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x2F, 0x00);       // MPP_H_INV, MPP_V_INV, MPP_F_INV
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x30, 0xE0);       // MPP_H_S[7~4], MPP_H_E[3:0]
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x31, 0x43);       // MPP_H_S[7:0]
@@ -192,21 +178,21 @@ void nvp6158_coax_tx_init( nvp6158_coax_str *ps_coax_str )
  	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x7C, CoaxVal->rx_src);
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x7D, CoaxVal->rx_slice_lev);
 
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2));
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2));
 
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x00+((ch%2)*0x80), CoaxVal->tx_baud[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x02+((ch%2)*0x80), CoaxVal->tx_pel_baud[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x03+((ch%2)*0x80), CoaxVal->tx_line_pos0[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x04+((ch%2)*0x80), CoaxVal->tx_line_pos1[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x05+((ch%2)*0x80), CoaxVal->tx_line_count);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x07+((ch%2)*0x80), CoaxVal->tx_pel_line_pos0[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x08+((ch%2)*0x80), CoaxVal->tx_pel_line_pos1[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0A+((ch%2)*0x80), CoaxVal->tx_line_count_max);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0B+((ch%2)*0x80), CoaxVal->tx_mode);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0D+((ch%2)*0x80), CoaxVal->tx_sync_pos0[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0E + ((ch%2)*0x80), CoaxVal->tx_sync_pos1[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x2F+((ch%2)*0x80), CoaxVal->tx_even);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0C+((ch%2)*0x80), CoaxVal->tx_zero_length);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x00 + ((ch % 2) * 0x80), CoaxVal->tx_baud[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x02 + ((ch % 2) * 0x80), CoaxVal->tx_pel_baud[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x03 + ((ch % 2) * 0x80), CoaxVal->tx_line_pos0[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x04 + ((ch % 2) * 0x80), CoaxVal->tx_line_pos1[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x05 + ((ch % 2) * 0x80), CoaxVal->tx_line_count);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x07 + ((ch % 2) * 0x80), CoaxVal->tx_pel_line_pos0[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x08 + ((ch % 2) * 0x80), CoaxVal->tx_pel_line_pos1[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0A + ((ch % 2) * 0x80), CoaxVal->tx_line_count_max);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0B + ((ch % 2) * 0x80), CoaxVal->tx_mode);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0D + ((ch % 2) * 0x80), CoaxVal->tx_sync_pos0[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0E + ((ch % 2) * 0x80), CoaxVal->tx_sync_pos1[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x2F + ((ch % 2) * 0x80), CoaxVal->tx_even);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0C + ((ch % 2) * 0x80), CoaxVal->tx_zero_length);
 
 #if DBG_TX_INIT_PRINT
 	printk("[drv]tx_src:            5x7C>> 0x%02X\n", CoaxVal->rx_src );
@@ -243,27 +229,21 @@ int nvp6158_coax_tx_16bit_init( nvp6158_coax_str *ps_coax_str )
 	//NC_VD_COAX_STR *coax_tx = (NC_VD_COAX_STR*)p_param;
 	NC_VD_COAX_Init_STR *CoaxVal;
 
-	unsigned char ch = ps_coax_str->ch%4;
-	unsigned char devnum = ps_coax_str->ch/4;
+	unsigned char ch = ps_coax_str->ch % 4;
+	unsigned char devnum = ps_coax_str->ch / 4;
 	NC_VIVO_CH_FORMATDEF fmt_def  	= ps_coax_str->fmt_def;
 	//int fmt = coax_tx->vivo_fmt;
 	unsigned char distance = 0;
 
-	if( (fmt_def == AHD20_720P_25P) || (fmt_def == AHD20_720P_30P) ||\
+	if((fmt_def == AHD20_720P_25P) || (fmt_def == AHD20_720P_30P) ||\
 		(fmt_def == AHD20_720P_25P_EX) || (fmt_def == AHD20_720P_30P_EX) ||\
-		(fmt_def == AHD20_720P_25P_EX_Btype) || (fmt_def == AHD20_720P_30P_EX_Btype)\
-		)
-	{
-		printk("[drv_coax]Ch: %d ACP 16bit initialize!!!\n", ch );
-	}
-	else if( (fmt_def == CVI_4M_25P) || (fmt_def == CVI_4M_30P) )  //some fh cams may need this
+		(fmt_def == AHD20_720P_25P_EX_Btype) || (fmt_def == AHD20_720P_30P_EX_Btype)) {
+		printk("[drv_coax]Ch: %d ACP 16bit initialize!!!\n", ch);
+	} else if((fmt_def == CVI_4M_25P) || (fmt_def == CVI_4M_30P)) { //some fh cams may need this
 	//		 (fmt_def == CVI_8M_15P) || (fmt_def == CVI_8M_12_5P) )
-	{
-		printk("[drv_coax]Ch: %d CVI New Protocol initialize!!!\n", ch );
-	}
-	else
-	{
-		printk("[drv_coax]Ch: %d Can not initialize!! Unsupported format!!\n", ch );
+		printk("[drv_coax]Ch: %d CVI New Protocol initialize!!!\n", ch);
+	} else {
+		printk("[drv_coax]Ch: %d Can not initialize!! Unsupported format!!\n", ch);
 		return -1;
 	}
 
@@ -272,10 +252,10 @@ int nvp6158_coax_tx_16bit_init( nvp6158_coax_str *ps_coax_str )
 
 	// MPP Coaxial mode select Ch1~4
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x01);  // BANK 1
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xA8+ch, 0x08+ch%4);  // MPP_TST_SEL1
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xA8 + ch, 0x08 + ch % 4);  // MPP_TST_SEL1
 
 	// Coaxial each mode set
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x05+ch%4);  // BANK 5
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x05 + ch % 4);  // BANK 5
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x2F, 0x00);       // MPP_H_INV, MPP_V_INV, MPP_F_INV
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x30, 0xE0);       // MPP_H_S[7~4], MPP_H_E[3:0]
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x31, 0x43);       // MPP_H_S[7:0]
@@ -283,21 +263,21 @@ int nvp6158_coax_tx_16bit_init( nvp6158_coax_str *ps_coax_str )
  	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x7C, CoaxVal->rx_src);
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x7D, CoaxVal->rx_slice_lev);
 
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2));
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2));
 
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x00+((ch%2)*0x80), CoaxVal->tx_baud[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x02+((ch%2)*0x80), CoaxVal->tx_pel_baud[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x03+((ch%2)*0x80), CoaxVal->tx_line_pos0[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x04+((ch%2)*0x80), CoaxVal->tx_line_pos1[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x05+((ch%2)*0x80), CoaxVal->tx_line_count);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x07+((ch%2)*0x80), CoaxVal->tx_pel_line_pos0[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x08+((ch%2)*0x80), CoaxVal->tx_pel_line_pos1[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0A+((ch%2)*0x80), CoaxVal->tx_line_count_max);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0B+((ch%2)*0x80), CoaxVal->tx_mode);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0D+((ch%2)*0x80), CoaxVal->tx_sync_pos0[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x00 + ((ch%2)*0x80), CoaxVal->tx_baud[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x02 + ((ch%2)*0x80), CoaxVal->tx_pel_baud[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x03 + ((ch%2)*0x80), CoaxVal->tx_line_pos0[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x04 + ((ch%2)*0x80), CoaxVal->tx_line_pos1[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x05 + ((ch%2)*0x80), CoaxVal->tx_line_count);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x07 + ((ch%2)*0x80), CoaxVal->tx_pel_line_pos0[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x08 + ((ch%2)*0x80), CoaxVal->tx_pel_line_pos1[distance]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0A + ((ch%2)*0x80), CoaxVal->tx_line_count_max);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0B + ((ch%2)*0x80), CoaxVal->tx_mode);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0D + ((ch%2)*0x80), CoaxVal->tx_sync_pos0[distance]);
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0E + ((ch%2)*0x80), CoaxVal->tx_sync_pos1[distance]);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x2F+((ch%2)*0x80), CoaxVal->tx_even);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0C+((ch%2)*0x80), CoaxVal->tx_zero_length);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x2F + ((ch%2)*0x80), CoaxVal->tx_even);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0C + ((ch%2)*0x80), CoaxVal->tx_zero_length);
 
 #if DBG_TX_INIT_PRINT
 	printk("[drv]tx_src:            5x7C>> 0x%02X\n", CoaxVal->rx_src );
@@ -335,26 +315,26 @@ void nvp6158_coax_tx_cmd_send( nvp6158_coax_str *ps_coax_str )
 	//NC_VD_COAX_STR *coax_tx = (NC_VD_COAX_STR*)p_param;
 	int i;
 	int cmd_cnt = 0;
-	unsigned char ch 					= ps_coax_str->ch%4;
-	unsigned char devnum 				= ps_coax_str->ch/4;
-	NC_COAX_CMD_DEF cmd           		= ps_coax_str->cmd;
-	NC_VIVO_CH_FORMATDEF vivofmt  	= ps_coax_str->fmt_def;
+	unsigned char ch = ps_coax_str->ch % 4;
+	unsigned char devnum = ps_coax_str->ch/4;
+	NC_COAX_CMD_DEF cmd = ps_coax_str->cmd;
+	NC_VIVO_CH_FORMATDEF vivofmt = ps_coax_str->fmt_def;
 	NC_FORMAT_STANDARD format = NVP6158_GetFmtStd_from_Fmtdef(vivofmt);
 	
-	unsigned char tx_bank          = 0x00;
-	unsigned char tx_cmd_addr      = 0x00;
-	unsigned char tx_shot_addr     = 0x00;
-	unsigned char command[32]      = {0,};
+	unsigned char tx_bank = 0x00;
+	unsigned char tx_cmd_addr = 0x00;
+	unsigned char tx_shot_addr = 0x00;
+	unsigned char command[32] = {0,};
 	unsigned char TCP_CMD_Stop_v10[10] = { 0xb5, 0x00, 0x14, 0x00, 0x80, 0x00, 0x00, 0x00, 0xc9, 0x80 };
 	//unsigned char TCP_CMD_Stop_v20[10] = { 0xb5, 0x01, 0x14, 0x00, 0x80, 0x00, 0x00, 0x00, 0xc5, 0x80 };
 
 	// UP Stream get from coax table
 	NC_VD_COAX_Init_STR *CoaxVal = __NC_VD_COAX_InitFormat_Get(vivofmt);    // Get from Coax_Tx_Init Table
-	NC_VD_ACP_CMDDEF_STR *pCMD   = __NC_VD_ACP_Get_CommandFormat_Get(cmd);  // Get From Coax_Tx_Command Table
+	NC_VD_ACP_CMDDEF_STR *pCMD = __NC_VD_ACP_Get_CommandFormat_Get(cmd);  // Get From Coax_Tx_Command Table
 	printk("[drv_coax]Ch: %d Command >>>>> %s >>> autostop = %d\n", ch, pCMD->name, pCMD->autostop);
 
-	tx_bank      = CoaxVal->tx_bank;
-	tx_cmd_addr  = CoaxVal->tx_cmd_addr;
+	tx_bank = CoaxVal->tx_bank;
+	tx_cmd_addr = CoaxVal->tx_cmd_addr;
 	tx_shot_addr = CoaxVal->tx_shot_addr;
 	
 	// UP Stream command copy in coax command table
@@ -365,63 +345,53 @@ void nvp6158_coax_tx_cmd_send( nvp6158_coax_str *ps_coax_str )
 	//	printk("[%2x] ",  command[i]);
 	//printk("\n ");
 	// fill command + shot
-	if( format == FMT_SD )
-	{
-		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, tx_bank+((ch%4)/2) );
-		for(i=0;i<cmd_cnt;i++)
-		{
-			gpio_i2c_write(nvp6158_iic_addr[devnum], (tx_cmd_addr+((ch%2)*0x80))+i, 0);
+	if( format == FMT_SD ) {
+		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, tx_bank + ((ch % 4) / 2) );
+		for(i=0; i<cmd_cnt; i++) {
+			gpio_i2c_write(nvp6158_iic_addr[devnum], (tx_cmd_addr + ((ch % 2) * 0x80)) + i, 0);
 		}
 		// Shot
-		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2) );
-		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x01);
+		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2) );
+		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x01);
 		msleep(CoaxVal->shot_delay);
-		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x00);
+		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x00);
 
 		msleep(CoaxVal->reset_delay);
 
-		for(i=0;i<cmd_cnt;i++)
-		{
-			gpio_i2c_write(nvp6158_iic_addr[devnum], (tx_cmd_addr+((ch%2)*0x80))+i, command[i]);
+		for(i=0; i<cmd_cnt; i++) {
+			gpio_i2c_write(nvp6158_iic_addr[devnum], (tx_cmd_addr + ((ch % 2) * 0x80)) + i, command[i]);
 		}
 		// Shot
-		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2) );
-		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x01);
+		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2) );
+		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x01);
 		msleep(CoaxVal->shot_delay);
 		//if(cmd == COAX_CMD_STOP)
-		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x00);
-	}
-	else if(format == FMT_CVI)
-	{
-		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, tx_bank+(ch%4));
-		for(i=0;i<cmd_cnt;i++)
-		{
-			gpio_i2c_write(nvp6158_iic_addr[devnum], tx_cmd_addr+i, command[i]);
-			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x10+i, 0xff);
+		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x00);
+	} else if(format == FMT_CVI) {
+		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, tx_bank + (ch % 4));
+		for(i=0; i<cmd_cnt; i++) {
+			gpio_i2c_write(nvp6158_iic_addr[devnum], tx_cmd_addr + i, command[i]);
+			gpio_i2c_write(nvp6158_iic_addr[devnum], 0x10 + i, 0xff);
 		}
 
 		// Shot
-		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2) );
-		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x01);
-		if((cmd == COAX_CMD_STOP) ||(pCMD->autostop==1))
-		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x00);
-	}
-	else if(format == FMT_TVI)
-	{
-		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, tx_bank+((ch%4)/2) );
-		for(i=0;i<cmd_cnt;i++)
-		{
-			gpio_i2c_write(nvp6158_iic_addr[devnum], (tx_cmd_addr+((ch%2)*0x80))+i, command[i]);
+		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2) );
+		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x01);
+		if((cmd == COAX_CMD_STOP) || (pCMD->autostop == 1))
+		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr +((ch % 2) * 0x80), 0x00);
+	} else if(format == FMT_TVI) {
+		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, tx_bank + ((ch % 4) / 2) );
+		for(i=0; i<cmd_cnt; i++) {
+			gpio_i2c_write(nvp6158_iic_addr[devnum], (tx_cmd_addr + ((ch % 2) * 0x80)) + i, command[i]);
 		}
 
-		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2) );
-		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x08);
+		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2) );
+		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x08);
 		msleep(30);
-		if((cmd == COAX_CMD_STOP) ||(pCMD->autostop==1))
-		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x00);
+		if((cmd == COAX_CMD_STOP) || (pCMD->autostop == 1))
+		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x00);
 
-		if(pCMD->autostop == 1)
-		{
+		if(pCMD->autostop == 1) {
 			if(vivofmt == TVI_4M_15P)
 				msleep(70);
 			else
@@ -441,39 +411,35 @@ void nvp6158_coax_tx_cmd_send( nvp6158_coax_str *ps_coax_str )
 			else
 			#endif	
 			{
-				gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, tx_bank+((ch%4)/2));
-				for(i=0;i<10;i++)
-				{
-					gpio_i2c_write(nvp6158_iic_addr[devnum], tx_cmd_addr+((ch%2)*0x80)+i, TCP_CMD_Stop_v10[i]);
+				gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, tx_bank + ((ch % 4) / 2));
+				for(i=0; i<10; i++) {
+					gpio_i2c_write(nvp6158_iic_addr[devnum], tx_cmd_addr +
+									((ch % 2) * 0x80) + i, TCP_CMD_Stop_v10[i]);
 				}
 			}
 
 			// shot
-			gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x08);
-			gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x00);
+			gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x08);
+			gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x00);
 		}
-	}
-	else
-	{
-		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, tx_bank+((ch%4)/2) );
-		for(i=0;i<cmd_cnt;i++)
-		{
-			gpio_i2c_write(nvp6158_iic_addr[devnum], (tx_cmd_addr+((ch%2)*0x80))+i, command[i]);
+	} else {
+		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, tx_bank+((ch % 4) / 2) );
+		for(i=0; i<cmd_cnt; i++) {
+			gpio_i2c_write(nvp6158_iic_addr[devnum], (tx_cmd_addr + ((ch % 2) * 0x80)) + i, command[i]);
 		}
 
 		// Shot
-		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2) );
-		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x01);
-		if((cmd == COAX_CMD_STOP) ||(pCMD->autostop==1))
-		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x00);
+		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2) );
+		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch%2) * 0x80), 0x01);
+		if((cmd == COAX_CMD_STOP) || (pCMD->autostop == 1))
+		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x00);
 	}
 
-	if(cmd == COAX_CMD_STOP) //stop command sends twice in case of AF camera losses response...
-	{
+	if(cmd == COAX_CMD_STOP) {//stop command sends twice in case of AF camera losses response...
 		msleep(35);
-		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2) );
-		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x01);
-		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x00);
+		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2) );
+		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x01);
+		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x00);
 	}
 }
 
@@ -492,16 +458,16 @@ void nvp6158_coax_tx_16bit_cmd_send( nvp6158_coax_str *ps_coax_str )
 	//NC_VD_COAX_STR *coax_tx = (NC_VD_COAX_STR*)p_param;
 	int i;
 	int cmd_cnt = 0;
-	unsigned char ch 					= ps_coax_str->ch%4;
-	unsigned char devnum 				= ps_coax_str->ch/4;
-	NC_COAX_CMD_DEF cmd           		= ps_coax_str->cmd;
-	NC_VIVO_CH_FORMATDEF vivofmt  	= ps_coax_str->fmt_def;
+	unsigned char ch	= ps_coax_str->ch % 4;
+	unsigned char devnum	= ps_coax_str->ch / 4;
+	NC_COAX_CMD_DEF cmd	= ps_coax_str->cmd;
+	NC_VIVO_CH_FORMATDEF vivofmt	= ps_coax_str->fmt_def;
 	NC_FORMAT_STANDARD format = NVP6158_GetFmtStd_from_Fmtdef(vivofmt);
 
-	unsigned char tx_bank          = 0x00;
-	unsigned char tx_cmd_addr      = 0x00;
-	unsigned char tx_shot_addr     = 0x00;
-	unsigned char command[32]      ={0,};
+	unsigned char tx_bank		= 0x00;
+	unsigned char tx_cmd_addr	= 0x00;
+	unsigned char tx_shot_addr	= 0x00;
+	unsigned char command[32]	={0,};
 
 	// UP Stream get from coax table
 	NC_VD_COAX_Init_STR *CoaxVal = __NC_VD_COAX_InitFormat_Get(vivofmt);    // Get from Coax_Tx_Init Table
@@ -516,32 +482,29 @@ void nvp6158_coax_tx_16bit_cmd_send( nvp6158_coax_str *ps_coax_str )
 	cmd_cnt = __NC_VD_COAX_16bit_Command_Copy( format, vivofmt, command, pCMD );
 
 	// Adjust Bank
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2) );
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2) );
 
 	// fill Reset
-	for(i=0;i<cmd_cnt;i++)
-	{
-		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x20+((ch%2)*0x80)+i, 0);
+	for(i=0; i<cmd_cnt; i++) {
+		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x20 + ((ch % 2) * 0x80) + i, 0);
 	}
 
 	// Command Shot
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2) );
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0c+((ch%2)*0x80), 0x01);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2) );
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0c + ((ch % 2) * 0x80), 0x01);
 	msleep(30);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0c+((ch%2)*0x80), 0x00);
-
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0c + ((ch % 2) * 0x80), 0x00);
 
 	// fill command
-	for(i=0;i<cmd_cnt;i++)
-	{
-		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x20+((ch%2)*0x80)+i, command[i]);
+	for(i=0; i<cmd_cnt; i++) {
+		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x20 + ((ch % 2) * 0x80) + i, command[i]);
 	}
 
-	// Command Shot
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2) );
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0c+((ch%2)*0x80), 0x01);
+	// Command Shot 
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2) );
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0c + ((ch % 2) * 0x80), 0x01);
 	msleep(30);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0c+((ch%2)*0x80), 0x00);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0c + ((ch % 2) * 0x80), 0x00);
 
 }
 
@@ -550,10 +513,10 @@ void nvp6158_coax_tx_cvi_new_cmd_send( nvp6158_coax_str *ps_coax_str )
 	//NC_VD_COAX_STR *coax_tx = (NC_VD_COAX_STR*)p_param;
 	int i;
 	int cmd_cnt = 0;
-	unsigned char ch 					= ps_coax_str->ch%4;
-	unsigned char devnum 				= ps_coax_str->ch/4;
-	NC_COAX_CMD_DEF cmd           		= ps_coax_str->cmd;
-	NC_VIVO_CH_FORMATDEF vivofmt  	= ps_coax_str->fmt_def;
+	unsigned char ch	= ps_coax_str->ch % 4;
+	unsigned char devnum	= ps_coax_str->ch / 4;
+	NC_COAX_CMD_DEF cmd	= ps_coax_str->cmd;
+	NC_VIVO_CH_FORMATDEF vivofmt	= ps_coax_str->fmt_def;
 	NC_FORMAT_STANDARD format = NVP6158_GetFmtStd_from_Fmtdef(vivofmt);
 
 	unsigned char tx_bank          = 0x00;
@@ -573,16 +536,15 @@ void nvp6158_coax_tx_cvi_new_cmd_send( nvp6158_coax_str *ps_coax_str )
 	// UP Stream command copy in coax command table
 	cmd_cnt = __NC_VD_COAX_16bit_Command_Copy( format, vivofmt, command, pCMD );
 
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, tx_bank+(ch%4));
-	for(i=0;i<cmd_cnt;i++)
-	{
-		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_cmd_addr+i, command[i]);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, tx_bank + (ch % 4));
+	for(i=0; i<cmd_cnt; i++) {
+		gpio_i2c_write(nvp6158_iic_addr[devnum], tx_cmd_addr + i, command[i]);
 	}
 
 	// Shot
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2) );
-	gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x01);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr+((ch%2)*0x80), 0x00);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2) );
+	gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x01);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], tx_shot_addr + ((ch % 2) * 0x80), 0x00);
 }
 
 /*=======================================================================================================
@@ -617,21 +579,21 @@ void nvp6158_coax_tx_cvi_new_cmd_send( nvp6158_coax_str *ps_coax_str )
 void nvp6158_coax_rx_init( nvp6158_coax_str *ps_coax_str )
 {
 	//NC_VD_COAX_STR *coax_rx = (NC_VD_COAX_STR*)p_param;
-	unsigned char ch = ps_coax_str->ch%4;
-	unsigned char devnum = ps_coax_str->ch/4;
+	unsigned char ch = ps_coax_str->ch % 4;
+	unsigned char devnum = ps_coax_str->ch / 4;
 	//NC_VIVO_CH_FORMATDEF vivofmt = coax_rx->vivo_fmt;
 
 	NC_VD_COAX_Init_STR *coax_rx_val = __NC_VD_COAX_InitFormat_Get(ps_coax_str->fmt_def);
 
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2));
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2));
 
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x63+((ch%2)*0x80), coax_rx_val->rx_comm_on);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x62+((ch%2)*0x80), coax_rx_val->rx_area);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x66+((ch%2)*0x80), coax_rx_val->rx_signal_enhance);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x69+((ch%2)*0x80), coax_rx_val->rx_manual_duty);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x60+((ch%2)*0x80), coax_rx_val->rx_head_matching);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x61+((ch%2)*0x80), coax_rx_val->rx_data_rz);
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x68+((ch%2)*0x80), coax_rx_val->rx_sz);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x63 + ((ch%2)*0x80), coax_rx_val->rx_comm_on);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x62 + ((ch%2)*0x80), coax_rx_val->rx_area);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x66 + ((ch%2)*0x80), coax_rx_val->rx_signal_enhance);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x69 + ((ch%2)*0x80), coax_rx_val->rx_manual_duty);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x60 + ((ch%2)*0x80), coax_rx_val->rx_head_matching);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x61 + ((ch%2)*0x80), coax_rx_val->rx_data_rz);
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x68 + ((ch%2)*0x80), coax_rx_val->rx_sz);
 #if	DBG_RX_INIT_PRINT
 	printk("[drv]Channel %d Format >>>>> %s\n", ch, coax_rx_val->name );
 	printk("[drv]rx_head_matching:  0x60 >> 0x%02X\n", coax_rx_val->rx_head_matching);
@@ -660,16 +622,14 @@ void nvp6158_coax_rx_data_get( nvp6158_coax_str *coax_rx )
 	//NC_VD_COAX_STR *coax_rx = (NC_VD_COAX_STR*)p_param;
 
 	int ii = 0;
-	unsigned char ch = coax_rx->ch%4;
-	unsigned char devnum = coax_rx->ch/4;
+	unsigned char ch = coax_rx->ch % 4;
+	unsigned char devnum = coax_rx->ch / 4;
 	NC_FORMAT_STANDARD format = NVP6158_GetFmtStd_from_Fmtdef(coax_rx->fmt_def);
 
-	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2));
+	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03 + ((ch % 4) / 2));
 
-	if( (format == FMT_CVI) || (format == FMT_TVI) )
-	{
-		for(ii=0;ii<5;ii++)
-		{
+	if( (format == FMT_CVI) || (format == FMT_TVI) ) {
+		for(ii=0; ii<5; ii++) {
 			coax_rx->rx_data1[ii] = gpio_i2c_read(nvp6158_iic_addr[devnum], (0x40+((ch%2)*0x80))+ii);   // ChX_Rx_Line_1 : 0x40 ~ 0x44 5byte
 			coax_rx->rx_data2[ii] = gpio_i2c_read(nvp6158_iic_addr[devnum], (0x45+((ch%2)*0x80))+ii);   // ChX_Rx_Line_2 : 0x45 ~ 0x49 5byte
 			coax_rx->rx_data3[ii] = gpio_i2c_read(nvp6158_iic_addr[devnum], (0x4A+((ch%2)*0x80))+ii);   // ChX_Rx_Line_3 : 0x4A ~ 0x4E 5byte
@@ -677,11 +637,8 @@ void nvp6158_coax_rx_data_get( nvp6158_coax_str *coax_rx )
 			coax_rx->rx_data5[ii] = gpio_i2c_read(nvp6158_iic_addr[devnum], (0x71+((ch%2)*0x80))+ii);   // ChX_Rx_Line_5 : 0x71 ~ 0x75 5byte
 			coax_rx->rx_data6[ii] = gpio_i2c_read(nvp6158_iic_addr[devnum], (0x76+((ch%2)*0x80))+ii);   // ChX_Rx_Line_6 : 0x76 ~ 0x7A 5byte
 		}
-	}
-	else  // AHD
-	{
-		for(ii=0;ii<8;ii++)
-		{
+	} else {// AHD
+		for(ii=0; ii<8; ii++) {
 			coax_rx->rx_pelco_data[ii] = gpio_i2c_read(nvp6158_iic_addr[devnum], (0x50+((ch%2)*0x80))+ii);   // ChX_PELCO_Rx_Line_1 ~ 8 : 0x50 ~ 0x57 8byte
 		}
 	}
@@ -775,13 +732,11 @@ void nvp6158_coax_fw_ready_header_check_from_isp_recv(void *p_param)
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x60+((ch%2)*0x80), 0x55 );  // Header Matching
 
 	/* If the header is (0x50=>0x55) and chip information is (0x51=>0x3X, 0x4X, 0x5X ), it can update firmware */
-	if( gpio_i2c_read( nvp6158_iic_addr[devnum], 0x50+((ch%2)*0x80) ) == 0x55 )
-	{
-		printk(">>>>> DRV[%s:%d] CH:%d, this camera can update, please, wait! = 0x%x\n", __func__, __LINE__, ch, gpio_i2c_read( nvp6158_iic_addr[ch/4], 0x51+((ch%2)*0x80) ) );
+	if( gpio_i2c_read( nvp6158_iic_addr[devnum], 0x50+((ch%2)*0x80) ) == 0x55 ) {
+		printk(">>>>> DRV[%s:%d] CH:%d, this camera can update, please, wait! = 0x%x\n",
+			__func__, __LINE__, ch, gpio_i2c_read( nvp6158_iic_addr[ch/4], 0x51+((ch%2)*0x80)));
 		ret = FW_SUCCESS;
-	}
-	else
-	{
+	} else {
 		readval= gpio_i2c_read( nvp6158_iic_addr[devnum], 0x50+((ch%2)*0x80) );
 		printk(">>>>> DRV[%s:%d] check ACP_STATUS_MODE::0x%x\n", __func__, __LINE__, readval );
 		ret = FW_FAILURE;
@@ -819,8 +774,7 @@ void nvp6158_coax_fw_ready_cmd_to_isp_send(void *p_param) // FW Ready
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x0A+((ch%2)*0x80), 0x04);  // Tx Line count max
 
 	/* change video mode FHD@25P Command Send */
-	if( (cp_mode == FMT_AHD20) || (cp_mode == FMT_AHD30) )
-	{
+	if( (cp_mode == FMT_AHD20) || (cp_mode == FMT_AHD30)) {
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x10+((ch%2)*0x80), 0x60);	// Register Write Control 				 - 17th line
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x11+((ch%2)*0x80), 0xB0);	// table(Mode Change Command) 			 - 18th line
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x12+((ch%2)*0x80), 0x02);	// Flash Update Mode(big data)			 - 19th line
@@ -830,11 +784,10 @@ void nvp6158_coax_fw_ready_cmd_to_isp_send(void *p_param) // FW Ready
 		msleep(400);
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x09+((ch%2)*0x80), 0x10);	// reset
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x09+((ch%2)*0x80), 0x00);	// trigger Off
-		printk(">>>>> DRV[%s:%d] CH:%d, nvp6158_coax_fw_ready_cmd_to_isp_send!!- AHD\n", __func__, __LINE__, ch );
+		printk(">>>>> DRV[%s:%d] CH:%d, nvp6158_coax_fw_ready_cmd_to_isp_send!!- AHD\n",
+				__func__, __LINE__, ch );
 		ret = FW_SUCCESS;
-	}
-	else if( (cp_mode == FMT_CVI) || (cp_mode == FMT_TVI) )
-	{
+	} else if((cp_mode == FMT_CVI) || (cp_mode == FMT_TVI)) {
 		/* change video mode FHD@25P Command Send */
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2) );
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x10+((ch%2)*0x80), 0x55);	// 0x55(header)          				 - 16th line
@@ -847,11 +800,10 @@ void nvp6158_coax_fw_ready_cmd_to_isp_send(void *p_param) // FW Ready
 		msleep(1000);
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x09+((ch%2)*0x80), 0x10);	// reset
 		gpio_i2c_write(nvp6158_iic_addr[devnum], 0x09+((ch%2)*0x80), 0x00);	// trigger Off
-		printk(">>>>> DRV[%s:%d] CH:%d, nvp6158_coax_fw_ready_cmd_to_isp_send!!- AHD\n", __func__, __LINE__, ch );
+		printk(">>>>> DRV[%s:%d] CH:%d, nvp6158_coax_fw_ready_cmd_to_isp_send!!- AHD\n",
+				__func__, __LINE__, ch );
 		ret = FW_SUCCESS;
-	}
-	else
-	{
+	} else {
 		printk(">>>> DRV[%s:%d] CH:%d, FMT:%d > Unknown Format!!! \n", __func__, __LINE__, ch, cp_mode );
 		ret = FW_FAILURE;
 	}
@@ -892,20 +844,17 @@ void nvp6158_coax_fw_ready_cmd_ack_from_isp_recv(void *p_param)
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x61+((ch%2)*0x80), 0x00 );    // Ch_X Rx data_rz
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x68+((ch%2)*0x80), 0x80 );    // Ch_X Rx SZ
 
-	if( gpio_i2c_read( nvp6158_iic_addr[devnum], 0x57+((ch%2)*0x80) ) == 0x02 )
-	{
+	if(gpio_i2c_read( nvp6158_iic_addr[devnum], 0x57+((ch%2)*0x80) ) == 0x02) {
 		/* get status, If the status is 0x00(Camera information), 0x01(Firmware version */
-		if( gpio_i2c_read( nvp6158_iic_addr[devnum], 0x56+((ch%2)*0x80) ) == 0x00 )
-		{
+		if(gpio_i2c_read( nvp6158_iic_addr[devnum], 0x56+((ch%2)*0x80) ) == 0x00) {
 			printk(">>>>> DRV[%s:%d]CH:%d Receive ISP status : [READY]\n", __func__, __LINE__, ch );
 			ret = FW_SUCCESS;
 		}
-	}
-	else
-	{
+	} else {
 		retval  = gpio_i2c_read( nvp6158_iic_addr[devnum], 0x56+((ch%2)*0x80) );
 		retval2 = gpio_i2c_read( nvp6158_iic_addr[devnum], 0x57+((ch%2)*0x80) );
-		printk(">>>>> DRV[%s:%d]CH:%d retry : Receive ISP status[READY], [0x56-true[0x00]:0x%x], [0x57-true[0x02]:0x%x]\n",	__func__, __LINE__, ch, retval, retval2 );
+		printk(">>>>> DRV[%s:%d]CH:%d retry : Receive ISP status[READY], [0x56-true[0x00]:0x%x], [0x57-true[0x02]:0x%x]\n",
+				__func__, __LINE__, ch, retval, retval2 );
 		ret = FW_FAILURE;
 	}
 
@@ -994,22 +943,19 @@ void nvp6158_coax_fw_start_cmd_ack_from_isp_recv( void *p_param )
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x61+((ch%2)*0x80), 0x00 ); // Ch_X Rx data_rz
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x68+((ch%2)*0x80), 0x80 ); // Ch_X Rx SZ
 
-	if( gpio_i2c_read( nvp6158_iic_addr[devnum], 0x57+((ch%2)*0x80) ) == 0x02 )
-	{
-		if( gpio_i2c_read( nvp6158_iic_addr[devnum], 0x56+((ch%2)*0x80) ) == 0x00 )
-		{
+	if( gpio_i2c_read( nvp6158_iic_addr[devnum], 0x57+((ch%2)*0x80) ) == 0x02) {
+		if( gpio_i2c_read( nvp6158_iic_addr[devnum], 0x56+((ch%2)*0x80) ) == 0x00) {
 			printk(">>>>> DRV[%s:%d]CH:%d Receive ISP status : [START]\n", __func__, __LINE__, ch );
 			ret = FW_SUCCESS;
-		}
-		else
-		{
+		} else {
 			unsigned char retval1;
 			unsigned char retval2;
 			gpio_i2c_write( nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2));
 			retval1 = gpio_i2c_read( nvp6158_iic_addr[devnum], 0x56+((ch%2)*0x80) );
 			retval2 = gpio_i2c_read( nvp6158_iic_addr[devnum], 0x57+((ch%2)*0x80) );
 			ret = FW_FAILURE;
-			printk(">>>>> DRV[%s:%d]CH:%d retry : Receive ISP status[START], [0x56-true[0x02]:0x%x], [0x57-true[0x02]:0x%x]\n",	__func__, __LINE__, ch, retval1, retval2 );
+			printk(">>>>> DRV[%s:%d]CH:%d retry : Receive ISP status[START], [0x56-true[0x02]:0x%x], [0x57-true[0x02]:0x%x]\n",
+					__func__, __LINE__, ch, retval1, retval2 );
 		}
 	}
 
@@ -1053,15 +999,11 @@ void nvp6158_coax_fw_one_packet_data_to_isp_send( void *p_param )
 
 	/* fill packet(139bytes), end packet is filled with 0xff */
 	gpio_i2c_write( nvp6158_iic_addr[devnum], 0xff, 0x0c+(ch%4) );
-	for( ii = 0; ii < 139; ii++ )
-	{
-		if( byteNumOfPacket < readsize)
-		{
+	for( ii = 0; ii < 139; ii++ ) {
+		if( byteNumOfPacket < readsize) {
 			gpio_i2c_write( nvp6158_iic_addr[devnum], 0x00+ii, pstFileInfo->onepacketbuf[ii] );
 			byteNumOfPacket++;
-		}
-		else if( byteNumOfPacket >= readsize ) // end packet : fill 0xff
-		{
+		} else if( byteNumOfPacket >= readsize ) {// end packet : fill 0xff
 			gpio_i2c_write( nvp6158_iic_addr[devnum], 0x00+ii, 0xff );
 			byteNumOfPacket++;
 		}
@@ -1075,7 +1017,8 @@ void nvp6158_coax_fw_one_packet_data_to_isp_send( void *p_param )
 	}
 
 	/* offset */
-	pstFileInfo->currentFileOffset = (unsigned int)((high << 16 )&(0xFF0000))| (unsigned int)((mid << 8 )&(0xFF00)) | (unsigned char)(low);
+	pstFileInfo->currentFileOffset = (unsigned int)((high << 16 )&(0xFF0000)) |
+					(unsigned int)((mid << 8 )&(0xFF00)) | (unsigned char)(low);
 
 	/* Tx Change mode to use Big data */
 	gpio_i2c_write( nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2) );
@@ -1123,15 +1066,13 @@ void nvp6158_coax_fw_one_packet_data_ack_from_isp_recv( void *p_param )
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x61+((ch%2)*0x80), 0x00 ); // Ch_X Rx data_rz
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x68+((ch%2)*0x80), 0x80 ); // Ch_X Rx SZ
 
-	if( gpio_i2c_read( nvp6158_iic_addr[devnum], 0x57+((ch%2)*0x80) ) == 0x02 )
-	{
+	if( gpio_i2c_read( nvp6158_iic_addr[devnum], 0x57+((ch%2)*0x80) ) == 0x02 ) {
 		/* check ISP status - only check first packet */
-		if( pstFileInfo->currentpacketnum == 0 )
-		{
-			if( gpio_i2c_read( nvp6158_iic_addr[devnum], 0x56+((ch%2)*0x80) ) == 0x03 )
-			{
+		if( pstFileInfo->currentpacketnum == 0 ) {
+			if( gpio_i2c_read( nvp6158_iic_addr[devnum], 0x56+((ch%2)*0x80) ) == 0x03 ) {
 				pstFileInfo->result = FW_FAILURE;
-				printk(">>>>> DRV[%s:%d] CH:%d, Failed, error status, code=3..................\n", __func__, __LINE__, ch );
+				printk(">>>>> DRV[%s:%d] CH:%d, Failed, error status, code=3..................\n",
+						__func__, __LINE__, ch );
 				return;
 			}
 		}
@@ -1140,8 +1081,7 @@ void nvp6158_coax_fw_one_packet_data_ack_from_isp_recv( void *p_param )
 		receive_addr = (( gpio_i2c_read( nvp6158_iic_addr[devnum], 0x53+((ch%2)*0x80))<<16) + \
 				(gpio_i2c_read( nvp6158_iic_addr[devnum], 0x54+((ch%2)*0x80))<<8) +
 				gpio_i2c_read( nvp6158_iic_addr[devnum], 0x55+((ch%2)*0x80)));
-		if( onepacketaddr == receive_addr )
-		{
+		if( onepacketaddr == receive_addr ) {
 			gpio_i2c_write( nvp6158_iic_addr[devnum], 0x09+((ch%2)*0x80), 0x10);	// Reset
 			gpio_i2c_write( nvp6158_iic_addr[devnum], 0x09+((ch%2)*0x80), 0x00);	// trigger off
 			ret = FW_SUCCESS;
@@ -1188,15 +1128,14 @@ void nvp6158_coax_fw_end_cmd_to_isp_send(void *p_param)
 	gpio_i2c_write( nvp6158_iic_addr[devnum], 0x10+((ch%2)*0x80), 0x60);
 	gpio_i2c_write( nvp6158_iic_addr[devnum], 0x11+((ch%2)*0x80), 0xb0);
 	gpio_i2c_write( nvp6158_iic_addr[devnum], 0x12+((ch%2)*0x80), 0x02);
-	if( send_success == FW_FAILURE )
-	{
+	if( send_success == FW_FAILURE ) {
 		gpio_i2c_write( nvp6158_iic_addr[devnum], 0x13+((ch%2)*0x80), 0xE0/*0xC0*/);
-		printk(">>>>> DRV[%s:%d] CH:%d, Camera UPDATE error signal. send Abnormal ending!\n", __func__, __LINE__, ch );
-	}
-	else
-	{
+		printk(">>>>> DRV[%s:%d] CH:%d, Camera UPDATE error signal. send Abnormal ending!\n",
+			__func__, __LINE__, ch );
+	} else {
 		gpio_i2c_write( nvp6158_iic_addr[devnum], 0x13+((ch%2)*0x80), 0x80/*0x60*/);
-		printk(">>>>> DVR[%s:%d] CH:%d, Camera UPDATE ending signal. wait please!\n", __func__, __LINE__, ch );
+		printk(">>>>> DVR[%s:%d] CH:%d, Camera UPDATE ending signal. wait please!\n",
+			__func__, __LINE__, ch );
 	}
 
 	/* Shot */
@@ -1235,8 +1174,7 @@ void nvp6158_coax_fw_end_cmd_ack_from_isp_recv(void *p_param)
 	gpio_i2c_write( nvp6158_iic_addr[devnum], 0xFF, 0x05+(ch%4));
 	videofm = gpio_i2c_read( nvp6158_iic_addr[devnum], 0xF0);
 
-	if( videofm == 0xFF )
-	{
+	if( videofm == 0xFF ) {
 		printk(">>>>> DRV[%s:%d] Final[CH:%d], No video[END]!\n", __func__, __LINE__, ch );
 		pstFileInfo->result = FW_FAILURE;
 		return;
@@ -1256,15 +1194,13 @@ void nvp6158_coax_fw_end_cmd_ack_from_isp_recv(void *p_param)
 	gpio_i2c_write( nvp6158_iic_addr[devnum], 0xFF, 0x03+((ch%4)/2));
 	ack_return = gpio_i2c_read( nvp6158_iic_addr[devnum], 0x56+((ch%2)*0x80) );
 	isp_status = gpio_i2c_read( nvp6158_iic_addr[devnum], 0x57+((ch%2)*0x80) );
-	if( isp_status == 0x02 && ack_return == 0x05 )
-	{
+	if( isp_status == 0x02 && ack_return == 0x05 ) {
 		printk(">>>>> DRV[%s:%d]CH:%d Receive ISP status : [END]\n", __func__, __LINE__, ch );
 		pstFileInfo->result = FW_SUCCESS;
 		return;
-	}
-	else
-	{
-		printk(">>>>> DRV[%s:%d]CH:%d retry : Receive ISP status[END], [0x56-true[0x05]:0x%x], [0x57-true[0x02]:0x%x]\n", __func__, __LINE__, ch, ack_return, isp_status );
+	} else {
+		printk(">>>>> DRV[%s:%d]CH:%d retry : Receive ISP status[END], [0x56-true[0x05]:0x%x], [0x57-true[0x02]:0x%x]\n",
+			__func__, __LINE__, ch, ack_return, isp_status );
 		pstFileInfo->result = FW_FAILURE;
 		return;
 	}
@@ -1303,20 +1239,15 @@ void nvp6158_coax_option_rt_nrt_mode_change_set(void *p_param)
 	// Adjust Tx
 	if( fmtdef == AHD30_3M_30P || fmtdef == AHD30_3M_25P || fmtdef == AHD30_3M_18P  ||
 		fmtdef == AHD30_4M_30P || fmtdef == AHD30_4M_25P || fmtdef ==  AHD30_4M_15P ||
-	    fmtdef == AHD30_5M_12_5P || fmtdef == AHD30_5M_20P
-		)
-	{  	// 3M Upper Format
+		fmtdef == AHD30_5M_12_5P || fmtdef == AHD30_5M_20P) {  	// 3M Upper Format
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x05+((ch%2)*0x80), 0x07);       // Tx line set
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x0A+((ch%2)*0x80), 0x08);       // Tx max line set
-	}
-	else // 3M Under Format
-	{
+	} else {// 3M Under Format
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x05+((ch%2)*0x80), 0x03);       // Tx line set
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x0A+((ch%2)*0x80), 0x04);       // Tx max line set
 	}
 
-	if( param == 0 ) // RT Mode
-	{
+	if( param == 0 ) {// RT Mode
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x10+((ch%2)*0x80), 0x60);   // Register write
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x11+((ch%2)*0x80), 0xb1);   // Output command
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x12+((ch%2)*0x80), 0x00);   // RT Mode
@@ -1325,9 +1256,7 @@ void nvp6158_coax_option_rt_nrt_mode_change_set(void *p_param)
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x15+((ch%2)*0x80), 0x00);
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x16+((ch%2)*0x80), 0x00);
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x17+((ch%2)*0x80), 0x00);
-	}
-	else if( param == 1 )// NRT Mode
-	{
+	} else if( param == 1 ) {// NRT Mode
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x10+((ch%2)*0x80), 0x60);   // Register write
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x11+((ch%2)*0x80), 0xb1);   // Output command
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x12+((ch%2)*0x80), 0x01);   // NRT Mode
@@ -1336,9 +1265,7 @@ void nvp6158_coax_option_rt_nrt_mode_change_set(void *p_param)
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x15+((ch%2)*0x80), 0x00);
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x16+((ch%2)*0x80), 0x00);
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x17+((ch%2)*0x80), 0x00);
-	}
-	else if( param == 2 )// AHD 5M 20P
-	{
+	} else if( param == 2 ) {// AHD 5M 20P
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x10+((ch%2)*0x80), 0x60);   // Register write
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x11+((ch%2)*0x80), 0xb1);   // Output command
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x12+((ch%2)*0x80), 0x02);   // Change Format
@@ -1347,9 +1274,7 @@ void nvp6158_coax_option_rt_nrt_mode_change_set(void *p_param)
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x15+((ch%2)*0x80), 0x00);
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x16+((ch%2)*0x80), 0x00);
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x17+((ch%2)*0x80), 0x00);
-	}
-	else if( param == 3 )//  AHD 5M 12.5P
-	{
+	} else if( param == 3 ) {//  AHD 5M 12.5P
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x10+((ch%2)*0x80), 0x60);   // Register write
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x11+((ch%2)*0x80), 0xb1);   // Output command
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x12+((ch%2)*0x80), 0x02);   // Change Format
@@ -1358,9 +1283,7 @@ void nvp6158_coax_option_rt_nrt_mode_change_set(void *p_param)
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x15+((ch%2)*0x80), 0x00);
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x16+((ch%2)*0x80), 0x00);
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x17+((ch%2)*0x80), 0x00);
-	}
-	else if( param == 4 )// AHD 4M 30P
-	{
+	} else if( param == 4 ) {// AHD 4M 30P
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x10+((ch%2)*0x80), 0x60);   // Register write
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x11+((ch%2)*0x80), 0xb1);   // Output command
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x12+((ch%2)*0x80), 0x02);   // Change Format
@@ -1369,9 +1292,7 @@ void nvp6158_coax_option_rt_nrt_mode_change_set(void *p_param)
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x15+((ch%2)*0x80), 0x00);
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x16+((ch%2)*0x80), 0x00);
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x17+((ch%2)*0x80), 0x00);
-	}
-	else if( param == 5 )//  AHD 4M 25P
-	{
+	} else if( param == 5 ) {//  AHD 4M 25P
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x10+((ch%2)*0x80), 0x60);   // Register write
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x11+((ch%2)*0x80), 0xb1);   // Output command
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x12+((ch%2)*0x80), 0x02);   // Change Format
@@ -1380,9 +1301,7 @@ void nvp6158_coax_option_rt_nrt_mode_change_set(void *p_param)
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x15+((ch%2)*0x80), 0x00);
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x16+((ch%2)*0x80), 0x00);
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x17+((ch%2)*0x80), 0x00);
-	}
-	else if( param == 6 )//  AHD 4M 15P
-	{
+	} else if( param == 6 ) {//  AHD 4M 15P
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x10+((ch%2)*0x80), 0x60);   // Register write
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x11+((ch%2)*0x80), 0xb1);   // Output command
 		gpio_i2c_write( nvp6158_iic_addr[coax_val->vd_dev], 0x12+((ch%2)*0x80), 0x02);   // Change Format
@@ -1459,22 +1378,18 @@ void nvp6158_coax_test_tx_init_read(NC_VD_COAX_TEST_STR *coax_tx_mode)
 void nvp6158_coax_test_data_set(NC_VD_COAX_TEST_STR *coax_data)
 {
 	unsigned char temp_reg;
-	printk("[DRV_Set]bank(0x%02X)/addr(0x%02X)/param(0x%02X)\n", coax_data->bank, coax_data->data_addr, coax_data->param );
+	printk("[DRV_Set]bank(0x%02X)/addr(0x%02X)/param(0x%02X)\n",
+		coax_data->bank, coax_data->data_addr, coax_data->param );
 
 	gpio_i2c_write(nvp6158_iic_addr[coax_data->chip_num], 0xFF, coax_data->bank);
 
-	if(coax_data->bank == 0x01 && coax_data->data_addr == 0xED)
-	{
+	if(coax_data->bank == 0x01 && coax_data->data_addr == 0xED) {
 		temp_reg = gpio_i2c_read(nvp6158_iic_addr[coax_data->chip_num], coax_data->data_addr);
 		temp_reg = ((temp_reg & ~(0x01 << coax_data->param)) | (0x01 << coax_data->param));
-	}
-	else if(coax_data->bank == 0x01 && coax_data->data_addr == 0x7A)
-	{
+	} else if(coax_data->bank == 0x01 && coax_data->data_addr == 0x7A) {
 		temp_reg = gpio_i2c_read(nvp6158_iic_addr[coax_data->chip_num], coax_data->data_addr);
 		temp_reg = (temp_reg & ~(0x01 << coax_data->param));
-	}
-	else if(coax_data->bank == 0x09 && coax_data->data_addr == 0x44)
-	{
+	} else if(coax_data->bank == 0x09 && coax_data->data_addr == 0x44) {
 		temp_reg = gpio_i2c_read(nvp6158_iic_addr[coax_data->chip_num], coax_data->data_addr);
 		temp_reg = ((temp_reg & ~(0x01 << coax_data->param)) | (0x01 << coax_data->param));
 	}
@@ -1498,7 +1413,8 @@ void nvp6158_coax_test_data_get(NC_VD_COAX_TEST_STR *coax_data)
 {
 	gpio_i2c_write(nvp6158_iic_addr[coax_data->chip_num], 0xFF, coax_data->bank);
 	coax_data->param = gpio_i2c_read(nvp6158_iic_addr[coax_data->chip_num], coax_data->data_addr);
-	printk("[DRV_Get]bank(0x%02X), addr(0x%02X), param(0x%02X)\n", coax_data->bank, coax_data->data_addr, coax_data->param );
+	printk("[DRV_Get]bank(0x%02X), addr(0x%02X), param(0x%02X)\n",
+		coax_data->bank, coax_data->data_addr, coax_data->param );
 }
 
 /**************************************************************************************
@@ -1517,8 +1433,7 @@ void nvp6158_coax_test_Bank_dump_get(NC_VD_COAX_BANK_DUMP_STR *coax_data)
 
 	gpio_i2c_write(nvp6158_iic_addr[coax_data->vd_dev], 0xFF, coax_data->bank);
 
-	for(ii=0; ii<256; ii++)
-	{
+	for(ii=0; ii<256; ii++) {
 		coax_data->rx_pelco_data[ii] = gpio_i2c_read(nvp6158_iic_addr[coax_data->vd_dev], 0x00+ii);
 	}
 }
@@ -1557,8 +1472,7 @@ unsigned char nvp6158_coax_acp_isp_read(unsigned char ch, unsigned int reg_addr)
 	gpio_i2c_write(nvp6158_iic_addr[ch/4], 0x10+3+(ch%2)*0x80, 0x00);
 	gpio_i2c_write(nvp6158_iic_addr[ch/4], 0x09+(ch%2)*0x80, 0x08);
 	msleep(100);
-	for(i=0;i<8;i++)
-	{
+	for(i=0; i<8; i++) {
 		data_3x50[i] = gpio_i2c_read(nvp6158_iic_addr[ch/4],0x50+i+((ch%2)*0x80));
 		printk("acp_isp_read ch = %d, reg_addr = %x, reg_data = %x\n", ch,reg_addr, data_3x50[i]);
 	}
@@ -1600,8 +1514,7 @@ unsigned char nvp6158_coax_acp_isp_write(unsigned char ch, unsigned int reg_addr
 	gpio_i2c_write(nvp6158_iic_addr[ch/4], 0x10+3+(ch%2)*0x80, reg_data);
 	gpio_i2c_write(nvp6158_iic_addr[ch/4], 0x09+(ch%2)*0x80, 0x08);
 	msleep(100);
-	for(i=0;i<8;i++)
-	{
+	for(i=0; i<8; i++) {
 		data_3x50[i] = gpio_i2c_read(nvp6158_iic_addr[ch/4],0x50+i+((ch%2)*0x80));
 		printk("acp_isp_write ch = %d, reg_addr = %x, reg_data = %x\n", ch,reg_addr, data_3x50[i]);
 	}

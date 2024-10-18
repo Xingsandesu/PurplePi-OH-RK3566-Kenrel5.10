@@ -560,7 +560,7 @@ struct rk817_battery_device {
 	int				zero_batocv_to_cap;
 	int				zero_xsoc;
 	unsigned long			finish_base;
-	time_t				rtc_base;
+	time64_t			rtc_base;
 	int				sm_remain_cap;
 	int				sm_linek;
 	int				sm_chrg_dsoc;
@@ -631,9 +631,9 @@ static void rk817_bat_resume_work(struct work_struct *work);
 
 static u64 get_boot_sec(void)
 {
-	struct timespec ts;
+	struct timespec64 ts;
 
-	get_monotonic_boottime(&ts);
+	ktime_get_boottime_ts64(&ts);
 
 	return ts.tv_sec;
 }
@@ -650,6 +650,9 @@ static u32 interpolate(int value, u32 *table, int size)
 {
 	u8 i;
 	u16 d;
+
+	if (size < 2)
+		return 0;
 
 	for (i = 0; i < size; i++) {
 		if (value < table[i])
@@ -710,14 +713,6 @@ static int rk817_bat_field_write(struct rk817_battery_device *battery,
 				 unsigned int val)
 {
 	return regmap_field_write(battery->rmap_fields[field_id], val);
-}
-
-static bool rk817_is_bat_exist(struct rk817_battery_device *battery)
-{
-	if (battery->chip_id == RK817_ID)
-		return rk817_bat_field_read(battery, BAT_EXS) ? true : false;
-
-	return true;
 }
 
 /*cal_offset: current offset value*/
@@ -1186,7 +1181,7 @@ static void rk817_bat_init_coulomb_cap(struct rk817_battery_device *battery,
 	buf = (cap >> 0) & 0xff;
 	rk817_bat_field_write(battery, Q_INIT_L0, buf);
 
-	battery->rsoc = capacity * 1000 * 100 / battery->fcc;
+	battery->rsoc = capacity * 1000 * 100 / DIV(battery->fcc);
 	battery->remain_cap = capacity * 1000;
 	DBG("new remaincap: %d\n", battery->remain_cap);
 	fuel_gauge_q_init_info(battery);
@@ -1607,6 +1602,9 @@ static void rk817_bat_first_pwron(struct rk817_battery_device *battery)
 				     battery->pwron_voltage) * 1000;/* uAH */
 	battery->dsoc = battery->rsoc;
 	battery->fcc	= battery->pdata->design_capacity;
+	if (battery->fcc < MIN_FCC)
+		battery->fcc = MIN_FCC;
+
 	battery->nac = rk817_bat_vol_to_cap(battery, battery->pwron_voltage);
 
 	rk817_bat_update_qmax(battery, battery->qmax);
@@ -1809,7 +1807,7 @@ static int rk817_bat_parse_dt(struct rk817_battery_device *battery)
 	}
 
 	pdata->ocv_size = length / sizeof(u32);
-	if (pdata->ocv_size <= 0) {
+	if (pdata->ocv_size < 2) {
 		dev_err(dev, "invalid ocv table\n");
 		return -EINVAL;
 	}
@@ -1874,8 +1872,6 @@ static int rk817_bat_parse_dt(struct rk817_battery_device *battery)
 	ret = of_property_read_u32(np, "virtual_power", &pdata->bat_mode);
 	if (ret < 0)
 		dev_err(dev, "virtual_power missing!\n");
-	if (!rk817_is_bat_exist(battery))
-		battery->pdata->bat_mode = MODE_VIRTUAL;
 
 	ret = of_property_read_u32(np, "bat_res", &pdata->bat_res);
 	if (ret < 0)
@@ -2783,6 +2779,8 @@ static void rk817_bat_finish_algorithm(struct rk817_battery_device *battery)
 		finish_sec = base2sec(battery->finish_base);
 
 		soc_sec = battery->fcc * 3600 / 100 / DIV(finish_current);
+		if (soc_sec == 0)
+			soc_sec = 1;
 		plus_soc = finish_sec / DIV(soc_sec);
 		if (finish_sec > soc_sec) {
 			rest = finish_sec % soc_sec;
@@ -3089,13 +3087,11 @@ static void rk817_battery_shutdown(struct platform_device *dev)
 {
 }
 
-static time_t rk817_get_rtc_sec(void)
+static time64_t rk817_get_rtc_sec(void)
 {
 	int err;
 	struct rtc_time tm;
-	struct timespec tv = { .tv_nsec = NSEC_PER_SEC >> 1, };
 	struct rtc_device *rtc = rtc_class_open(CONFIG_RTC_HCTOSYS_DEVICE);
-	time_t sec;
 
 	err = rtc_read_time(rtc, &tm);
 	if (err) {
@@ -3109,10 +3105,7 @@ static time_t rk817_get_rtc_sec(void)
 		return 0;
 	}
 
-	rtc_tm_to_time(&tm, &tv.tv_sec);
-	sec = tv.tv_sec;
-
-	return sec;
+	return rtc_tm_to_time64(&tm);
 }
 
 #ifdef CONFIG_PM_SLEEP

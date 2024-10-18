@@ -82,8 +82,8 @@ static struct i2c_board_info nvp6158_hi_info =
     I2C_BOARD_INFO("nvp6158", 0x60),
 };
 static bool nvp6158_init_state;
-unsigned int nvp6158_gCoaxFirmUpdateFlag[16]={0,};
-unsigned char nvp6158_det_mode[16]={NVP6158_DET_MODE_AUTO,};
+unsigned int nvp6158_gCoaxFirmUpdateFlag[16] = {0,};
+unsigned char nvp6158_det_mode[16] = {NVP6158_DET_MODE_AUTO,};
 struct semaphore nvp6158_lock;
 extern unsigned char nvp6158_ch_mode_status[16];
 extern unsigned char nvp6158_ch_vfmt_status[16];
@@ -92,7 +92,7 @@ extern unsigned char nvp6158_acp_isp_wr_en[16];
 #define NVP6158_DRIVER_VER "1.1.01"
 #define NVP6158_HW_REG(reg)         *((volatile unsigned int *)(reg))
 
-int nvp6158_g_soc_chiptype=0x3521;
+int nvp6158_g_soc_chiptype = 0x3521;
 int nvp6158_chip_id[4];
 int nvp6158_rev_id[4];
 
@@ -144,22 +144,16 @@ static int nvp6158_check_decoder_count(void)
 
     /* check Device ID of maxium 4chip on the slave address,
      * manage slave address. chip count. */
-	for(chip=0;chip<4;chip++)
-	{
+	for(chip = 0; chip < 4; chip ++) {
 		nvp6158_chip_id[chip] = nvp6158_check_id(nvp6158_iic_addr[chip]);
 		nvp6158_rev_id[chip]  = nvp6158_check_rev(nvp6158_iic_addr[chip]);
-		if( (nvp6158_chip_id[chip] != NVP6158_R0_ID )  	&& 
-			(nvp6158_chip_id[chip] != NVP6158C_R0_ID) 	&&
-			(nvp6158_chip_id[chip] != NVP6168_R0_ID )  	&& 
-			(nvp6158_chip_id[chip] != NVP6168C_R0_ID) )
-		{
+		if( (nvp6158_chip_id[chip] != NVP6158_R0_ID ) && (nvp6158_chip_id[chip] != NVP6158C_R0_ID) &&
+			(nvp6158_chip_id[chip] != NVP6168_R0_ID ) && (nvp6158_chip_id[chip] != NVP6168C_R0_ID)) {
 			printk("[NVP6158_DRV]Device ID Error... 0x%x\n", nvp6158_chip_id[chip]);
-		}
-		else
-		{
+		} else {
 			printk("[NVP6158_DRV]Device (0x%x) ID OK... 0x%x\n", nvp6158_iic_addr[chip], nvp6158_chip_id[chip]);
 			printk("[NVP6158_DRV]Device (0x%x) REV ... 0x%x\n", nvp6158_iic_addr[chip], nvp6158_rev_id[chip]);
-			nvp6158_iic_addr[nvp6158_cnt] = nvp6158_iic_addr[chip];	
+			nvp6158_iic_addr[nvp6158_cnt] = nvp6158_iic_addr[chip];
 			if(nvp6158_cnt<chip)
 				nvp6158_iic_addr[chip] = 0xFF;
 			nvp6158_chip_id[nvp6158_cnt] = nvp6158_chip_id[chip];
@@ -169,9 +163,12 @@ static int nvp6158_check_decoder_count(void)
 	}
 
 	printk("[NVP6158_DRV]Chip Count = %d\n", nvp6158_cnt);
-	printk("[NVP6158_DRV]Address [0x%x][0x%x][0x%x][0x%x]\n",nvp6158_iic_addr[0],nvp6158_iic_addr[1],nvp6158_iic_addr[2],nvp6158_iic_addr[3]);
-	printk("[NVP6158_DRV]Chip Id [0x%x][0x%x][0x%x][0x%x]\n",nvp6158_chip_id[0],nvp6158_chip_id[1],nvp6158_chip_id[2],nvp6158_chip_id[3]);
-	printk("[NVP6158_DRV]Rev Id [0x%x][0x%x][0x%x][0x%x]\n",nvp6158_rev_id[0],nvp6158_rev_id[1],nvp6158_rev_id[2],nvp6158_rev_id[3]);
+	printk("[NVP6158_DRV]Address [0x%x][0x%x][0x%x][0x%x]\n", nvp6158_iic_addr[0],
+			nvp6158_iic_addr[1], nvp6158_iic_addr[2], nvp6158_iic_addr[3]);
+	printk("[NVP6158_DRV]Chip Id [0x%x][0x%x][0x%x][0x%x]\n", nvp6158_chip_id[0],
+			nvp6158_chip_id[1], nvp6158_chip_id[2], nvp6158_chip_id[3]);
+	printk("[NVP6158_DRV]Rev Id [0x%x][0x%x][0x%x][0x%x]\n", nvp6158_rev_id[0],
+			nvp6158_rev_id[1], nvp6158_rev_id[2], nvp6158_rev_id[3]);
 
 	ret = nvp6158_cnt;
 
@@ -196,22 +193,19 @@ static void nvp6158_video_decoder_init(void)
 
 	printk("[NVP6158_DRV] %s(%d) \n", __func__, __LINE__);
 	/* initialize common value of AHD */
-	for(chip=0;chip<nvp6158_cnt;chip++)
-	{
+	for(chip = 0; chip < nvp6158_cnt; chip++) {
 		nvp6158_common_init(chip);
-		if(nvp6158_chip_id[chip]==NVP6158C_R0_ID || nvp6158_chip_id[chip]==NVP6158_R0_ID)
+		if(nvp6158_chip_id[chip] == NVP6158C_R0_ID || nvp6158_chip_id[chip] == NVP6158_R0_ID) {
 			nvp6158_additional_for3MoverDef(chip);
-		else
-		{
+		} else {
 			gpio_i2c_write(nvp6158_iic_addr[chip], 0xff, 0x01 );
 			gpio_i2c_write(nvp6158_iic_addr[chip], 0x97, 0x00); // CH_RST ON
 			gpio_i2c_write(nvp6158_iic_addr[chip], 0x97, 0x0f); // CH_RST OFF
 			gpio_i2c_write(nvp6158_iic_addr[chip], 0x7a, 0x0f); // Clock Auto ON
 			gpio_i2c_write(nvp6158_iic_addr[chip], 0xca, 0xff); // VCLK_EN, VDO_EN
 
-			for(ch=0; ch<4; ch++)
-			{
-				gpio_i2c_write(nvp6158_iic_addr[chip], 0xff, 0x05 +ch);
+			for(ch = 0; ch < 4; ch++) {
+				gpio_i2c_write(nvp6158_iic_addr[chip], 0xff, 0x05 + ch);
 				gpio_i2c_write(nvp6158_iic_addr[chip], 0x00, 0xd0);
 
 				gpio_i2c_write(nvp6158_iic_addr[chip], 0x05, 0x04);
@@ -290,44 +284,36 @@ static void nvp6158_video_decoder_init(void)
 		}
 	}
 
-	for(ch=0;ch<nvp6158_cnt*4;ch++)
-	{
+	for(ch = 0; ch < nvp6158_cnt * 4; ch++) {
 		nvp6158_det_mode[ch] = NVP6158_DET_MODE_AUTO;
-		vin_auto_det.ch = ch%4;
-		vin_auto_det.devnum = ch/4;
+		vin_auto_det.ch = ch % 4;
+		vin_auto_det.devnum = ch / 4;
 	#ifdef _NVP6168_USE_MANUAL_MODE_
-		vin_manual_det.ch = ch%4;
-		vin_manual_det.dev_num = ch/4;
+		vin_manual_det.ch = ch % 4;
+		vin_manual_det.dev_num = ch / 4;
 	#endif
-		if(nvp6158_chip_id[0]==NVP6158C_R0_ID || nvp6158_chip_id[0]==NVP6158_R0_ID)
-		{
+		if(nvp6158_chip_id[0] == NVP6158C_R0_ID || nvp6158_chip_id[0] == NVP6158_R0_ID) {
 			nvp6158_video_input_auto_detect_set(&vin_auto_det);
 			nvp6158_set_chnmode(ch, NC_VIVO_CH_FORMATDEF_UNKNOWN);
-		}
-		else
-		{	
+		} else {
 			nvp6168_video_input_auto_detect_set(&vin_auto_det);
 		#ifdef _NVP6168_USE_MANUAL_MODE_
 			nvp6168_video_input_manual_mode_set(&vin_manual_det);
 		#endif
-			nvp6168_set_chnmode(ch, NC_VIVO_CH_FORMATDEF_UNKNOWN);	 
+			nvp6168_set_chnmode(ch, NC_VIVO_CH_FORMATDEF_UNKNOWN);
 		}
 	}
 
-	for(chip=0;chip<nvp6158_cnt;chip++)
-	{
-		if(nvp6158_chip_id[chip] == NVP6158_R0_ID || nvp6158_chip_id[chip] == NVP6168_R0_ID)
-		{
+	for(chip = 0; chip < nvp6158_cnt; chip++) {
+		if(nvp6158_chip_id[chip] == NVP6158_R0_ID || nvp6158_chip_id[chip] == NVP6168_R0_ID) {
 			//set nvp6158 output mode of 4port, 0~3 port is available
-			nvp6158_set_portmode(chip, 0, NVP6158_OUTMODE_1MUX_FHD, 0);  
+			nvp6158_set_portmode(chip, 0, NVP6158_OUTMODE_1MUX_FHD, 0);
 			nvp6158_set_portmode(chip, 1, NVP6158_OUTMODE_1MUX_FHD, 1);
 			nvp6158_set_portmode(chip, 2, NVP6158_OUTMODE_1MUX_FHD, 2);
 			nvp6158_set_portmode(chip, 3, NVP6158_OUTMODE_1MUX_FHD, 3);
-		}
-		else //if(nvp6158_chip_id[chip] == NVP6158C_R0_ID)
-		{
+		} else {//if(nvp6158_chip_id[chip] == NVP6158C_R0_ID)
 			//set nvp6158C output mode of 2port, 1/2 port is available
-			nvp6158_set_portmode(chip, 1, NVP6158_OUTMODE_2MUX_FHD, 0);  
+			nvp6158_set_portmode(chip, 1, NVP6158_OUTMODE_2MUX_FHD, 0);
 			nvp6158_set_portmode(chip, 2, NVP6158_OUTMODE_2MUX_FHD, 1);
 		}
 	}
@@ -340,7 +326,7 @@ int nvp6158_open(struct inode * inode, struct file * file)
 	printk("[DRV] Nvp6158 Driver Open\n");
 	printk("[DRV] Nvp6158 Driver Ver::%s\n", NVP6158_DRIVER_VER);
 	return 0;
-} 
+}
 
 int nvp6158_close(struct inode * inode, struct file * file)
 {
@@ -373,23 +359,22 @@ long nvp6158_native_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 	/* you must skip other command to improve speed of f/w update
 	 * when you are updating cam's f/w up. we need to review and test */
 	//if( acp_dvr_checkFWUpdateStatus( cmd ) == -1 )
-	{
+	//{
 		//printk(">>>>> DRV[%s:%d] Now cam f/w update mode. so Skip other command.\n", __func__, __LINE__ );
 		//return 0;
-	}
+	//}
 	down(&nvp6158_lock);
-	switch (cmd)
-	{
+	switch (cmd) {
 		case IOC_VDEC_SET_I2C : // nextchip demoboard test
-			if (copy_from_user(&i2c, argp, sizeof(nvp6124_i2c_mode))) {up(&nvp6158_lock);return -1;}
+			if (copy_from_user(&i2c, argp, sizeof(nvp6124_i2c_mode))) {
+				up(&nvp6158_lock);
+				return -1;
+			}
 
-			if(i2c.flag == 0) // read
-			{
+			if(i2c.flag == 0) {// read
 				gpio_i2c_write(i2c.slaveaddr, 0xFF, i2c.bank);
 				i2c.data = gpio_i2c_read(i2c.slaveaddr, i2c.address);
-			}
-			else //write
-			{
+			} else {//write
 				gpio_i2c_write(i2c.slaveaddr, 0xFF, i2c.bank);
 				gpio_i2c_write(i2c.slaveaddr, i2c.address, i2c.data);
 			}
@@ -402,20 +387,26 @@ long nvp6158_native_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 				printk("IOC_VDEC_GET_VIDEO_LOSS error\n");
 			break;
 		case IOC_VDEC_GET_EQ_DIST:
-        		if (copy_from_user(&s_eq_dist, argp, sizeof(video_equalizer_info_s))) {up(&nvp6158_lock);return -1;}
-					
+        		if (copy_from_user(&s_eq_dist, argp, sizeof(video_equalizer_info_s))) {
+				up(&nvp6158_lock);
+				return -1;
+			}
+
 			s_eq_dist.distance = nvp6158_get_eq_dist(&s_eq_dist);
 			if(copy_to_user(argp, &s_eq_dist, sizeof(video_equalizer_info_s)))
 				printk("IOC_VDEC_GET_EQ_DIST error\n");
-			break;	
+			break;
 		case IOC_VDEC_SET_EQUALIZER:
-			if (copy_from_user(&s_eq_dist, argp, sizeof(video_equalizer_info_s))) {up(&nvp6158_lock);return -1;}
-			if(nvp6158_chip_id[0]==NVP6158C_R0_ID || nvp6158_chip_id[0]==NVP6158_R0_ID)
-				nvp6158_set_equalizer(&s_eq_dist);	
+			if (copy_from_user(&s_eq_dist, argp, sizeof(video_equalizer_info_s))) {
+				up(&nvp6158_lock);
+				return -1;
+			}
+			if(nvp6158_chip_id[0] == NVP6158C_R0_ID || nvp6158_chip_id[0] == NVP6158_R0_ID)
+				nvp6158_set_equalizer(&s_eq_dist);
 			else
 				nvp6168_set_equalizer(&s_eq_dist);
 			break;
-		case IOC_VDEC_GET_DRIVERVER:			
+		case IOC_VDEC_GET_DRIVERVER:
 			if(copy_to_user(argp, &NVP6158_DRIVER_VER, sizeof(NVP6158_DRIVER_VER)))
 				printk("IOC_VDEC_GET_DRIVERVER error\n");
 			break;
@@ -428,11 +419,11 @@ long nvp6158_native_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 			{
 				ispdata.data = acp_isp_read(ispdata.ch, ispdata.addr);
 				if(copy_to_user(argp, &ispdata, sizeof(nvp6158_acp_rw_data)))
-					printk("IOC_VDEC_ACP_WRITE error\n");	
+					printk("IOC_VDEC_ACP_WRITE error\n");
 			}*/
 			break;
 		case IOC_VDEC_ACP_WRITE_EXTENTION:
-			
+
 			break;
 		case IOC_VDEC_PTZ_ACP_READ:
 			//if (copy_from_user(&vfmt, argp, sizeof(nvp6158_input_videofmt)))
@@ -445,15 +436,17 @@ long nvp6158_native_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 					//if(((nvp6158_g_vloss>>i)&0x01) == 0x00)
 					//	acp_read(&vfmt, i);
 			//	}
-			//}							
+			//}
 			//if(copy_to_user(argp, &vfmt, sizeof(nvp6158_input_videofmt)))
-			//	printk("IOC_VDEC_PTZ_ACP_READ error\n");			
-			break;	
+			//	printk("IOC_VDEC_PTZ_ACP_READ error\n");
+			break;
 		case IOC_VDEC_PTZ_ACP_READ_EACH_CH:
-			if (copy_from_user(&vfmt_ch, argp, sizeof(nvp6158_input_videofmt_ch))) {up(&nvp6158_lock);return -1;}
+			if (copy_from_user(&vfmt_ch, argp, sizeof(nvp6158_input_videofmt_ch))) {
+				up(&nvp6158_lock);
+				return -1;
+			}
 			/* read A-CP */
-			if(((nvp6158_g_vloss>>vfmt_ch.ch)&0x01) == 0x00)
-			{
+			if(((nvp6158_g_vloss>>vfmt_ch.ch) & 0x01) == 0x00) {
 				//acp_read(&vfmt_ch.vfmt, vfmt_ch.ch);
 			}
 
@@ -461,61 +454,84 @@ long nvp6158_native_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 				printk("IOC_VDEC_PTZ_ACP_READ_EACH_CH error\n");
 			break;
 		case IOC_VDEC_GET_INPUT_VIDEO_FMT:
-			if (copy_from_user(&vfmt, argp, sizeof(NVP6158_INFORMATION_S))) {up(&nvp6158_lock);return -1;}
-			if(nvp6158_chip_id[0]==NVP6158C_R0_ID || nvp6158_chip_id[0]==NVP6158_R0_ID)
+			if (copy_from_user(&vfmt, argp, sizeof(NVP6158_INFORMATION_S))) {
+				up(&nvp6158_lock);
+				return -1;
+			}
+			if(nvp6158_chip_id[0] == NVP6158C_R0_ID || nvp6158_chip_id[0] == NVP6158_R0_ID)
 				nvp6158_video_fmt_det(vfmt.ch, &vfmt);
 			else
 				nvp6168_video_fmt_det(vfmt.ch, &vfmt);
 			if(copy_to_user(argp, &vfmt, sizeof(NVP6158_INFORMATION_S)))
 				printk("IOC_VDEC_GET_INPUT_VIDEO_FMT error\n");
-			break;	
+			break;
 		case IOC_VDEC_SET_CHDETMODE:
-            if (copy_from_user(&nvp6158_det_mode, argp, sizeof(unsigned char)*16)) {up(&nvp6158_lock);return -1;}
-			
-			for(i=0;i<(nvp6158_cnt*4);i++)
-			{
-				printk("IOC_VDEC_SET_CHNMODE nvp6158_det_mode[%d]==%d\n", i, nvp6158_det_mode[i]);
-				if(nvp6158_chip_id[0]==NVP6158C_R0_ID || nvp6158_chip_id[0]==NVP6158_R0_ID)
+			if (copy_from_user(&nvp6158_det_mode, argp, sizeof(unsigned char) * 16)) {
+				up(&nvp6158_lock);
+				return -1;
+			}
+			for(i = 0; i<(nvp6158_cnt * 4); i++) {
+				printk("IOC_VDEC_SET_CHNMODE nvp6158_det_mode[%d]==%d\n",
+						i, nvp6158_det_mode[i]);
+				if(nvp6158_chip_id[0] == NVP6158C_R0_ID || nvp6158_chip_id[0] == NVP6158_R0_ID)
 					nvp6158_set_chnmode(i, NC_VIVO_CH_FORMATDEF_UNKNOWN);
 				else
 					nvp6168_set_chnmode(i, NC_VIVO_CH_FORMATDEF_UNKNOWN);
 			}
-			break;	
+			break;
 		case IOC_VDEC_SET_CHNMODE:
-            if (copy_from_user(&schnmode, argp, sizeof(nvp6158_chn_mode))) {up(&nvp6158_lock);return -1;}
-			if(nvp6158_chip_id[0]==NVP6158C_R0_ID || nvp6158_chip_id[0]==NVP6158_R0_ID)
-			{
+			if (copy_from_user(&schnmode, argp, sizeof(nvp6158_chn_mode))) {
+				up(&nvp6158_lock);
+				return -1;
+			}
+			if(nvp6158_chip_id[0] == NVP6158C_R0_ID || nvp6158_chip_id[0] == NVP6158_R0_ID) {
 				if(0 == nvp6158_set_chnmode(schnmode.ch, schnmode.chmode))
 					printk("IOC_VDEC_SET_CHNMODE OK\n");
-			}
-			else
-			{
+			} else {
 				if(0 == nvp6168_set_chnmode(schnmode.ch, schnmode.chmode))
 					printk("IOC_VDEC_SET_CHNMODE OK\n");
 			}
 			break;
 		case IOC_VDEC_SET_OUTPORTMODE:
-            		if(copy_from_user(&optmode, argp, sizeof(nvp6158_opt_mode))) {up(&nvp6158_lock);return -1;}
+            		if(copy_from_user(&optmode, argp, sizeof(nvp6158_opt_mode))) {
+				up(&nvp6158_lock);
+				return -1;
+			}
 			nvp6158_set_portmode(optmode.chipsel, optmode.portsel, optmode.portmode, optmode.chid);
-			break;	
+			break;
 		case IOC_VDEC_SET_BRIGHTNESS:
-            		if(copy_from_user(&v_adj, argp, sizeof(nvp6158_video_adjust))) {up(&nvp6158_lock);return -1;}
+            		if(copy_from_user(&v_adj, argp, sizeof(nvp6158_video_adjust))) {
+				up(&nvp6158_lock);
+				return -1;
+			}
 			//nvp6158_video_set_brightness(v_adj.ch, v_adj.value, nvp6158_ch_vfmt_status[v_adj.ch]);
 			break;
 		case IOC_VDEC_SET_CONTRAST:
-			if(copy_from_user(&v_adj, argp, sizeof(nvp6158_video_adjust))) {up(&nvp6158_lock);return -1;}
+			if(copy_from_user(&v_adj, argp, sizeof(nvp6158_video_adjust))) {
+				up(&nvp6158_lock);
+				return -1;
+			}
 			//nvp6158_video_set_contrast(v_adj.ch, v_adj.value, nvp6158_ch_vfmt_status[v_adj.ch]);
 			break;
 		case IOC_VDEC_SET_HUE:
-			if(copy_from_user(&v_adj, argp, sizeof(nvp6158_video_adjust))) {up(&nvp6158_lock);return -1;}
+			if(copy_from_user(&v_adj, argp, sizeof(nvp6158_video_adjust))) {
+				up(&nvp6158_lock);
+				return -1;
+			}
 			//nvp6158_video_set_hue(v_adj.ch, v_adj.value, nvp6158_ch_vfmt_status[v_adj.ch]);
 			break;
 		case IOC_VDEC_SET_SATURATION:
-			if(copy_from_user(&v_adj, argp, sizeof(nvp6158_video_adjust))) {up(&nvp6158_lock);return -1;}
+			if(copy_from_user(&v_adj, argp, sizeof(nvp6158_video_adjust))) {
+				up(&nvp6158_lock);
+				return -1;
+			}
 			//nvp6158_video_set_saturation(v_adj.ch, v_adj.value, nvp6158_ch_vfmt_status[v_adj.ch]);
 			break;
 		case IOC_VDEC_SET_SHARPNESS:
-			if(copy_from_user(&v_adj, argp, sizeof(nvp6158_video_adjust))) {up(&nvp6158_lock);return -1;}
+			if(copy_from_user(&v_adj, argp, sizeof(nvp6158_video_adjust))) {
+				up(&nvp6158_lock);
+				return -1;
+			}
 			nvp6158_video_set_sharpness(v_adj.ch, v_adj.value);
 			break; 
 		/*----------------------- Coaxial Protocol ----------------------*/
@@ -541,7 +557,7 @@ long nvp6158_native_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 				break;
 			case IOC_VDEC_COAX_TX_CVI_NEW_CMD_SEND: //SK_CHANGE 170703
 				if(copy_from_user(&coax_val, argp, sizeof(nvp6158_coax_str)))
-						printk(" IOC_VDEC_COAX_TX_CMD_SEND error\n");
+					printk(" IOC_VDEC_COAX_TX_CMD_SEND error\n");
 				nvp6158_coax_tx_cvi_new_cmd_send(&coax_val);
 					break;
 		case IOC_VDEC_COAX_RX_INIT:
@@ -575,55 +591,55 @@ long nvp6158_native_ioctl(struct file *file, unsigned int cmd, unsigned long arg
 		/*=========== Coaxial Protocol Firmware Update ==============*/
 		case IOC_VDEC_COAX_FW_ACP_HEADER_GET:
 			if(copy_from_user(&coax_fw_val, argp, sizeof(FIRMWARE_UP_FILE_INFO)))
-							printk("IOC_VDEC_COAX_FW_READY_CMD_SET error\n");
+				printk("IOC_VDEC_COAX_FW_READY_CMD_SET error\n");
 			nvp6158_coax_fw_ready_header_check_from_isp_recv(&coax_fw_val);
 			cpy2usr_ret = copy_to_user(argp, &coax_fw_val, sizeof(FIRMWARE_UP_FILE_INFO));
 			break;
 		case IOC_VDEC_COAX_FW_READY_CMD_SET:
 			if(copy_from_user(&coax_fw_val, argp, sizeof(FIRMWARE_UP_FILE_INFO)))
-							printk("IOC_VDEC_COAX_FW_READY_CMD_SET error\n");
+				printk("IOC_VDEC_COAX_FW_READY_CMD_SET error\n");
 			nvp6158_coax_fw_ready_cmd_to_isp_send(&coax_fw_val);
 			cpy2usr_ret = copy_to_user(argp, &coax_fw_val, sizeof(FIRMWARE_UP_FILE_INFO));
 			break;
 		case IOC_VDEC_COAX_FW_READY_ACK_GET:
 			if(copy_from_user(&coax_fw_val, argp, sizeof(FIRMWARE_UP_FILE_INFO)))
-							printk("IOC_VDEC_COAX_FW_READY_ISP_STATUS_GET error\n");
+				printk("IOC_VDEC_COAX_FW_READY_ISP_STATUS_GET error\n");
 			nvp6158_coax_fw_ready_cmd_ack_from_isp_recv(&coax_fw_val);
 			cpy2usr_ret = copy_to_user(argp, &coax_fw_val, sizeof(FIRMWARE_UP_FILE_INFO));
 			break;
 		case IOC_VDEC_COAX_FW_START_CMD_SET:
 			if(copy_from_user(&coax_fw_val, argp, sizeof(FIRMWARE_UP_FILE_INFO)))
-							printk("IOC_VDEC_COAX_FW_START_CMD_SET error\n");
+				printk("IOC_VDEC_COAX_FW_START_CMD_SET error\n");
 			nvp6158_coax_fw_start_cmd_to_isp_send(&coax_fw_val);
 			cpy2usr_ret = copy_to_user(argp, &coax_fw_val, sizeof(FIRMWARE_UP_FILE_INFO));
 			break;
 		case IOC_VDEC_COAX_FW_START_ACK_GET:
 			if(copy_from_user(&coax_fw_val, argp, sizeof(FIRMWARE_UP_FILE_INFO)))
-							printk("IOC_VDEC_COAX_FW_START_CMD_SET error\n");
+				printk("IOC_VDEC_COAX_FW_START_CMD_SET error\n");
 			nvp6158_coax_fw_start_cmd_ack_from_isp_recv(&coax_fw_val);
 			cpy2usr_ret = copy_to_user(argp, &coax_fw_val, sizeof(FIRMWARE_UP_FILE_INFO));
 			break;
 		case IOC_VDEC_COAX_FW_SEND_DATA_SET:
 			if(copy_from_user(&coax_fw_val, argp, sizeof(FIRMWARE_UP_FILE_INFO)))
-							printk("IOC_VDEC_COAX_FW_START_CMD_SET error\n");
+				printk("IOC_VDEC_COAX_FW_START_CMD_SET error\n");
 			nvp6158_coax_fw_one_packet_data_to_isp_send(&coax_fw_val);
 			cpy2usr_ret = copy_to_user(argp, &coax_fw_val, sizeof(FIRMWARE_UP_FILE_INFO));
 			break;
 		case IOC_VDEC_COAX_FW_SEND_ACK_GET:
 			if(copy_from_user(&coax_fw_val, argp, sizeof(FIRMWARE_UP_FILE_INFO)))
-							printk("IOC_VDEC_COAX_FW_START_CMD_SET error\n");
+				printk("IOC_VDEC_COAX_FW_START_CMD_SET error\n");
 			nvp6158_coax_fw_one_packet_data_ack_from_isp_recv(&coax_fw_val);
 			cpy2usr_ret = copy_to_user(argp, &coax_fw_val, sizeof(FIRMWARE_UP_FILE_INFO));
 			break;
 		case IOC_VDEC_COAX_FW_END_CMD_SET:
 			if(copy_from_user(&coax_fw_val, argp, sizeof(FIRMWARE_UP_FILE_INFO)))
-							printk("IOC_VDEC_COAX_FW_START_CMD_SET error\n");
+				printk("IOC_VDEC_COAX_FW_START_CMD_SET error\n");
 			nvp6158_coax_fw_end_cmd_to_isp_send(&coax_fw_val);
 			cpy2usr_ret = copy_to_user(argp, &coax_fw_val, sizeof(FIRMWARE_UP_FILE_INFO));
 			break;
 		case IOC_VDEC_COAX_FW_END_ACK_GET:
 			if(copy_from_user(&coax_fw_val, argp, sizeof(FIRMWARE_UP_FILE_INFO)))
-							printk("IOC_VDEC_COAX_FW_START_CMD_SET error\n");
+				printk("IOC_VDEC_COAX_FW_START_CMD_SET error\n");
 			nvp6158_coax_fw_end_cmd_ack_from_isp_recv(&coax_fw_val);
 			cpy2usr_ret = copy_to_user(argp, &coax_fw_val, sizeof(FIRMWARE_UP_FILE_INFO));
 			break;
@@ -681,13 +697,11 @@ void nvp6158_set_bt656_601_mode(void)
 	int chip = 0;
 
 	printk("[NVP6158_DRV] %s(%d) \n", __func__, __LINE__);
-	for(ch=0;ch<nvp6158_cnt*4;ch++)
-	{
-		nvp6158_set_chnmode(ch, AHD20_1080P_30P); 
+	for(ch = 0; ch < nvp6158_cnt * 4; ch++) {
+		nvp6158_set_chnmode(ch, AHD20_1080P_30P);
 	}
 
-	for(chip=0;chip<nvp6158_cnt;chip++)
-	{
+	for(chip = 0; chip < nvp6158_cnt; chip++) {
 		nvp6158_set_portmode(chip, 1, NVP6158_OUTMODE_1MUX_FHD, 0);
 		nvp6158_set_portmode(chip, 2, NVP6158_OUTMODE_1MUX_FHD, 1);
 	}
@@ -712,13 +726,11 @@ void nvp6158_set_bt1120_720P_mode(void)
 	int chip = 0;
 
 	printk("[NVP6158_DRV] %s(%d) \n", __func__, __LINE__);
-	for(ch=0;ch<nvp6158_cnt*4;ch++)
-	{
-		nvp6158_set_chnmode(ch, AHD20_720P_30P); 
+	for(ch = 0; ch < nvp6158_cnt * 4; ch++) {
+		nvp6158_set_chnmode(ch, AHD20_720P_30P);
 	}
 
-	for(chip=0;chip<nvp6158_cnt;chip++)
-	{
+	for(chip = 0; chip < nvp6158_cnt; chip ++) {
 		nvp6158_set_portmode(chip, 1, NVP6158_OUTMODE_1MUX_BT1120S_720P, 1);
 		nvp6158_set_portmode(chip, 2, NVP6158_OUTMODE_1MUX_BT1120S_720P, 1);
 	}
@@ -730,13 +742,11 @@ void nvp6158_set_bt1120_1080P_mode(void)
 	int chip = 0;
 
 	printk("[NVP6158_DRV] %s(%d) \n", __func__, __LINE__);
-	for(ch=0;ch<nvp6158_cnt*4;ch++)
-	{
-		nvp6158_set_chnmode(ch, AHD20_1080P_30P); 
+	for(ch = 0; ch < nvp6158_cnt * 4; ch++) {
+		nvp6158_set_chnmode(ch, AHD20_1080P_30P);
 	}
 
-	for(chip=0;chip<nvp6158_cnt;chip++)
-	{
+	for(chip = 0; chip < nvp6158_cnt; chip++) {
 		nvp6158_set_portmode(chip, 1, NVP6158_OUTMODE_1MUX_BT1120S_1080P, 0);
 		nvp6158_set_portmode(chip, 2, NVP6158_OUTMODE_1MUX_BT1120S_1080P, 0);
 	}
@@ -756,13 +766,12 @@ void nvp6158_start(video_init_all *video_init, bool dual_edge)
 	nvp6158_video_decoder_init();
 	/* initialize Audio
 	 * recmaster, pbmaster, ch_num, samplerate, bits */
-	if(nvp6158_chip_id[0]==NVP6158C_R0_ID || nvp6158_chip_id[0]==NVP6158_R0_ID)
+	if(nvp6158_chip_id[0] == NVP6158C_R0_ID || nvp6158_chip_id[0] == NVP6158_R0_ID)
 		nvp6158_audio_init(1,0,16,0,0);
 	else
 		nvp6168_audio_init(1,0,16,0,0);
 
-	switch (fmt_idx)
-	{
+	switch (fmt_idx) {
 		/* normal output */
 		case AHD20_720P_25P:
 			for (ch = 0; ch < nvp6158_cnt * 4; ch++)
@@ -833,16 +842,15 @@ void nvp6158_start(video_init_all *video_init, bool dual_edge)
 			break;
 		default:
 			for (ch = 0; ch < nvp6158_cnt * 4; ch++)
-				nvp6158_set_chnmode(ch, AHD20_1080P_30P); 
-			break;	
+				nvp6158_set_chnmode(ch, AHD20_1080P_30P);
+			break;
 	}
 
 	nvp6158_set_colorpattern();
 	//nvp6158_set_colorpattern2();
 	//nvp6158_set_colorpattern3();
 
-	switch (mode)
-	{
+	switch (mode) {
 		/* normal output */
 		case BT656_1MUX:
 			if ((fmt_idx == AHD20_1080P_25P) || (fmt_idx == AHD20_1080P_30P)) {
@@ -970,7 +978,7 @@ void nvp6158_start(video_init_all *video_init, bool dual_edge)
 			break;
 		default:
 			printk("mode %d not supported yet\n", mode);
-			break;	
+			break;
 	}
 	up(&nvp6158_lock);
 }
@@ -984,7 +992,7 @@ void nvp6158_stop(void)
 	gpio_i2c_write(0x60, 0xFF, 0x01);
 	gpio_i2c_write(0x60, 0xCA, 0x00);
 
-	for(ch=0;ch < 4;ch++) {
+	for(ch = 0; ch < 4;ch++) {
 		nvp6158_channel_reset(ch);
 	}
 	up(&nvp6158_lock);
@@ -1004,7 +1012,7 @@ static int nvp6158_i2c_client_init(int i2c_bus)
     printk("[DRV] I2C Client Init \n");
     i2c_adap = i2c_get_adapter(i2c_bus);
 
-    nvp6158_client = i2c_new_device(i2c_adap, &nvp6158_hi_info);
+    nvp6158_client = i2c_new_client_device(i2c_adap, &nvp6158_hi_info);
     i2c_put_adapter(i2c_adap);
 
     return 0;

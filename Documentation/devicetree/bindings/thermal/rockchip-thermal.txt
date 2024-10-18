@@ -2,9 +2,9 @@
 
 Required properties:
 - compatible : should be "rockchip,<name>-tsadc"
+   "rockchip,px30-tsadc":   found on PX30 SoCs
    "rockchip,rv1108-tsadc": found on RV1108 SoCs
    "rockchip,rv1126-tsadc": found on RV1126 SoCs
-   "rockchip,px30-tsadc":   found on PX30 SoCs
    "rockchip,rk1808-tsadc": found on RK1808 SoCs
    "rockchip,rk3228-tsadc": found on RK3228 SoCs
    "rockchip,rk3288-tsadc": found on RK3288 SoCs
@@ -13,6 +13,7 @@ Required properties:
    "rockchip,rk3368-tsadc": found on RK3368 SoCs
    "rockchip,rk3399-tsadc": found on RK3399 SoCs
    "rockchip,rk3568-tsadc": found on RK3568 SoCs
+   "rockchip,rk3588-tsadc": found on RK3588 SoCs
 - reg : physical base address of the controller and length of memory mapped
 	region.
 - interrupts : The interrupt number to the cpu. The interrupt specifier format
@@ -28,7 +29,7 @@ Required properties:
 	      CRU when tshut.
 - pinctrl-1 : The "otpout" pinctrl state, it will be set if tsadc via set
 	      otpout_gpio when tshut.
-- #thermal-sensor-cells : Should be 1. See ./thermal.txt for a description.
+- #thermal-sensor-cells : Should be 1. See Documentation/devicetree/bindings/thermal/thermal-sensor.yaml for a description.
 
 Optional properties:
 - rockchip,hw-tshut-temp : The hardware-controlled shutdown temperature value.
@@ -47,7 +48,7 @@ tsadc: tsadc@ff280000 {
 	resets = <&cru SRST_TSADC>;
 	reset-names = "tsadc-apb";
 	pinctrl-names = "gpio", "otpout";
-	pinctrl-0 = <&otp_gpio>;
+	pinctrl-0 = <&otp_pin>;
 	pinctrl-1 = <&otp_out>;
 	#thermal-sensor-cells = <1>;
 	rockchip,hw-tshut-temp = <95000>;

@@ -1,11 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  *  linux/arch/arm/lib/copypage-xscale.S
  *
  *  Copyright (C) 1995-2005 Russell King
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  *
  * This handles the mini data cache, as found on SA11x0 and XScale
  * processors.  When we copy a user page page, we map it in such a way
@@ -17,7 +14,6 @@
 #include <linux/mm.h>
 #include <linux/highmem.h>
 
-#include <asm/pgtable.h>
 #include <asm/tlbflush.h>
 #include <asm/cacheflush.h>
 
@@ -45,6 +41,7 @@ static void mc_copy_user_page(void *from, void *to)
 	 * when prefetching destination as well.  (NP)
 	 */
 	asm volatile ("\
+.arch xscale					\n\
 	pld	[%0, #0]			\n\
 	pld	[%0, #32]			\n\
 	pld	[%1, #0]			\n\
@@ -53,26 +50,26 @@ static void mc_copy_user_page(void *from, void *to)
 	pld	[%0, #96]			\n\
 	pld	[%1, #64]			\n\
 	pld	[%1, #96]			\n\
-2:	ldrd	r2, [%0], #8			\n\
-	ldrd	r4, [%0], #8			\n\
+2:	ldrd	r2, r3, [%0], #8		\n\
+	ldrd	r4, r5, [%0], #8		\n\
 	mov	ip, %1				\n\
-	strd	r2, [%1], #8			\n\
-	ldrd	r2, [%0], #8			\n\
-	strd	r4, [%1], #8			\n\
-	ldrd	r4, [%0], #8			\n\
-	strd	r2, [%1], #8			\n\
-	strd	r4, [%1], #8			\n\
+	strd	r2, r3, [%1], #8		\n\
+	ldrd	r2, r3, [%0], #8		\n\
+	strd	r4, r5, [%1], #8		\n\
+	ldrd	r4, r5, [%0], #8		\n\
+	strd	r2, r3, [%1], #8		\n\
+	strd	r4, r5, [%1], #8		\n\
 	mcr	p15, 0, ip, c7, c10, 1		@ clean D line\n\
-	ldrd	r2, [%0], #8			\n\
+	ldrd	r2, r3, [%0], #8		\n\
 	mcr	p15, 0, ip, c7, c6, 1		@ invalidate D line\n\
-	ldrd	r4, [%0], #8			\n\
+	ldrd	r4, r5, [%0], #8		\n\
 	mov	ip, %1				\n\
-	strd	r2, [%1], #8			\n\
-	ldrd	r2, [%0], #8			\n\
-	strd	r4, [%1], #8			\n\
-	ldrd	r4, [%0], #8			\n\
-	strd	r2, [%1], #8			\n\
-	strd	r4, [%1], #8			\n\
+	strd	r2, r3, [%1], #8		\n\
+	ldrd	r2, r3, [%0], #8		\n\
+	strd	r4, r5, [%1], #8		\n\
+	ldrd	r4, r5, [%0], #8		\n\
+	strd	r2, r3, [%1], #8		\n\
+	strd	r4, r5, [%1], #8		\n\
 	mcr	p15, 0, ip, c7, c10, 1		@ clean D line\n\
 	subs	%2, %2, #1			\n\
 	mcr	p15, 0, ip, c7, c6, 1		@ invalidate D line\n\
@@ -109,15 +106,16 @@ void
 xscale_mc_clear_user_highpage(struct page *page, unsigned long vaddr)
 {
 	void *ptr, *kaddr = kmap_atomic(page);
-	asm volatile(
-	"mov	r1, %2				\n\
+	asm volatile("\
+.arch xscale					\n\
+	mov	r1, %2				\n\
 	mov	r2, #0				\n\
 	mov	r3, #0				\n\
 1:	mov	ip, %0				\n\
-	strd	r2, [%0], #8			\n\
-	strd	r2, [%0], #8			\n\
-	strd	r2, [%0], #8			\n\
-	strd	r2, [%0], #8			\n\
+	strd	r2, r3, [%0], #8		\n\
+	strd	r2, r3, [%0], #8		\n\
+	strd	r2, r3, [%0], #8		\n\
+	strd	r2, r3, [%0], #8		\n\
 	mcr	p15, 0, ip, c7, c10, 1		@ clean D line\n\
 	subs	r1, r1, #1			\n\
 	mcr	p15, 0, ip, c7, c6, 1		@ invalidate D line\n\

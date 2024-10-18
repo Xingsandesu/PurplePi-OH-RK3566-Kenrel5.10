@@ -198,7 +198,11 @@
 };
 
 &cpu0 {
-	cpu0-supply = <&vdd_arm>;
+	cpu-supply = <&vdd_arm>;
+};
+
+&cpu1 {
+	cpu-supply = <&vdd_arm>;
 };
 
 &cpu0_opp_table {
@@ -231,8 +235,8 @@
 &emmc {
 	bus-width = <8>;
 	cap-mmc-highspeed;
-	disable-wp;
-	supports-emmc;
+	no-sdio;
+	no-sd;
 	non-removable;
 	pinctrl-names = "default";
 	pinctrl-0 = <&emmc_clk>, <&emmc_cmd>, <&emmc_rst>;
@@ -400,7 +404,8 @@
 &mmc0 {
 	bus-width = <4>;
 	disable-wp;
-	supports-sd;
+	no-mmc;
+	no-sdio;
 	pinctrl-names = "default";
 	pinctrl-0 = <&sd0_clk>, <&sd0_cmd>, <&sd0_cd>, <&sd0_bus4>;
 	vmmc-supply = <&vcc_sd>;
@@ -417,9 +422,9 @@
 	sd-uhs-sdr104;
 
 	bus-width = <4>;
-	disable-wp;
 	non-removable;
-	supports-sdio;
+	no-mmc;
+	no-sd;
 	pinctrl-names = "default";
 	pinctrl-0 = <&sd1_clk>, <&sd1_cmd>, <&sd1_bus4>;
 	vmmc-supply = <&vccio_wl>;

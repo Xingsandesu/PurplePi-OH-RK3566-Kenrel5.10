@@ -67,8 +67,9 @@
 /* dongle status */
 enum wifi_adapter_status {
 	WIFI_STATUS_POWER_ON = 0,
+	WIFI_STATUS_ATTACH,
 	WIFI_STATUS_FW_READY,
-	WIFI_STATUS_NET_ATTACHED
+	WIFI_STATUS_DETTACH
 };
 #define wifi_chk_adapter_status(adapter, stat) (test_bit(stat, &(adapter)->status))
 #define wifi_get_adapter_status(adapter, stat) (test_bit(stat, &(adapter)->status))

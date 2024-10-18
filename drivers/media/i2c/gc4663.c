@@ -99,14 +99,6 @@ static const char * const gc4663_supply_names[] = {
 
 #define GC4663_NUM_SUPPLIES ARRAY_SIZE(gc4663_supply_names)
 
-enum gc4663_max_pad {
-	PAD0, /* link to isp */
-	PAD1, /* link to csi wr0 | hdr x2:L x3:M */
-	PAD2, /* link to csi wr1 | hdr      x3:L */
-	PAD3, /* link to csi wr2 | hdr x2:M x3:S */
-	PAD_MAX,
-};
-
 struct regval {
 	u16 addr;
 	u8 val;
@@ -278,10 +270,10 @@ static const struct regval gc4663_linear10bit_2560x1440_regs[] = {
 	{0x0320, 0x77},
 	{0x0324, 0xc8},
 	{0x0325, 0x06},
-	{0x0326, 0x6c},
+	{0x0326, 0x60},
 	{0x0327, 0x03},
 	{0x0334, 0x40},
-	{0x0336, 0x6c},
+	{0x0336, 0x60},
 	{0x0337, 0x82},
 	{0x0315, 0x25},
 	{0x031c, 0xc6},
@@ -781,11 +773,6 @@ static int gc4663_get_fmt(struct v4l2_subdev *sd,
 		fmt->format.height = mode->height;
 		fmt->format.code = mode->bus_fmt;
 		fmt->format.field = V4L2_FIELD_NONE;
-		/* format info: width/height/data type/virctual channel */
-		if (fmt->pad < PAD_MAX && mode->hdr_mode != NO_HDR)
-			fmt->reserved[0] = mode->vc[fmt->pad];
-		else
-			fmt->reserved[0] = mode->vc[PAD0];
 	}
 	mutex_unlock(&gc4663->mutex);
 
@@ -1012,14 +999,12 @@ static int gc4663_g_frame_interval(struct v4l2_subdev *sd,
 	struct gc4663 *gc4663 = to_gc4663(sd);
 	const struct gc4663_mode *mode = gc4663->cur_mode;
 
-	mutex_lock(&gc4663->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&gc4663->mutex);
 
 	return 0;
 }
 
-static int gc4663_g_mbus_config(struct v4l2_subdev *sd,
+static int gc4663_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
 	struct gc4663 *gc4663 = to_gc4663(sd);
@@ -1036,7 +1021,7 @@ static int gc4663_g_mbus_config(struct v4l2_subdev *sd,
 		V4L2_MBUS_CSI2_CONTINUOUS_CLOCK |
 		V4L2_MBUS_CSI2_CHANNEL_1;
 
-	config->type = V4L2_MBUS_CSI2;
+	config->type = V4L2_MBUS_CSI2_DPHY;
 	config->flags = val;
 
 	return 0;
@@ -1052,6 +1037,17 @@ static void gc4663_get_module_inf(struct gc4663 *gc4663,
 	strlcpy(inf->base.lens, gc4663->len_name, sizeof(inf->base.lens));
 }
 
+static int gc4663_get_channel_info(struct gc4663 *gc4663, struct rkmodule_channel_info *ch_info)
+{
+	if (ch_info->index < PAD0 || ch_info->index >= PAD_MAX)
+		return -EINVAL;
+	ch_info->vc = gc4663->cur_mode->vc[ch_info->index];
+	ch_info->width = gc4663->cur_mode->width;
+	ch_info->height = gc4663->cur_mode->height;
+	ch_info->bus_fmt = gc4663->cur_mode->bus_fmt;
+	return 0;
+}
+
 static long gc4663_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 {
 	struct gc4663 *gc4663 = to_gc4663(sd);
@@ -1059,6 +1055,7 @@ static long gc4663_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 	u32 i, h, w;
 	long ret = 0;
 	u32 stream = 0;
+	struct rkmodule_channel_info *ch_info;
 
 	switch (cmd) {
 	case RKMODULE_GET_MODULE_INFO:
@@ -1123,6 +1120,10 @@ static long gc4663_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 			ret = gc4663_write_reg(gc4663->client, GC4663_REG_CTRL_MODE,
 				GC4663_REG_VALUE_08BIT, GC4663_MODE_SW_STANDBY);
 		break;
+	case RKMODULE_GET_CHANNEL_INFO:
+		ch_info = (struct rkmodule_channel_info *)arg;
+		ret = gc4663_get_channel_info(gc4663, ch_info);
+		break;
 	default:
 		ret = -ENOIOCTLCMD;
 		break;
@@ -1142,6 +1143,7 @@ static long gc4663_compat_ioctl32(struct v4l2_subdev *sd,
 	struct preisp_hdrae_exp_s *hdrae;
 	long ret;
 	u32 stream = 0;
+	struct rkmodule_channel_info *ch_info;
 
 	switch (cmd) {
 	case RKMODULE_GET_MODULE_INFO:
@@ -1152,8 +1154,11 @@ static long gc4663_compat_ioctl32(struct v4l2_subdev *sd,
 		}
 
 		ret = gc4663_ioctl(sd, cmd, inf);
-		if (!ret)
+		if (!ret) {
 			ret = copy_to_user(up, inf, sizeof(*inf));
+			if (ret)
+				ret = -EFAULT;
+		}
 		kfree(inf);
 		break;
 	case RKMODULE_AWB_CFG:
@@ -1166,6 +1171,8 @@ static long gc4663_compat_ioctl32(struct v4l2_subdev *sd,
 		ret = copy_from_user(cfg, up, sizeof(*cfg));
 		if (!ret)
 			ret = gc4663_ioctl(sd, cmd, cfg);
+		else
+			ret = -EFAULT;
 		kfree(cfg);
 		break;
 	case RKMODULE_GET_HDR_CFG:
@@ -1176,8 +1183,11 @@ static long gc4663_compat_ioctl32(struct v4l2_subdev *sd,
 		}
 
 		ret = gc4663_ioctl(sd, cmd, hdr);
-		if (!ret)
+		if (!ret) {
 			ret = copy_to_user(up, hdr, sizeof(*hdr));
+			if (ret)
+				ret = -EFAULT;
+		}
 		kfree(hdr);
 		break;
 	case RKMODULE_SET_HDR_CFG:
@@ -1190,6 +1200,8 @@ static long gc4663_compat_ioctl32(struct v4l2_subdev *sd,
 		ret = copy_from_user(hdr, up, sizeof(*hdr));
 		if (!ret)
 			ret = gc4663_ioctl(sd, cmd, hdr);
+		else
+			ret = -EFAULT;
 		kfree(hdr);
 		break;
 	case PREISP_CMD_SET_HDRAE_EXP:
@@ -1202,12 +1214,31 @@ static long gc4663_compat_ioctl32(struct v4l2_subdev *sd,
 		ret = copy_from_user(hdrae, up, sizeof(*hdrae));
 		if (!ret)
 			ret = gc4663_ioctl(sd, cmd, hdrae);
+		else
+			ret = -EFAULT;
 		kfree(hdrae);
 		break;
 	case RKMODULE_SET_QUICK_STREAM:
 		ret = copy_from_user(&stream, up, sizeof(u32));
 		if (!ret)
 			ret = gc4663_ioctl(sd, cmd, &stream);
+		else
+			ret = -EFAULT;
+		break;
+	case RKMODULE_GET_CHANNEL_INFO:
+		ch_info = kzalloc(sizeof(*ch_info), GFP_KERNEL);
+		if (!ch_info) {
+			ret = -ENOMEM;
+			return ret;
+		}
+
+		ret = gc4663_ioctl(sd, cmd, ch_info);
+		if (!ret) {
+			ret = copy_to_user(up, ch_info, sizeof(*ch_info));
+			if (ret)
+				ret = -EFAULT;
+		}
+		kfree(ch_info);
 		break;
 	default:
 		ret = -ENOIOCTLCMD;
@@ -1495,7 +1526,6 @@ static const struct v4l2_subdev_core_ops gc4663_core_ops = {
 static const struct v4l2_subdev_video_ops gc4663_video_ops = {
 	.s_stream = gc4663_s_stream,
 	.g_frame_interval = gc4663_g_frame_interval,
-	.g_mbus_config = gc4663_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops gc4663_pad_ops = {
@@ -1504,6 +1534,7 @@ static const struct v4l2_subdev_pad_ops gc4663_pad_ops = {
 	.enum_frame_interval = gc4663_enum_frame_interval,
 	.get_fmt = gc4663_get_fmt,
 	.set_fmt = gc4663_set_fmt,
+	.get_mbus_config = gc4663_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops gc4663_subdev_ops = {

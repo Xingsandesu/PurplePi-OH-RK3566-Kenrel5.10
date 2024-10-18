@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * MFD core driver for Rockchip RK808/RK818
  *
@@ -9,15 +10,6 @@
  * Copyright (C) 2016 PHYTEC Messtechnik GmbH
  *
  * Author: Wadim Egorov <w.egorov@phytec.de>
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
  */
 
 #include <linux/i2c.h>
@@ -167,53 +159,29 @@ static const struct regmap_config rk817_regmap_config = {
 	.volatile_reg = rk817_is_volatile_reg,
 };
 
-static struct resource rtc_resources[] = {
-	{
-		.start  = RK808_IRQ_RTC_ALARM,
-		.end    = RK808_IRQ_RTC_ALARM,
-		.flags  = IORESOURCE_IRQ,
-	}
+static const struct resource rtc_resources[] = {
+	DEFINE_RES_IRQ(RK808_IRQ_RTC_ALARM),
 };
 
-static struct resource rk816_rtc_resources[] = {
-	{
-		.start  = RK816_IRQ_RTC_ALARM,
-		.end    = RK816_IRQ_RTC_ALARM,
-		.flags  = IORESOURCE_IRQ,
-	}
+static const struct resource rk816_rtc_resources[] = {
+	DEFINE_RES_IRQ(RK816_IRQ_RTC_ALARM),
 };
 
-static struct resource rk817_rtc_resources[] = {
+static const struct resource rk817_rtc_resources[] = {
 	DEFINE_RES_IRQ(RK817_IRQ_RTC_ALARM),
 };
 
-static struct resource rk805_key_resources[] = {
-	{
-		.start  = RK805_IRQ_PWRON_FALL,
-		.end    = RK805_IRQ_PWRON_FALL,
-		.flags  = IORESOURCE_IRQ,
-	},
-	{
-		.start  = RK805_IRQ_PWRON_RISE,
-		.end    = RK805_IRQ_PWRON_RISE,
-		.flags  = IORESOURCE_IRQ,
-	}
+static const struct resource rk805_key_resources[] = {
+	DEFINE_RES_IRQ(RK805_IRQ_PWRON_FALL),
+	DEFINE_RES_IRQ(RK805_IRQ_PWRON_RISE),
 };
 
-static struct resource rk816_pwrkey_resources[] = {
-	{
-		.start  = RK816_IRQ_PWRON_FALL,
-		.end    = RK816_IRQ_PWRON_FALL,
-		.flags  = IORESOURCE_IRQ,
-	},
-	{
-		.start  = RK816_IRQ_PWRON_RISE,
-		.end    = RK816_IRQ_PWRON_RISE,
-		.flags  = IORESOURCE_IRQ,
-	},
+static const struct resource rk816_pwrkey_resources[] = {
+	DEFINE_RES_IRQ(RK816_IRQ_PWRON_FALL),
+	DEFINE_RES_IRQ(RK816_IRQ_PWRON_RISE),
 };
 
-static struct resource rk817_pwrkey_resources[] = {
+static const struct resource rk817_pwrkey_resources[] = {
 	DEFINE_RES_IRQ(RK817_IRQ_PWRON_FALL),
 	DEFINE_RES_IRQ(RK817_IRQ_PWRON_RISE),
 };
@@ -613,7 +581,7 @@ static const struct regmap_irq rk817_irqs[RK817_IRQ_END] = {
 	REGMAP_IRQ_REG_LINE(23, 8)
 };
 
-static struct regmap_irq_chip rk805_irq_chip = {
+static const struct regmap_irq_chip rk805_irq_chip = {
 	.name = "rk805",
 	.irqs = rk805_irqs,
 	.num_irqs = ARRAY_SIZE(rk805_irqs),
@@ -668,7 +636,7 @@ static const struct regmap_irq rk816_battery_irqs[] = {
 	},
 };
 
-static struct regmap_irq_chip rk816_irq_chip = {
+static const struct regmap_irq_chip rk816_irq_chip = {
 	.name = "rk816",
 	.irqs = rk816_irqs,
 	.num_irqs = ARRAY_SIZE(rk816_irqs),
@@ -680,7 +648,7 @@ static struct regmap_irq_chip rk816_irq_chip = {
 	.init_ack_masked = true,
 };
 
-static struct regmap_irq_chip rk816_battery_irq_chip = {
+static const struct regmap_irq_chip rk816_battery_irq_chip = {
 	.name = "rk816_battery",
 	.irqs = rk816_battery_irqs,
 	.num_irqs = ARRAY_SIZE(rk816_battery_irqs),
@@ -691,7 +659,7 @@ static struct regmap_irq_chip rk816_battery_irq_chip = {
 	.init_ack_masked = true,
 };
 
-static struct regmap_irq_chip rk817_irq_chip = {
+static const struct regmap_irq_chip rk817_irq_chip = {
 	.name = "rk817",
 	.irqs = rk817_irqs,
 	.num_irqs = ARRAY_SIZE(rk817_irqs),
@@ -719,21 +687,6 @@ static struct i2c_client *rk808_i2c_client;
 static struct rk808_reg_data *suspend_reg, *resume_reg;
 static int suspend_reg_num, resume_reg_num;
 
-static void rk805_device_shutdown(void)
-{
-	int ret;
-	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
-
-	if (!rk808)
-		return;
-
-	ret = regmap_update_bits(rk808->regmap,
-				 RK805_DEV_CTRL_REG,
-				 DEV_OFF, DEV_OFF);
-	if (ret)
-		dev_err(&rk808_i2c_client->dev, "Failed to shutdown device!\n");
-}
-
 static void rk805_device_shutdown_prepare(void)
 {
 	int ret;
@@ -749,57 +702,19 @@ static void rk805_device_shutdown_prepare(void)
 		dev_err(&rk808_i2c_client->dev, "Failed to shutdown device!\n");
 }
 
-static void rk808_device_shutdown(void)
-{
-	int ret;
-	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
-
-	if (!rk808)
-		return;
-
-	ret = regmap_update_bits(rk808->regmap,
-				 RK808_DEVCTRL_REG,
-				 DEV_OFF_RST, DEV_OFF_RST);
-	if (ret)
-		dev_err(&rk808_i2c_client->dev, "Failed to shutdown device!\n");
-}
-
-static void rk816_device_shutdown(void)
-{
-	int ret;
-	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
-
-	if (!rk808)
-		return;
-
-	ret = regmap_update_bits(rk808->regmap,
-				 RK816_DEV_CTRL_REG,
-				 DEV_OFF, DEV_OFF);
-	if (ret)
-		dev_err(&rk808_i2c_client->dev, "Failed to shutdown device!\n");
-}
-
 static void rk817_shutdown_prepare(void)
 {
 	int ret;
 	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
-#if 0
-	/* close int when power off */
+
+	/* close rtc int when power off */
 	regmap_update_bits(rk808->regmap,
 			   RK817_INT_STS_MSK_REG0,
-			   0xff, 0xff);
-	regmap_update_bits(rk808->regmap,
-			   RK817_INT_STS_MSK_REG1,
-			   0xff, 0xff);
-	regmap_update_bits(rk808->regmap,
-			   RK817_INT_STS_MSK_REG2,
-			   0xff, 0xff);
+			   (0x3 << 5), (0x3 << 5));
 	regmap_update_bits(rk808->regmap,
 			   RK817_RTC_INT_REG,
 			   (0x3 << 2), (0x0 << 2));
 
-	dev_info(&rk808_i2c_client->dev, "disabled int when device shutdown!\n");
-#endif
 	if (rk808->pins && rk808->pins->p && rk808->pins->power_off) {
 		ret = regmap_update_bits(rk808->regmap,
 					 RK817_SYS_CFG(3),
@@ -832,17 +747,34 @@ static void rk817_shutdown_prepare(void)
 	mdelay(2);
 }
 
-static void rk818_device_shutdown(void)
+static void rk8xx_device_shutdown(void)
 {
 	int ret;
+	unsigned int reg, bit;
 	struct rk808 *rk808 = i2c_get_clientdata(rk808_i2c_client);
 
-	if (!rk808)
+	switch (rk808->variant) {
+	case RK805_ID:
+		reg = RK805_DEV_CTRL_REG;
+		bit = DEV_OFF;
+		break;
+	case RK808_ID:
+		reg = RK808_DEVCTRL_REG,
+		bit = DEV_OFF_RST;
+		break;
+	case RK816_ID:
+		reg = RK816_DEV_CTRL_REG;
+		bit = DEV_OFF;
+		break;
+	case RK818_ID:
+		reg = RK818_DEVCTRL_REG;
+		bit = DEV_OFF;
+		break;
+	default:
 		return;
+	}
 
-	ret = regmap_update_bits(rk808->regmap,
-				 RK818_DEVCTRL_REG,
-				 DEV_OFF, DEV_OFF);
+	ret = regmap_update_bits(rk808->regmap, reg, bit, bit);
 	if (ret)
 		dev_err(&rk808_i2c_client->dev, "Failed to shutdown device!\n");
 }
@@ -1205,6 +1137,7 @@ static int rk808_probe(struct i2c_client *client,
 	void (*of_property_prepare_fn)(struct rk808 *rk808,
 				       struct device *dev) = NULL;
 	int (*pinctrl_init)(struct device *dev, struct rk808 *rk808) = NULL;
+	void (*device_shutdown_fn)(void) = NULL;
 
 	rk808 = devm_kzalloc(&client->dev, sizeof(*rk808), GFP_KERNEL);
 	if (!rk808)
@@ -1251,7 +1184,7 @@ static int rk808_probe(struct i2c_client *client,
 		suspend_reg_num = ARRAY_SIZE(rk805_suspend_reg);
 		resume_reg = rk805_resume_reg;
 		resume_reg_num = ARRAY_SIZE(rk805_resume_reg);
-		rk808->pm_pwroff_fn = rk805_device_shutdown;
+		device_shutdown_fn = rk8xx_device_shutdown;
 		rk808->pm_pwroff_prep_fn = rk805_device_shutdown_prepare;
 		break;
 	case RK808_ID:
@@ -1261,7 +1194,7 @@ static int rk808_probe(struct i2c_client *client,
 		nr_pre_init_regs = ARRAY_SIZE(rk808_pre_init_reg);
 		cells = rk808s;
 		nr_cells = ARRAY_SIZE(rk808s);
-		rk808->pm_pwroff_fn = rk808_device_shutdown;
+		device_shutdown_fn = rk8xx_device_shutdown;
 		break;
 	case RK816_ID:
 		rk808->regmap_cfg = &rk816_regmap_config;
@@ -1277,7 +1210,7 @@ static int rk808_probe(struct i2c_client *client,
 		suspend_reg_num = ARRAY_SIZE(rk816_suspend_reg);
 		resume_reg = rk816_resume_reg;
 		resume_reg_num = ARRAY_SIZE(rk816_resume_reg);
-		rk808->pm_pwroff_fn = rk816_device_shutdown;
+		device_shutdown_fn = rk8xx_device_shutdown;
 		break;
 	case RK818_ID:
 		rk808->regmap_cfg = &rk818_regmap_config;
@@ -1292,7 +1225,7 @@ static int rk808_probe(struct i2c_client *client,
 		suspend_reg_num = ARRAY_SIZE(rk818_suspend_reg);
 		resume_reg = rk818_resume_reg;
 		resume_reg_num = ARRAY_SIZE(rk818_resume_reg);
-		rk808->pm_pwroff_fn = rk818_device_shutdown;
+		device_shutdown_fn = rk8xx_device_shutdown;
 		break;
 	case RK809_ID:
 	case RK817_ID:
@@ -1402,10 +1335,10 @@ static int rk808_probe(struct i2c_client *client,
 		if (!pm_power_off_prepare)
 			pm_power_off_prepare = rk808->pm_pwroff_prep_fn;
 
-		if (rk808->pm_pwroff_fn) {
+		if (device_shutdown_fn) {
 			register_syscore_ops(&rk808_syscore_ops);
 			/* power off system in the syscore shutdown ! */
-			pm_shutdown = rk808->pm_pwroff_fn;
+			pm_shutdown = device_shutdown_fn;
 		}
 	}
 
@@ -1433,7 +1366,6 @@ static int rk808_remove(struct i2c_client *client)
 	struct rk808 *rk808 = i2c_get_clientdata(client);
 
 	regmap_del_irq_chip(client->irq, rk808->irq_data);
-	mfd_remove_devices(&client->dev);
 
 	/**
 	 * pm_power_off may points to a function from another module.
@@ -1474,6 +1406,12 @@ static int __maybe_unused rk8xx_suspend(struct device *dev)
 	}
 
 	switch (rk808->variant) {
+	case RK805_ID:
+		ret = regmap_update_bits(rk808->regmap,
+					 RK805_GPIO_IO_POL_REG,
+					 SLP_SD_MSK,
+					 SLEEP_FUN);
+		break;
 	case RK809_ID:
 	case RK817_ID:
 		if (rk808->pins && rk808->pins->p && rk808->pins->sleep) {

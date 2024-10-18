@@ -103,14 +103,6 @@ static const char * const ov4688_supply_names[] = {
 
 #define OV4688_NUM_SUPPLIES ARRAY_SIZE(ov4688_supply_names)
 
-enum ov4688_max_pad {
-	PAD0, /* link to isp */
-	PAD1, /* link to csi wr0 | hdr x2:L x3:M */
-	PAD2, /* link to csi wr1 | hdr      x3:L */
-	PAD3, /* link to csi wr2 | hdr x2:M x3:S */
-	PAD_MAX,
-};
-
 struct regval {
 	u16 addr;
 	u8 val;
@@ -984,14 +976,12 @@ static int ov4688_g_frame_interval(struct v4l2_subdev *sd,
 	struct ov4688 *ov4688 = to_ov4688(sd);
 	const struct ov4688_mode *mode = ov4688->cur_mode;
 
-	mutex_lock(&ov4688->mutex);
 	fi->interval = mode->max_fps;
-	mutex_unlock(&ov4688->mutex);
 
 	return 0;
 }
 
-static int ov4688_g_mbus_config(struct v4l2_subdev *sd,
+static int ov4688_g_mbus_config(struct v4l2_subdev *sd, unsigned int pad_id,
 				struct v4l2_mbus_config *config)
 {
 	struct ov4688 *ov4688 = to_ov4688(sd);
@@ -1005,7 +995,7 @@ static int ov4688_g_mbus_config(struct v4l2_subdev *sd,
 	if (mode->hdr_mode == HDR_X3)
 		val |= V4L2_MBUS_CSI2_CHANNEL_2;
 
-	config->type = V4L2_MBUS_CSI2;
+	config->type = V4L2_MBUS_CSI2_DPHY;
 	config->flags = val;
 
 	return 0;
@@ -1480,7 +1470,6 @@ static const struct v4l2_subdev_core_ops ov4688_core_ops = {
 static const struct v4l2_subdev_video_ops ov4688_video_ops = {
 	.s_stream = ov4688_s_stream,
 	.g_frame_interval = ov4688_g_frame_interval,
-	.g_mbus_config = ov4688_g_mbus_config,
 };
 
 static const struct v4l2_subdev_pad_ops ov4688_pad_ops = {
@@ -1490,6 +1479,7 @@ static const struct v4l2_subdev_pad_ops ov4688_pad_ops = {
 	.get_fmt = ov4688_get_fmt,
 	.set_fmt = ov4688_set_fmt,
 	.get_selection = ov4688_get_selection,
+	.get_mbus_config = ov4688_g_mbus_config,
 };
 
 static const struct v4l2_subdev_ops ov4688_subdev_ops = {

@@ -152,7 +152,7 @@
 				hsync-active = <0>;
 				vsync-active = <0>;
 				de-active = <0>;
-				pixelclk-active = <1>;
+				pixelclk-active = <0>;
 			};
 		};
 
@@ -572,11 +572,6 @@
 
 &route_rgb {
 	connect = <&vopb_out_rgb>;
-	status = "okay";
-};
-
-&bus_apll {
-	bus-supply = <&vdd_logic>;
 	status = "okay";
 };
 

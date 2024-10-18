@@ -8,12 +8,11 @@
  * Copyright (C) 2011 Google, Inc.
  */
 
-#include <linux/module.h>
 #include <linux/freezer.h>
 #include <linux/list.h>
 #include <linux/slab.h>
 #include <linux/swap.h>
-#include <uapi/linux/sched/types.h>
+#include <linux/sched/signal.h>
 
 #include "deferred-free-helper.h"
 
@@ -122,8 +121,6 @@ static int deferred_free_thread(void *data)
 
 static int deferred_freelist_init(void)
 {
-	struct sched_param param = { .sched_priority = 0 };
-
 	list_nr_pages = 0;
 
 	init_waitqueue_head(&freelist_waitqueue);
@@ -133,10 +130,10 @@ static int deferred_freelist_init(void)
 		pr_err("Creating thread for deferred free failed\n");
 		return -1;
 	}
-	sched_setscheduler(freelist_task, SCHED_IDLE, &param);
+	sched_set_normal(freelist_task, 19);
 
 	return register_shrinker(&freelist_shrinker);
 }
 module_init(deferred_freelist_init);
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");
 

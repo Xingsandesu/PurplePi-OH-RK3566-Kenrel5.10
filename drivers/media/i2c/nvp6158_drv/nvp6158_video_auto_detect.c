@@ -134,19 +134,17 @@ NC_VIVO_CH_FORMATDEF nvp6158_arrVfcType_raptor4[0x100] = {
 extern unsigned char nvp6158_det_mode[16];
 NC_VIVO_CH_FORMATDEF NVP6158_NC_VD_AUTO_VFCtoFMTDEF(unsigned char ch, unsigned char VFC)
 {
-	if((nvp6158_chip_id[ch/4] == NVP6168C_R0_ID) || (nvp6158_chip_id[ch/4] == NVP6168_R0_ID))
-	{
+	if((nvp6158_chip_id[ch/4] == NVP6168C_R0_ID) ||
+		(nvp6158_chip_id[ch/4] == NVP6168_R0_ID)) {
 		return nvp6158_arrVfcType_raptor4[VFC];
-	}
-	else
-	{
+	} else {
 		if(nvp6158_det_mode[ch] == NVP6158_DET_MODE_AUTO)
 			return nvp6158_arrVfcType[VFC];
 		else if(nvp6158_det_mode[ch] == NVP6158_DET_MODE_CVI)
 			return nvp6158_arrVfcType_cvi[VFC];
 		else if(nvp6158_det_mode[ch] == NVP6158_DET_MODE_TVI)
 			return nvp6158_arrVfcType_tvi[VFC];
-		else 
+		else
 			return nvp6158_arrVfcType_ahd[VFC];
 	}
 }
@@ -168,8 +166,8 @@ static void _nvp6158_video_input_auto_detect_vafe_set(video_input_auto_detect *v
 
 	gpio_i2c_write(nvp6158_iic_addr[vin_auto_det->devnum], 0xFF, 0x00);
 	//B0 0x00/1/2/3 gain[4], powerdown[0]
-	gpio_i2c_write(nvp6158_iic_addr[vin_auto_det->devnum], 0x00 + vin_auto_det->ch, ((vin_auto_det->vafe.gain & 0x01) << 4) |
-												  (vin_auto_det->vafe.powerdown & 0x01));
+	gpio_i2c_write(nvp6158_iic_addr[vin_auto_det->devnum], 0x00 + vin_auto_det->ch,
+			((vin_auto_det->vafe.gain & 0x01) << 4) | (vin_auto_det->vafe.powerdown & 0x01));
 
 	gpio_i2c_write(nvp6158_iic_addr[vin_auto_det->devnum], 0xFF, 0x01);
 	gpio_i2c_write(nvp6158_iic_addr[vin_auto_det->devnum], 0x84 + vin_auto_det->ch, 0x00);
@@ -186,7 +184,8 @@ static void _nvp6158_video_input_auto_detect_vafe_set(video_input_auto_detect *v
 
 	gpio_i2c_write(nvp6158_iic_addr[vin_auto_det->devnum], 0x00, val_5678x00);
 
-	val_5678x01 = ((vin_auto_det->vafe.ctrlreg << 6) | (vin_auto_det->vafe.ctrlibs << 4) | (vin_auto_det->vafe.adcspd << 2) | (vin_auto_det->vafe.clplevel));
+	val_5678x01 = ((vin_auto_det->vafe.ctrlreg << 6) | (vin_auto_det->vafe.ctrlibs << 4) |
+			(vin_auto_det->vafe.adcspd << 2) | (vin_auto_det->vafe.clplevel));
 	gpio_i2c_write(nvp6158_iic_addr[vin_auto_det->devnum], 0x01, val_5678x01 );
 
 	//B5/6/7/8 0x58 eq_band[7:4], lpf_front_band[1:0]
@@ -194,13 +193,15 @@ static void _nvp6158_video_input_auto_detect_vafe_set(video_input_auto_detect *v
 	gpio_i2c_write(nvp6158_iic_addr[vin_auto_det->devnum], 0x58, val_5678x58);
 
 	//B5/6/7/8 0x5B ref_vol[1:0]
-	val_5678x59 = ((vin_auto_det->vafe.clpmode << 7) | (vin_auto_det->vafe.f_lpf_bypass << 4) | (vin_auto_det->vafe.clproff << 3) | (vin_auto_det->vafe.b_lpf_bypass));
+	val_5678x59 = ((vin_auto_det->vafe.clpmode << 7) | (vin_auto_det->vafe.f_lpf_bypass << 4) |
+			(vin_auto_det->vafe.clproff << 3) | (vin_auto_det->vafe.b_lpf_bypass));
 	gpio_i2c_write(nvp6158_iic_addr[vin_auto_det->devnum], 0x59, val_5678x59);
 
 	val_5678x5B = ((vin_auto_det->vafe.duty << 4) | (vin_auto_det->vafe.ref_vol));
 	gpio_i2c_write(nvp6158_iic_addr[vin_auto_det->devnum], 0x5B, val_5678x5B);
 
-	val_5678x5C = ((vin_auto_det->vafe.lpf_back_band << 4) | (vin_auto_det->vafe.clk_sel << 3) | (vin_auto_det->vafe.eq_gainsel));
+	val_5678x5C = ((vin_auto_det->vafe.lpf_back_band << 4) |
+		(vin_auto_det->vafe.clk_sel << 3) | (vin_auto_det->vafe.eq_gainsel));
 	gpio_i2c_write(nvp6158_iic_addr[vin_auto_det->devnum], 0x5C, val_5678x5C);
 }
 
@@ -462,7 +463,7 @@ void nvp6158_video_input_no_video_set(video_input_novid *auto_novid)
 	unsigned char val_13x32;
 	unsigned char val_9x44;
 	unsigned char val_1x7A;
-	
+
 	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0xFF, 0x00);
 	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x21 + (auto_novid->ch * 4), 0x82);
 	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x23 + (auto_novid->ch * 4), 0x41);
@@ -483,12 +484,12 @@ void nvp6158_video_input_no_video_set(video_input_novid *auto_novid)
 	//gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x58, 0x07);
 	//gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x5C, 0x78);
 	/* After 08/28 */
-	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x47, 0xEE);  
+	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x47, 0xEE);
 	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x50, 0xc6);  //recovery to std value.
 	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x58, 0x47);
 	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x5C, 0x7f);
 	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x6E, 0x00);    //VBLK default setting
-	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x6F, 0x00); 
+	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x6F, 0x00);
         /* Low-Poass Filter (LPF) Bypass Enable  Bank5/6/7/8 0x59 */
 	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x59, 0x10);
 
@@ -511,7 +512,7 @@ void nvp6158_video_input_no_video_set(video_input_novid *auto_novid)
 	/* disable Bank11 0x00, if before setting format TVI 5M 20P when onvideo */
 	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0xFF, 0x11);
 	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x00 + ( auto_novid->ch * 0x20 ), 0x00);
-	
+
 	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0xFF, 0x09);
 	val_9x44 = gpio_i2c_read(nvp6158_iic_addr[auto_novid->devnum], 0x44);
 	val_9x44 |= (1 << auto_novid->ch);
@@ -530,7 +531,7 @@ void nvp6158_video_input_no_video_set(video_input_novid *auto_novid)
     	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x8c + auto_novid->ch, 0x55);
 	val_1x7A = gpio_i2c_read(nvp6158_iic_addr[auto_novid->devnum], 0x7A);
 	val_1x7A |= (1 << auto_novid->ch);
-	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x7A, val_1x7A);	
+	gpio_i2c_write(nvp6158_iic_addr[auto_novid->devnum], 0x7A, val_1x7A);
 }
 
 void nvp6168_video_input_no_video_set(video_input_novid *auto_novid)
@@ -573,7 +574,7 @@ void nvp6158_video_input_cable_dist_read(video_input_cable_dist *vin_cable_dist)
 
 
 
-void nvp6158_video_input_sam_val_read(video_input_sam_val *vin_sam_val ) 
+void nvp6158_video_input_sam_val_read(video_input_sam_val *vin_sam_val )
 {
 	unsigned char val1, val2;
 
@@ -763,7 +764,7 @@ void nvp6168_video_input_hsync_accum_read(video_input_hsync_accum *vin_hsync_acc
 	unsigned int val_1 = 0;
 	unsigned int val_2 = 0;
 	unsigned int val_result;
-	
+
 	static unsigned int pre_val_1;
 	static unsigned int pre_val_2;
 
@@ -777,8 +778,7 @@ void nvp6168_video_input_hsync_accum_read(video_input_hsync_accum *vin_hsync_acc
 	gpio_i2c_write(nvp6158_iic_addr[vin_hsync_accum->devnum], 0xFF, 0x13);
 	gpio_i2c_write(nvp6158_iic_addr[vin_hsync_accum->devnum], 0x2B, vin_hsync_accum->ch);
 
-	while(read_cnt < total_cnt)
-	{
+	while(read_cnt < total_cnt) {
 		gpio_i2c_write(nvp6158_iic_addr[vin_hsync_accum->devnum], 0xFF, 0x00);
 		video_loss = gpio_i2c_read(nvp6158_iic_addr[vin_hsync_accum->devnum], 0xA8);
 		video_loss = (((video_loss >> vin_hsync_accum->ch) & 0x1)) ;
@@ -786,9 +786,9 @@ void nvp6168_video_input_hsync_accum_read(video_input_hsync_accum *vin_hsync_acc
 		gpio_i2c_write(nvp6158_iic_addr[vin_hsync_accum->devnum], 0xFF, 0x05 + vin_hsync_accum->ch);
 		vfc = gpio_i2c_read(nvp6158_iic_addr[vin_hsync_accum->devnum], 0xF0);
 
-		if((video_loss == 1) && (vfc == 0xFF))
-		{
-			printk("[%s] CH:%d, video_loss:%02X, vfc:0x%X \r\n", __func__, vin_hsync_accum->ch, video_loss, vfc);
+		if((video_loss == 1) && (vfc == 0xFF)) {
+			printk("[%s] CH:%d, video_loss:%02X, vfc:0x%X \r\n", __func__,
+				vin_hsync_accum->ch, video_loss, vfc);
 			vin_hsync_accum->hsync_accum_val1 = 0;
 			vin_hsync_accum->hsync_accum_val2 = 0;
 			vin_hsync_accum->hsync_accum_result = 0xffffffff;
@@ -822,10 +822,8 @@ void nvp6168_video_input_hsync_accum_read(video_input_hsync_accum *vin_hsync_acc
 
 		//printk("[%s] CH:%d, video_loss:%02X, vfc:0x%X val1:%08X / val2:%08X \r\n", __func__, vin_hsync_accum->ch, video_loss, vfc, val_1, val_2);
 
-		if((val_1 != 0) && (val_2 != 0))
-		{
-			if((pre_val_1 != val_1) || (pre_val_2 != val_2))
-			{
+		if((val_1 != 0) && (val_2 != 0)) {
+			if((pre_val_1 != val_1) || (pre_val_2 != val_2)) {
 				gpio_i2c_write(nvp6158_iic_addr[vin_hsync_accum->devnum], 0x7A, rst_reg);
 				gpio_i2c_write(nvp6158_iic_addr[vin_hsync_accum->devnum], 0x7A, 0x10);
 				pre_val_1 = val_1;
@@ -987,14 +985,11 @@ void nvp6158_video_input_acc_gain_val_read(video_input_acc_gain_val *vin_acc_gai
 
 		val1 = gpio_i2c_read(nvp6158_iic_addr[vin_acc_gain->devnum],0xE2) & 0x7; // B5 0xE2 acc gain [10:8]
 		val2 = gpio_i2c_read(nvp6158_iic_addr[vin_acc_gain->devnum],0xE3); 		 // B5 0xE3 acc gain [7:0]
-	}
-	else if(vin_acc_gain->func_sel == ACC_GAIN_DEBUG) { 	// DEBUG
+	} else if(vin_acc_gain->func_sel == ACC_GAIN_DEBUG) { 	// DEBUG
 		gpio_i2c_write(nvp6158_iic_addr[vin_acc_gain->devnum], 0xFF, 0x00);
 		val1 = 0;
 		val2 = gpio_i2c_read(nvp6158_iic_addr[vin_acc_gain->devnum],0xD8 + vin_acc_gain->ch); // B13 0xC6 acc gain [9:8]
-	}
-	else
-	{
+	} else {
 		gpio_i2c_write(nvp6158_iic_addr[vin_acc_gain->devnum], 0xFF, 0x05);
 
 		val1 = gpio_i2c_read(nvp6158_iic_addr[vin_acc_gain->devnum],0xE2) & 0x7; // B5 0xE2 acc gain [10:8]
@@ -1013,8 +1008,7 @@ void nvp6158_video_output_data_out_mode_set(video_output_data_out_mode *vo_data_
 	//	0x7A [7 : 4][3 : 0]  0x7B [7 : 4][3 : 0]
 	gpio_i2c_write(nvp6158_iic_addr[vo_data_out_mode->devnum], 0xFF, 0x00);
 
-	switch(vo_data_out_mode -> ch)
-	{
+	switch(vo_data_out_mode -> ch) {
 		case CH1 :
 		case CH2 : temp_val = gpio_i2c_read(nvp6158_iic_addr[vo_data_out_mode->devnum], 0x7A);
 					break;
@@ -1023,8 +1017,7 @@ void nvp6158_video_output_data_out_mode_set(video_output_data_out_mode *vo_data_
 					break;
 	}
 
-	switch(vo_data_out_mode -> ch)
-	{
+	switch(vo_data_out_mode -> ch) {
 		case CH1 :
 		case CH3 :	temp_val = ((temp_val & 0xF0) | (vo_data_out_mode -> set_val & 0xF));
 					break;
@@ -1034,8 +1027,7 @@ void nvp6158_video_output_data_out_mode_set(video_output_data_out_mode *vo_data_
 	}
 
 	// printk("[%s:%s] : %s >>>> temp_val [ %x ]\n", __FILE__, __LINE__, __FUNCTION__,temp_val);
-	switch(vo_data_out_mode -> ch)
-	{
+	switch(vo_data_out_mode -> ch) {
 		case CH1 :
 		case CH2 : gpio_i2c_write(nvp6158_iic_addr[vo_data_out_mode->devnum], 0x7A, temp_val);
 				   break;
@@ -1050,8 +1042,7 @@ unsigned char __nvp6158_IsOver3MRTVideoFormat( decoder_dev_ch_info_s *decoder_in
 {
 	unsigned char ret = 0; //
 
-	if(
-	   (decoder_info->fmt_def == AHD30_3M_30P) ||
+	if((decoder_info->fmt_def == AHD30_3M_30P) ||
 	   (decoder_info->fmt_def == AHD30_3M_25P) ||
 	   (decoder_info->fmt_def == AHD30_4M_30P) ||
 	   (decoder_info->fmt_def == AHD30_4M_25P) ||
@@ -1070,9 +1061,7 @@ unsigned char __nvp6158_IsOver3MRTVideoFormat( decoder_dev_ch_info_s *decoder_in
 	   (decoder_info->fmt_def == CVI_4M_30P) ||
 	   (decoder_info->fmt_def == CVI_5M_20P) ||
 	   (decoder_info->fmt_def == CVI_8M_15P) ||
-	   (decoder_info->fmt_def == CVI_8M_12_5P)
-	   )
-	{
+	   (decoder_info->fmt_def == CVI_8M_12_5P)) {
 		ret = 1;
 	}
 	return ret; // 0:Over 3M RT, 1:other formation
@@ -1083,48 +1072,36 @@ void nvp6158_video_input_onvideo_set(decoder_dev_ch_info_s *decoder_info)
 {
 	unsigned char format_3M_RT;
 
-	printk("onvideo_set dev_num[%x] ch_num[%x] fmt_def[%d]", decoder_info->devnum, decoder_info->ch, decoder_info->fmt_def);
-
-	
+	printk("onvideo_set dev_num[%x] ch_num[%x] fmt_def[%d]", 
+		decoder_info->devnum, decoder_info->ch, decoder_info->fmt_def);
 
 	/* after 09/12 */
 	format_3M_RT = __nvp6158_IsOver3MRTVideoFormat(decoder_info);
 
-	if(format_3M_RT)
-	{
+	if(format_3M_RT) {
 		/* DECI_FILTER_ON */
 		gpio_i2c_write(nvp6158_iic_addr[decoder_info->devnum], 0xFF, 0x05 + decoder_info->ch);
 		gpio_i2c_write(nvp6158_iic_addr[decoder_info->devnum], 0x50, 0x76);
-	}
-	else
-	{
+	} else {
 		/* DECI_FILTER_OFF */
 		gpio_i2c_write(nvp6158_iic_addr[decoder_info->devnum], 0xFF, 0x05 + decoder_info->ch);
 		gpio_i2c_write(nvp6158_iic_addr[decoder_info->devnum], 0x50, 0xc6);
 	}
 
 
-		if(	decoder_info->fmt_def == CVI_HD_30P 		||
-			decoder_info->fmt_def == CVI_HD_30P_EX		||
-			decoder_info->fmt_def == AHD20_720P_30P		||
-			decoder_info->fmt_def == AHD20_720P_30P_EX	||
-			decoder_info->fmt_def == AHD20_720P_30P_EX_Btype)
-		{
+		if(decoder_info->fmt_def == CVI_HD_30P || decoder_info->fmt_def == CVI_HD_30P_EX ||
+			decoder_info->fmt_def == AHD20_720P_30P	|| decoder_info->fmt_def == AHD20_720P_30P_EX ||
+			decoder_info->fmt_def == AHD20_720P_30P_EX_Btype) {
 			//meant to remove pre-connection issue. 07.31
-			if( nvp6158_s_only_onetime_run[decoder_info->ch + 4 * decoder_info->devnum] == 0)
-			{
+			if( nvp6158_s_only_onetime_run[decoder_info->ch + 4 * decoder_info->devnum] == 0) {
 				nvp6158_video_input_vafe_reset(decoder_info);
 				nvp6158_s_only_onetime_run[decoder_info->ch + 4 * decoder_info->devnum] = 1;
 			}
-		}
-		else
-		{
-			if( nvp6158_s_only_onetime_run[decoder_info->ch + 4 * decoder_info->devnum] == 0)
-			{
+		} else {
+			if( nvp6158_s_only_onetime_run[decoder_info->ch + 4 * decoder_info->devnum] == 0) {
 				nvp6158_s_only_onetime_run[decoder_info->ch + 4 * decoder_info->devnum] = 1;
 			}
 		}
-
 }
 
 void nvp6168_video_input_onvideo_set(decoder_dev_ch_info_s *decoder_info)
@@ -1133,10 +1110,11 @@ void nvp6168_video_input_onvideo_set(decoder_dev_ch_info_s *decoder_info)
 	unsigned char ch = decoder_info->ch % 4;
 	unsigned char devnum = decoder_info->devnum;
 	unsigned char val_9x44;
-#ifndef _NVP6168_USE_MANUAL_MODE_	
+#ifndef _NVP6168_USE_MANUAL_MODE_
 	unsigned char set_done=0xF0;
 #endif
-	printk("onvideo_set dev_num[%x] ch_num[%x] fmt_def[%d]", decoder_info->devnum, decoder_info->ch, decoder_info->fmt_def);
+	printk("onvideo_set dev_num[%x] ch_num[%x] fmt_def[%d]",
+		decoder_info->devnum, decoder_info->ch, decoder_info->fmt_def);
 
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x09);
 	val_9x44 = gpio_i2c_read(nvp6158_iic_addr[devnum], 0x44);
@@ -1202,14 +1180,10 @@ void nvp6158_video_input_vafe_reset(decoder_dev_ch_info_s *decoder_info)
 void nvp6158_video_input_manual_agc_stable_endi(decoder_dev_ch_info_s *decoder_info, int endi)
 {
 	gpio_i2c_write(nvp6158_iic_addr[decoder_info->devnum], 0xFF, 0x05+decoder_info->ch);
-	if( endi == 1 )
-	{
+	if( endi == 1 ) {
 		gpio_i2c_write(nvp6158_iic_addr[decoder_info->devnum], 0x82, 0xff);
 		printk("[DRV] MANUAL AGC STABLE ENABLE CH:[%d]\n", decoder_info->ch);
-	}
-	else
-	{
-
+	} else {
 		gpio_i2c_write(nvp6158_iic_addr[decoder_info->devnum], 0x82, 0x00);
 		printk("[DRV] MANUAL AGC STABLE ENABLE CH:[%d]\n", decoder_info->ch);
 	}
@@ -1221,8 +1195,7 @@ void nvp6158_video_input_vafe_control(decoder_dev_ch_info_s *decoder_info, int c
 
 	gpio_i2c_write(nvp6158_iic_addr[decoder_info->devnum], 0xFF, 0x00);
 
-	if(cmd == 0)
-	{
+	if(cmd == 0) {
 		val_0x00 = gpio_i2c_read(nvp6158_iic_addr[decoder_info->devnum], 0x00 + decoder_info->ch);
 		_SET_BIT(val_0x00, 0);
 		gpio_i2c_write(nvp6158_iic_addr[decoder_info->devnum], 0x00 + decoder_info->ch, val_0x00);
@@ -1230,9 +1203,7 @@ void nvp6158_video_input_vafe_control(decoder_dev_ch_info_s *decoder_info, int c
 		printk("[DRV] [Ch:%d] AFE Power Down ... \n", decoder_info->ch);
 
 		msleep(10);
-	}
-	else if(cmd == 1)
-	{
+	} else if(cmd == 1) {
 		val_0x00 = gpio_i2c_read(nvp6158_iic_addr[decoder_info->devnum], 0x00 + decoder_info->ch);
 		_CLE_BIT(val_0x00, 0);
 		gpio_i2c_write(nvp6158_iic_addr[decoder_info->devnum], 0x00 + decoder_info->ch, val_0x00);
@@ -1251,8 +1222,7 @@ static __maybe_unused unsigned int __nvp6158_s_max_min_exclude_avg_func(unsigned
 	max = input_arry[0];
 	min = input_arry[0];
 
-	for(ii = 0; ii < cnt; ii++)
-	{
+	for(ii = 0; ii < cnt; ii++) {
 		max = max > input_arry[ii] ? max : input_arry[ii];
 		min = min > input_arry[ii] ? input_arry[ii] : min;
 
@@ -1261,12 +1231,9 @@ static __maybe_unused unsigned int __nvp6158_s_max_min_exclude_avg_func(unsigned
 
 	result = sum - (max + min);
 
-	if(result == 0)
-	{
+	if(result == 0) {
 		return 0;
-	}
-	else
-	{
+	} else {
 		result /= ( cnt - 2 );
 	}
 
@@ -1285,21 +1252,15 @@ static unsigned int __nvp6158_s_distinguish_5M_ahd_tvi_func(unsigned int* input_
 
 	chk1 = input_arry[0];
 
-	for(ii = 0; ii < cnt; ii++)
-	{
+	for(ii = 0; ii < cnt; ii++) {
 		chk2 = input_arry[ii];
 
-		if( chk1 == chk2)
-		{
+		if( chk1 == chk2) {
 			calc_array[0][inner_idx] += 1;
 			calc_array[1][inner_idx] = chk1;
-		}
-		else if( chk1 != chk2 )
-		{
-			for(ij = 0; ij < ii; ij++)
-			{
-				if( calc_array[1][ij] == chk2 )
-				{
+		} else if( chk1 != chk2 ) {
+			for(ij = 0; ij < ii; ij++) {
+				if( calc_array[1][ij] == chk2 ) {
 					find_idx = ij;
 					calc_array[0][find_idx] += 1;
 					calc_array[1][find_idx] = chk2;
@@ -1309,31 +1270,26 @@ static unsigned int __nvp6158_s_distinguish_5M_ahd_tvi_func(unsigned int* input_
 				need_update = 1;
 			}
 
-			if(need_update)
-			{
+			if(need_update) {
 				inner_idx += 1;
 				calc_array[0][inner_idx] += 1;
 				calc_array[1][inner_idx] = chk2;
 			}
 		}
-
 		chk1 = chk2;
 	}
 
 	max = calc_array[0][0];
 
-	for(ii = 0; ii < cnt; ii++)
-	{
-		if( max < calc_array[0][ii] )
-		{
+	for(ii = 0; ii < cnt; ii++) {
+		if( max < calc_array[0][ii] ) {
 			max_idx = ii;
 			max = calc_array[0][ii];
 		}
 	}
 
 
-	for(ii = 0; ii < cnt; ii++)
-	{
+	for(ii = 0; ii < cnt; ii++) {
 		printk("[DRV] [ idx %d ] [ num %d ] [ val %x ]\n", ii, calc_array[0][ii], calc_array[1][ii]);
 	}
 
@@ -1360,43 +1316,32 @@ void nvp6158_video_input_ahd_tvi_distinguish(decoder_dev_ch_info_s *decoder_info
 
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x05 + ch);
 
-	for(ii = 0; ii < check_time; ii++)
-	{
+	for(ii = 0; ii < check_time; ii++) {
 		msleep(100);
-		B5xF5_F4[ii] = ( gpio_i2c_read(nvp6158_iic_addr[devnum], 0xF5) << 8 ) | gpio_i2c_read(nvp6158_iic_addr[devnum], 0xF4);
+		B5xF5_F4[ii] = ( gpio_i2c_read(nvp6158_iic_addr[devnum], 0xF5) << 8 ) |
+			gpio_i2c_read(nvp6158_iic_addr[devnum], 0xF4);
 		printk("[DRV] [Ch:%d] %d time B5xF3_F4 : %x \n", ch, ii, B5xF5_F4[ii]);
 	}
 
 	check_point = __nvp6158_s_distinguish_5M_ahd_tvi_func( B5xF5_F4, check_time );
 
-	if( fmtdef == AHD30_5M_20P )
-	{
-		if( ( check_point & 0xfff ) == 0x7c2)
-		{
+	if( fmtdef == AHD30_5M_20P ) {
+		if( ( check_point & 0xfff ) == 0x7c2) {
 			decoder_info->fmt_def = TVI_5M_20P;
 			printk("[DRV] [Ch:%d] Get Format : AHD 5M 20P, Change Format : TVI 5M 20P\n", decoder_info->ch);
-		}
-		else if( ( check_point & 0xfff ) == 0x7c4)
-		{
+		} else if( ( check_point & 0xfff ) == 0x7c4) {
 			decoder_info->fmt_def = CVI_5M_20P;
 			printk("[DRV] [Ch:%d] Get Format : AHD 5M 20P, Change Format : CVI 5M 20P\n", decoder_info->ch);
-		}
-		else
-		{
+		} else {
 
 			printk("[DRV] [Ch:%d] Get Format : AHD 5M 20P, Not Change Format\n", decoder_info->ch);
 		}
-	}
-	else if( fmtdef == 0x2B) 
-	{
-		if( ( check_point & 0xfff ) >= 0x673)
-		{
+	} else if( fmtdef == 0x2B) {
+		if( ( check_point & 0xfff ) >= 0x673) {
 			decoder_info->fmt_def = TVI_4M_15P;
 			printk("[DRV] [Ch:%d] Get Format : AHD 4M15P #0P, Change Format : TVI 4M 15P\n", decoder_info->ch);
 		}
-	}
-	else
-	{
+	} else {
 		decoder_info->fmt_def = fmtdef;
 	}
 
@@ -1464,22 +1409,19 @@ void nvp6168_video_input_cvi_tvi_5M20p_distinguish(decoder_dev_ch_info_s *decode
 
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x05 + ch);
 
-	for(ii = 0; ii < check_time; ii++)
-	{
+	for(ii = 0; ii < check_time; ii++) {
 		msleep(100);
-		B5xF5_F4[ii] = ( gpio_i2c_read(nvp6158_iic_addr[devnum], 0xF5) << 8 ) | gpio_i2c_read(nvp6158_iic_addr[devnum], 0xF4);
+		B5xF5_F4[ii] = ( gpio_i2c_read(nvp6158_iic_addr[devnum], 0xF5) << 8 ) |
+						gpio_i2c_read(nvp6158_iic_addr[devnum], 0xF4);
 		printk("[DRV] [Ch:%d] %d time B5xF3_F4 : %x \n", ch, ii, B5xF5_F4[ii]);
 	}
 
 	check_point = __nvp6158_s_distinguish_5M_ahd_tvi_func( B5xF5_F4, check_time );
 
- 	if( ( check_point & 0xfff ) == 0x7c4)
-	{
+ 	if( ( check_point & 0xfff ) == 0x7c4) {
 		decoder_info->fmt_def = CVI_5M_20P;
 		printk("[DRV] [Ch:%d] Get Format : AHD 5M 20P, Change Format : CVI 5M 20P\n", decoder_info->ch);
-	}
-	else
-	{
+	} else {
 
 		decoder_info->fmt_def = TVI_5M_20P;
 		printk("[DRV] [Ch:%d] Get Format : AHD 5M 20P, Change Format : TVI 5M 20P\n", decoder_info->ch);
@@ -1500,21 +1442,15 @@ static unsigned int __nvp6158_s_distinguish_8M_cvi_tvi_func(unsigned int* input_
 
 	chk1 = input_arry[0];
 
-	for(ii = 0; ii < cnt; ii++)
-	{
+	for(ii = 0; ii < cnt; ii++) {
 		chk2 = input_arry[ii];
 
-		if( chk1 == chk2)
-		{
+		if( chk1 == chk2) {
 			calc_array[0][inner_idx] += 1;
 			calc_array[1][inner_idx] = chk1;
-		}
-		else if( chk1 != chk2 )
-		{
-			for(ij = 0; ij < ii; ij++)
-			{
-				if( calc_array[1][ij] == chk2 )
-				{
+		} else if( chk1 != chk2 ) {
+			for(ij = 0; ij < ii; ij++) {
+				if( calc_array[1][ij] == chk2 ) {
 					find_idx = ij;
 					calc_array[0][find_idx] += 1;
 					calc_array[1][find_idx] = chk2;
@@ -1524,31 +1460,26 @@ static unsigned int __nvp6158_s_distinguish_8M_cvi_tvi_func(unsigned int* input_
 				need_update = 1;
 			}
 
-			if(need_update)
-			{
+			if(need_update) {
 				inner_idx += 1;
 				calc_array[0][inner_idx] += 1;
 				calc_array[1][inner_idx] = chk2;
 			}
 		}
-
 		chk1 = chk2;
 	}
 
 	max = calc_array[0][0];
 
-	for(ii = 0; ii < cnt; ii++)
-	{
-		if( max < calc_array[0][ii] )
-		{
+	for(ii = 0; ii < cnt; ii++) {
+		if( max < calc_array[0][ii] ) {
 			max_idx = ii;
 			max = calc_array[0][ii];
 		}
 	}
 
 
-	for(ii = 0; ii < cnt; ii++)
-	{
+	for(ii = 0; ii < cnt; ii++) {
 		printk("[DRV] [ idx %d ] [ num %d ] [ val %x ]\n", ii, calc_array[0][ii], calc_array[1][ii]);
 	}
 
@@ -1573,13 +1504,11 @@ int nvp6158_video_input_cvi_tvi_distinguish(decoder_dev_ch_info_s *decoder_info)
 
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x13);
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x2B, ch % 4 );
-	
-	for(ii = 0; ii < check_time; ii++)
-	{
+
+	for(ii = 0; ii < check_time; ii++) {
 		msleep(100);
 		B13xAB[ii] = gpio_i2c_read(nvp6158_iic_addr[devnum], 0xAB);
-		if(B13xAB[ii] == 0)
-		{
+		if(B13xAB[ii] == 0) {
 			B13xAB_zerocnt ++;
 		}
 		printk("[DRV] [Ch:%d] %d time B13xAB : %x \n", ch, ii, B13xAB[ii]);
@@ -1590,28 +1519,19 @@ int nvp6158_video_input_cvi_tvi_distinguish(decoder_dev_ch_info_s *decoder_info)
 
 	check_point = __nvp6158_s_distinguish_8M_cvi_tvi_func( B13xAB, check_time );
 
-	if( fmtdef == CVI_8M_15P || fmtdef == CVI_8M_12_5P )
-	{
-		if( ( check_point & 0xff ) > 0x1A )
-		{
-			if( fmtdef == CVI_8M_12_5P )
-			{
+	if( fmtdef == CVI_8M_15P || fmtdef == CVI_8M_12_5P ) {
+		if( ( check_point & 0xff ) > 0x1A ) {
+			if( fmtdef == CVI_8M_12_5P ) {
 				decoder_info->fmt_def = TVI_8M_12_5P;
 				printk("[DRV] [Ch:%d] Get Format : CVI 8M 12_5P, Change Format : TVI 8M 12_5P\n", decoder_info->ch);
-			}
-			else 
-			{
+			} else {
 				decoder_info->fmt_def = TVI_8M_15P;
 				printk("[DRV] [Ch:%d] Get Format : CVI 8M 15P, Change Format : TVI 8M 15P\n", decoder_info->ch);
 			}
-		}
-		else
-		{
+		} else {
 			printk("[DRV] [Ch:%d] Get Format : CVI 8M, Not Change Format\n", decoder_info->ch);
 		}
-	}
-	else
-	{
+	} else {
 		decoder_info->fmt_def = fmtdef;
 	}
 	return 0;
@@ -1629,21 +1549,15 @@ static unsigned int __nvp6158_s_distinguish_ahd_nrt_func(unsigned int* input_arr
 
 	chk1 = input_arry[0];
 
-	for(ii = 0; ii < cnt; ii++)
-	{
+	for(ii = 0; ii < cnt; ii++) {
 		chk2 = input_arry[ii];
 
-		if( chk1 == chk2)
-		{
+		if( chk1 == chk2) {
 			calc_array[0][inner_idx] += 1;
 			calc_array[1][inner_idx] = chk1;
-		}
-		else if( chk1 != chk2 )
-		{
-			for(ij = 0; ij < ii; ij++)
-			{
-				if( calc_array[1][ij] == chk2 )
-				{
+		} else if( chk1 != chk2 ) {
+			for(ij = 0; ij < ii; ij++) {
+				if( calc_array[1][ij] == chk2 ) {
 					find_idx = ij;
 					calc_array[0][find_idx] += 1;
 					calc_array[1][find_idx] = chk2;
@@ -1653,31 +1567,26 @@ static unsigned int __nvp6158_s_distinguish_ahd_nrt_func(unsigned int* input_arr
 				need_update = 1;
 			}
 
-			if(need_update)
-			{
+			if(need_update) {
 				inner_idx += 1;
 				calc_array[0][inner_idx] += 1;
 				calc_array[1][inner_idx] = chk2;
 			}
 		}
-
 		chk1 = chk2;
 	}
 
 	max = calc_array[0][0];
 
-	for(ii = 0; ii < cnt; ii++)
-	{
-		if( max < calc_array[0][ii] )
-		{
+	for(ii = 0; ii < cnt; ii++) {
+		if( max < calc_array[0][ii] ) {
 			max_idx = ii;
 			max = calc_array[0][ii];
 		}
 	}
 
 
-	for(ii = 0; ii < cnt; ii++)
-	{
+	for(ii = 0; ii < cnt; ii++) {
 		printk("[DRV] [ idx %d ] [ num %d ] [ val %x ]\n", ii, calc_array[0][ii], calc_array[1][ii]);
 	}
 
@@ -1701,8 +1610,7 @@ void nvp6158_video_input_ahd_nrt_distinguish(decoder_dev_ch_info_s *decoder_info
 
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x05 + ch);
 
-	for(ii = 0; ii < check_time; ii++)
-	{
+	for(ii = 0; ii < check_time; ii++) {
 		msleep(30);
 		B5xF3[ii] = gpio_i2c_read(nvp6158_iic_addr[devnum], 0xF3);
 		printk("[DRV] [Ch:%d] %d time B5xF3 : %x \n", ch, ii, B5xF3[ii]);
@@ -1710,18 +1618,13 @@ void nvp6158_video_input_ahd_nrt_distinguish(decoder_dev_ch_info_s *decoder_info
 
 	check_point = __nvp6158_s_distinguish_ahd_nrt_func( B5xF3, check_time );
 
-	if( ( check_point & 0xff ) == 0x14 )
-	{
+	if( ( check_point & 0xff ) == 0x14 ) {
 		decoder_info->fmt_def = AHD20_1080P_12_5P_EX;
 		printk("[DRV] [Ch:%d] Get Format : AHD 1080P 12.5P\n", decoder_info->ch);
-	}
-	else if( ( check_point & 0xff ) == 0x11 )
-	{
+	} else if( ( check_point & 0xff ) == 0x11 ) {
 		decoder_info->fmt_def = AHD20_1080P_15P_EX;
 		printk("[DRV] [Ch:%d] Get Format : AHD 1080P 15P\n", decoder_info->ch);
-	}
-	else
-	{
+	} else {
 		decoder_info->fmt_def = NC_VIVO_CH_FORMATDEF_UNKNOWN;
 		printk("[DRV] [Ch:%d] Get Format : Unknown Format \n", decoder_info->ch);
 	}
@@ -1739,21 +1642,15 @@ static unsigned int __nvp6158_s_distinguish_2M_cvi_ahd_func(unsigned int* input_
 
 	chk1 = input_arry[0];
 
-	for(ii = 0; ii < cnt; ii++)
-	{
+	for(ii = 0; ii < cnt; ii++) {
 		chk2 = input_arry[ii];
 
-		if( chk1 == chk2)
-		{
+		if( chk1 == chk2) {
 			calc_array[0][inner_idx] += 1;
 			calc_array[1][inner_idx] = chk1;
-		}
-		else if( chk1 != chk2 )
-		{
-			for(ij = 0; ij < ii; ij++)
-			{
-				if( calc_array[1][ij] == chk2 )
-				{
+		} else if( chk1 != chk2 ) {
+			for(ij = 0; ij < ii; ij++) {
+				if( calc_array[1][ij] == chk2 ) {
 					find_idx = ij;
 					calc_array[0][find_idx] += 1;
 					calc_array[1][find_idx] = chk2;
@@ -1763,8 +1660,7 @@ static unsigned int __nvp6158_s_distinguish_2M_cvi_ahd_func(unsigned int* input_
 				need_update = 1;
 			}
 
-			if(need_update)
-			{
+			if(need_update) {
 				inner_idx += 1;
 				calc_array[0][inner_idx] += 1;
 				calc_array[1][inner_idx] = chk2;
@@ -1776,18 +1672,15 @@ static unsigned int __nvp6158_s_distinguish_2M_cvi_ahd_func(unsigned int* input_
 
 	max = calc_array[0][0];
 
-	for(ii = 0; ii < cnt; ii++)
-	{
-		if( max < calc_array[0][ii] )
-		{
+	for(ii = 0; ii < cnt; ii++) {
+		if( max < calc_array[0][ii] ) {
 			max_idx = ii;
 			max = calc_array[0][ii];
 		}
 	}
 
 
-	for(ii = 0; ii < cnt; ii++)
-	{
+	for(ii = 0; ii < cnt; ii++) {
 		printk("[DRV] [ idx %d ] [ num %d ] [ val %x ]\n", ii, calc_array[0][ii], calc_array[1][ii]);
 	}
 
@@ -1812,9 +1705,8 @@ void nvp6158_video_input_cvi_ahd_1080p_distinguish(decoder_dev_ch_info_s *decode
 
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0xFF, 0x13);
 	gpio_i2c_write(nvp6158_iic_addr[devnum], 0x2B, ch % 4 );
-	
-	for(ii = 0; ii < check_time; ii++)
-	{
+
+	for(ii = 0; ii < check_time; ii++) {
 		msleep(100);
 		B13xAB[ii] = gpio_i2c_read(nvp6158_iic_addr[devnum], 0xAB);
 		printk("[DRV] [Ch:%d] %d time B13xAB : %x \n", ch, ii, B13xAB[ii]);
@@ -1822,21 +1714,15 @@ void nvp6158_video_input_cvi_ahd_1080p_distinguish(decoder_dev_ch_info_s *decode
 
 	check_point = __nvp6158_s_distinguish_2M_cvi_ahd_func( B13xAB, check_time );
 
-	if( fmtdef == CVI_FHD_25P )
-	{
-		if( ( check_point & 0xff ) <= 0x09 )
-		{
-			
+	if( fmtdef == CVI_FHD_25P ) {
+		if( ( check_point & 0xff ) <= 0x09 ) {
+
 			decoder_info->fmt_def = AHD20_1080P_25P;
 			printk("[DRV] [Ch:%d] Get Format : CVI 2M 25P, Change Format : AHD 2M 25P\n", decoder_info->ch);
-		}
-		else
-		{
+		} else {
 			printk("[DRV] [Ch:%d] Get Format : CVI 2M, Not Change Format\n", decoder_info->ch);
 		}
-	}
-	else
-	{
+	} else {
 		decoder_info->fmt_def = fmtdef;
 	}
 }

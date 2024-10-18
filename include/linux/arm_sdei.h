@@ -5,13 +5,11 @@
 
 #include <uapi/linux/arm_sdei.h>
 
-enum sdei_conduit_types {
-	CONDUIT_INVALID = 0,
-	CONDUIT_SMC,
-	CONDUIT_HVC,
-};
+#include <acpi/ghes.h>
 
+#ifdef CONFIG_ARM_SDE_INTERFACE
 #include <asm/sdei.h>
+#endif
 
 /* Arch code should override this to set the entry point from firmware... */
 #ifndef sdei_arch_get_entry_point
@@ -40,21 +38,68 @@ int sdei_event_enable(u32 event_num);
 int sdei_event_disable(u32 event_num);
 
 #ifdef CONFIG_FIQ_DEBUGGER_TRUST_ZONE
+#ifdef CONFIG_ARM_SDE_INTERFACE
 int sdei_event_enable_nolock(u32 event_num);
 int sdei_event_disable_nolock(u32 event_num);
 int sdei_event_routing_set_nolock(u32 event_num, unsigned long flags,
 				  unsigned long affinity);
 int sdei_event_routing_set(u32 event_num, unsigned long flags,
 			   unsigned long affinity);
-#endif
+int sdei_interrupt_bind(u32 intr_num, u32 *event_num);
+int sdei_interrupt_release(u32 event_num);
+#else
+static inline int sdei_event_enable_nolock(u32 event_num)
+{
+	return SDEI_NOT_SUPPORTED;
+}
+
+static inline int sdei_event_disable_nolock(u32 event_num)
+{
+	return SDEI_NOT_SUPPORTED;
+}
+
+static inline int sdei_event_routing_set_nolock(u32 event_num,
+						unsigned long flags,
+						unsigned long affinity)
+{
+	return SDEI_NOT_SUPPORTED;
+}
+
+static inline int sdei_event_routing_set(u32 event_num,
+					 unsigned long flags,
+					 unsigned long affinity)
+{
+	return SDEI_NOT_SUPPORTED;
+}
+
+static inline int sdei_interrupt_bind(u32 intr_num, u32 *event_num)
+{
+	return SDEI_NOT_SUPPORTED;
+}
+
+static inline int sdei_interrupt_release(u32 event_num)
+{
+	return SDEI_NOT_SUPPORTED;
+}
+#endif /* CONFIG_ARM_SDE_INTERFACE */
+#endif /* CONFIG_FIQ_DEBUGGER_TRUST_ZONE */
+
+/* GHES register/unregister helpers */
+int sdei_register_ghes(struct ghes *ghes, sdei_event_callback *normal_cb,
+		       sdei_event_callback *critical_cb);
+int sdei_unregister_ghes(struct ghes *ghes);
 
 #ifdef CONFIG_ARM_SDE_INTERFACE
 /* For use by arch code when CPU hotplug notifiers are not appropriate. */
 int sdei_mask_local_cpu(void);
 int sdei_unmask_local_cpu(void);
+void __init sdei_init(void);
+void sdei_handler_abort(void);
 #else
 static inline int sdei_mask_local_cpu(void) { return 0; }
 static inline int sdei_unmask_local_cpu(void) { return 0; }
+static inline void sdei_init(void) { }
+static inline void sdei_handler_abort(void) { }
 #endif /* CONFIG_ARM_SDE_INTERFACE */
 
 

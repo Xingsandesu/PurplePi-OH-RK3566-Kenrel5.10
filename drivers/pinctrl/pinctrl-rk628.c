@@ -1587,7 +1587,7 @@ static int rk628_gpiolib_register(struct platform_device *pdev,
 
 	for (i = 0; i < pci->nr_banks; ++i, ++bank) {
 		bank->gpio_chip = rk628_gpiolib_chip;
-
+		bank->pci = pci;
 		gc = &bank->gpio_chip;
 		gc->base = -1;
 		gc->ngpio = bank->nr_pins;
@@ -1660,7 +1660,6 @@ static int rk628_pinctrl_probe(struct platform_device *pdev)
 
 	for (bank = 0; bank < pci->nr_banks; ++bank) {
 		pin_bank = &pci->pin_banks[bank];
-		pin_bank->pci = pci;
 		pin_bank->grange.name = pin_bank->name;
 		pin_bank->grange.id = bank;
 		pin_bank->grange.pin_base = BANK_OFFSET * bank;

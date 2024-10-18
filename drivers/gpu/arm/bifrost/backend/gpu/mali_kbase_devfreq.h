@@ -25,7 +25,7 @@
 int kbase_devfreq_init(struct kbase_device *kbdev);
 
 void kbase_devfreq_term(struct kbase_device *kbdev);
-int kbase_platform_rk_init_opp_table(struct kbase_device *kbdev);
+int kbase_devfreq_opp_helper(struct dev_pm_set_opp_data *data);
 
 /**
  * kbase_devfreq_force_freq - Set GPU frequency on L2 power on/off.
@@ -49,7 +49,6 @@ void kbase_devfreq_enqueue_work(struct kbase_device *kbdev,
  *                               core mask
  * @kbdev:     Device pointer
  * @freq:      Nominal frequency
- * @volt:      Target voltage in microvolts corresponding to this frequency
  * @core_mask: Pointer to u64 to store core mask to
  * @freqs:     Pointer to array of frequencies
  * @volts:     Pointer to array of voltages
@@ -57,7 +56,8 @@ void kbase_devfreq_enqueue_work(struct kbase_device *kbdev,
  * This function will only perform translation if an operating-points-v2-mali
  * table is present in devicetree. If one is not present then it will return an
  * untranslated frequency (and corresponding voltage) and all cores enabled.
+ * The voltages returned are in micro Volts (uV).
  */
 void kbase_devfreq_opp_translate(struct kbase_device *kbdev, unsigned long freq,
-	unsigned long volt, u64 *core_mask, unsigned long *freqs, unsigned long *volts);
+	u64 *core_mask, unsigned long *freqs, unsigned long *volts);
 #endif /* _BASE_DEVFREQ_H_ */

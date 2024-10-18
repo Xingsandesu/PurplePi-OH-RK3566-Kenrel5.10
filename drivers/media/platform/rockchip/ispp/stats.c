@@ -9,6 +9,7 @@
 #include <media/videobuf2-dma-contig.h>
 #include <media/videobuf2-dma-sg.h>
 #include <media/v4l2-mc.h>
+#include <uapi/linux/rk-video-format.h>
 #include "dev.h"
 #include "regs.h"
 #include "stats.h"
@@ -74,11 +75,11 @@ static int rkispp_stats_frame_end(struct rkispp_stats_vdev *stats_vdev)
 				nrbuf->image.index = vdev->nr.cur_wr->index;
 				nrbuf->image.size = vdev->nr.cur_wr->size;
 				v4l2_dbg(3, rkispp_debug, &dev->v4l2_dev,
-					 "%s frame:%d nr output buf index:%d fd:%d dma:0x%x\n",
+					 "%s frame:%d nr output buf index:%d fd:%d dma:%pad\n",
 					 __func__, cur_frame_id,
 					 vdev->nr.cur_wr->index,
 					 vdev->nr.cur_wr->dma_fd,
-					 vdev->nr.cur_wr->dma_addr);
+					 &vdev->nr.cur_wr->dma_addr);
 			}
 		}
 
@@ -156,7 +157,7 @@ static int rkispp_stats_fh_open(struct file *filp)
 
 	ret = v4l2_fh_open(filp);
 	if (!ret) {
-		ret = v4l2_pipeline_pm_use(&stats->vnode.vdev.entity, 1);
+		ret = v4l2_pipeline_pm_get(&stats->vnode.vdev.entity);
 		if (ret < 0) {
 			v4l2_err(&isppdev->v4l2_dev,
 				 "pipeline power on failed %d\n", ret);
@@ -169,16 +170,11 @@ static int rkispp_stats_fh_open(struct file *filp)
 static int rkispp_stats_fh_release(struct file *filp)
 {
 	struct rkispp_stats_vdev *stats = video_drvdata(filp);
-	struct rkispp_device *isppdev = stats->dev;
 	int ret;
 
 	ret = vb2_fop_release(filp);
-	if (!ret) {
-		ret = v4l2_pipeline_pm_use(&stats->vnode.vdev.entity, 0);
-		if (ret < 0)
-			v4l2_err(&isppdev->v4l2_dev,
-				 "pipeline power off failed %d\n", ret);
-	}
+	if (!ret)
+		v4l2_pipeline_pm_put(&stats->vnode.vdev.entity);
 	return ret;
 }
 
@@ -230,7 +226,6 @@ static int rkispp_stats_vb2_queue_setup(struct vb2_queue *vq,
 		sizes[0] = sizeof(struct rkispp_stats_nrbuf);
 		break;
 	}
-
 	INIT_LIST_HEAD(&stats_vdev->stat);
 
 	return 0;
@@ -245,7 +240,7 @@ static void rkispp_stats_vb2_buf_queue(struct vb2_buffer *vb)
 	unsigned long lock_flags = 0;
 
 	vb2_plane_vaddr(vb, 0);
-	if (stats_dev->dev->hw_dev->is_mmu) {
+	if (stats_dev->dev->hw_dev->is_dma_sg_ops) {
 		struct sg_table *sgt = vb2_dma_sg_plane_desc(vb, 0);
 
 		buf->buff_addr[0] = sg_dma_address(sgt->sgl);
@@ -346,9 +341,7 @@ void rkispp_stats_isr(struct rkispp_stats_vdev *stats_vdev)
 
 static void rkispp_init_stats_vdev(struct rkispp_stats_vdev *stats_vdev)
 {
-	stats_vdev->vdev_fmt.fmt.meta.dataformat =
-		V4L2_META_FMT_RK_ISPP_STAT;
-
+	stats_vdev->vdev_fmt.fmt.meta.dataformat = V4L2_META_FMT_RK_ISPP_STAT;
 	switch (stats_vdev->vdev_id) {
 	case STATS_VDEV_TNR:
 		stats_vdev->vdev_fmt.fmt.meta.buffersize =
@@ -363,7 +356,7 @@ static void rkispp_init_stats_vdev(struct rkispp_stats_vdev *stats_vdev)
 }
 
 static int rkispp_register_stats_vdev(struct rkispp_device *dev,
-	enum rkispp_statsvdev_id vdev_id)
+				      enum rkispp_statsvdev_id vdev_id)
 {
 	struct rkispp_stats_vdev *stats_vdev = &dev->stats_vdev[vdev_id];
 	struct rkispp_vdev_node *node = &stats_vdev->vnode;
@@ -402,7 +395,7 @@ static int rkispp_register_stats_vdev(struct rkispp_device *dev,
 	if (ret < 0)
 		goto err_release_queue;
 
-	ret = video_register_device(vdev, VFL_TYPE_GRABBER, -1);
+	ret = video_register_device(vdev, VFL_TYPE_VIDEO, -1);
 	if (ret < 0) {
 		dev_err(&vdev->dev,
 			"could not register Video for Linux device\n");
@@ -419,7 +412,7 @@ err_release_queue:
 }
 
 static void rkispp_unregister_stats_vdev(struct rkispp_device *dev,
-	enum rkispp_statsvdev_id vdev_id)
+					 enum rkispp_statsvdev_id vdev_id)
 {
 	struct rkispp_stats_vdev *stats_vdev = &dev->stats_vdev[vdev_id];
 	struct rkispp_vdev_node *node = &stats_vdev->vnode;
@@ -433,6 +426,9 @@ static void rkispp_unregister_stats_vdev(struct rkispp_device *dev,
 int rkispp_register_stats_vdevs(struct rkispp_device *dev)
 {
 	int ret = 0;
+
+	if (dev->ispp_ver != ISPP_V10)
+		return 0;
 
 	ret = rkispp_register_stats_vdev(dev, STATS_VDEV_TNR);
 	if (ret)
@@ -449,7 +445,8 @@ int rkispp_register_stats_vdevs(struct rkispp_device *dev)
 
 void rkispp_unregister_stats_vdevs(struct rkispp_device *dev)
 {
+	if (dev->ispp_ver != ISPP_V10)
+		return;
 	rkispp_unregister_stats_vdev(dev, STATS_VDEV_TNR);
 	rkispp_unregister_stats_vdev(dev, STATS_VDEV_NR);
 }
-

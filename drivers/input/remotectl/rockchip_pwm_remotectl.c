@@ -335,9 +335,12 @@ static irqreturn_t rockchip_pwm_irq(int irq, void *dev_id)
 		return IRQ_NONE;
 	if ((val & PWM_CH_POL(id)) == 0) {
 		temp_hpr = readl_relaxed(ddata->base + PWM_REG_HPR);
-		DBG("hpr=%d\n", temp_hpr);
+		writel_relaxed(0, ddata->base + PWM_REG_HPR);
 		temp_lpr = readl_relaxed(ddata->base + PWM_REG_LPR);
+		writel_relaxed(0, ddata->base + PWM_REG_LPR);
+		DBG("hpr=%d\n", temp_hpr);
 		DBG("lpr=%d\n", temp_lpr);
+
 		temp_period = ddata->pwm_freq_nstime * temp_lpr / 1000;
 		if (temp_period > RK_PWM_TIME_BIT0_MIN) {
 			ddata->period = ddata->temp_period
@@ -706,7 +709,7 @@ static int rk_pwm_probe(struct platform_device *pdev)
 		       WAKE_LOCK_SUSPEND, "rockchip_pwm_remote");
 	cpumask_clear(&cpumask);
 	cpumask_set_cpu(cpu_id, &cpumask);
-	irq_set_affinity(irq, &cpumask);
+	irq_set_affinity_hint(irq, &cpumask);
 	ret = devm_request_irq(&pdev->dev, irq, rockchip_pwm_irq,
 			       IRQF_NO_SUSPEND, "rk_pwm_irq", ddata);
 	if (ret) {
@@ -763,7 +766,7 @@ static int remotectl_suspend(struct device *dev)
 	}
 	cpumask_clear(&cpumask);
 	cpumask_set_cpu(cpu, &cpumask);
-	irq_set_affinity(ddata->irq, &cpumask);
+	irq_set_affinity_hint(ddata->irq, &cpumask);
 	return 0;
 }
 
@@ -778,7 +781,7 @@ static int remotectl_resume(struct device *dev)
 
 	cpumask_clear(&cpumask);
 	cpumask_set_cpu(ddata->handle_cpu_id, &cpumask);
-	irq_set_affinity(ddata->irq, &cpumask);
+	irq_set_affinity_hint(ddata->irq, &cpumask);
 	if (ddata->support_psci) {
 		/*
 		 * loop wakeup state

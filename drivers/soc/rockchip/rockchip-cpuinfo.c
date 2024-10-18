@@ -57,12 +57,9 @@ static int rockchip_cpuinfo_probe(struct platform_device *pdev)
 	}
 
 	cell = nvmem_cell_get(dev, "id");
-	if (IS_ERR(cell)) {
-		dev_err(dev, "failed to get id cell: %ld\n", PTR_ERR(cell));
-		if (PTR_ERR(cell) == -EPROBE_DEFER)
-			return PTR_ERR(cell);
-		return PTR_ERR(cell);
-	}
+	if (IS_ERR(cell))
+		return dev_err_probe(dev, PTR_ERR(cell), "failed to get id cell\n");
+
 	efuse_buf = nvmem_cell_read(cell, &len);
 	nvmem_cell_put(cell);
 	if (IS_ERR(efuse_buf))
@@ -81,12 +78,15 @@ static int rockchip_cpuinfo_probe(struct platform_device *pdev)
 
 	kfree(efuse_buf);
 
+	dev_info(dev, "SoC\t\t: %lx\n", rockchip_soc_id);
+
+#ifdef CONFIG_NO_GKI
 	system_serial_low = crc32(0, buf, 8);
 	system_serial_high = crc32(system_serial_low, buf + 8, 8);
 
-	dev_info(dev, "SoC\t\t: %lx\n", rockchip_soc_id);
 	dev_info(dev, "Serial\t\t: %08x%08x\n",
 		 system_serial_high, system_serial_low);
+#endif
 
 	return 0;
 }
@@ -105,6 +105,16 @@ static struct platform_driver rockchip_cpuinfo_driver = {
 	},
 };
 
+static void rockchip_set_cpu_version_from_os_reg(u32 reg)
+{
+	void __iomem *r = ioremap(reg, 0x4);
+
+	if (r) {
+		rockchip_set_cpu_version(readl_relaxed(r) & GENMASK(2, 0));
+		iounmap(r);
+	}
+}
+
 static void px30_init(void)
 {
 	void __iomem *base;
@@ -120,6 +130,19 @@ static void px30_init(void)
 			rockchip_soc_id = ROCKCHIP_SOC_PX30S;
 		iounmap(base);
 	}
+}
+
+#define RV1106_OS_REG1	0xff020204
+static void rv1103_init(void)
+{
+	rockchip_soc_id = ROCKCHIP_SOC_RV1103;
+	rockchip_set_cpu_version_from_os_reg(RV1106_OS_REG1);
+}
+
+static void rv1106_init(void)
+{
+	rockchip_soc_id = ROCKCHIP_SOC_RV1106;
+	rockchip_set_cpu_version_from_os_reg(RV1106_OS_REG1);
 }
 
 static void rv1109_init(void)
@@ -176,10 +199,22 @@ static void rk3308_init(void)
 #define RK3308_GRF_CHIP_ID	0x800
 	base = ioremap(RK3308_GRF_PHYS, SZ_4K);
 	if (base) {
-		if (readl_relaxed(base + RK3308_GRF_CHIP_ID) == 0x3308)
+		u32 v = readl_relaxed(base + RK3308_GRF_CHIP_ID);
+
+		if (v == 0x3308)
 			rockchip_soc_id = ROCKCHIP_SOC_RK3308B;
+		if (v == 0x3308c)
+			rockchip_soc_id = ROCKCHIP_SOC_RK3308BS;
 		iounmap(base);
 	}
+}
+
+static void rk3528_init(void)
+{
+	if (of_machine_is_compatible("rockchip,rk3528"))
+		rockchip_soc_id = ROCKCHIP_SOC_RK3528;
+	else if (of_machine_is_compatible("rockchip,rk3528a"))
+		rockchip_soc_id = ROCKCHIP_SOC_RK3528A;
 }
 
 #define RK356X_PMU_GRF_PHYS		0xfdc20000
@@ -203,13 +238,19 @@ static void rk3566_init(void)
 	rk356x_set_cpu_version();
 }
 
+static void rk3567_init(void)
+{
+	rockchip_soc_id = ROCKCHIP_SOC_RK3567;
+	rk356x_set_cpu_version();
+}
+
 static void rk3568_init(void)
 {
 	rockchip_soc_id = ROCKCHIP_SOC_RK3568;
 	rk356x_set_cpu_version();
 }
 
-int __init rockchip_soc_id_init(void)
+int rockchip_soc_id_init(void)
 {
 	if (rockchip_soc_id)
 		return 0;
@@ -223,12 +264,20 @@ int __init rockchip_soc_id_init(void)
 			rk3126_init();
 	} else if (cpu_is_rk3308()) {
 		rk3308_init();
+	} else if (cpu_is_rv1103()) {
+		rv1103_init();
+	} else if (cpu_is_rv1106()) {
+		rv1106_init();
 	} else if (cpu_is_rv1109()) {
 		rv1109_init();
 	} else if (cpu_is_rv1126()) {
 		rv1126_init();
-	} else if (cpu_is_rk3566()) {
+	} else if (cpu_is_rk3528()) {
+		rk3528_init();
+	}  else if (cpu_is_rk3566()) {
 		rk3566_init();
+	}  else if (cpu_is_rk3567()) {
+		rk3567_init();
 	} else if (cpu_is_rk3568()) {
 		rk3568_init();
 	} else if (cpu_is_px30()) {
@@ -237,6 +286,7 @@ int __init rockchip_soc_id_init(void)
 
 	return 0;
 }
+EXPORT_SYMBOL(rockchip_soc_id_init);
 #ifndef MODULE
 pure_initcall(rockchip_soc_id_init);
 #endif
